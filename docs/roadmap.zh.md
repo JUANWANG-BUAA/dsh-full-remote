@@ -2,7 +2,7 @@
 
 内部工作文档，不随 npm tarball 分发（`package.json` 的 `files` 逐个具名列出 6 张 `docs/rp-demo-*.png`，不是 glob，因此本文不进包）。
 
-> 状态（2026-08-15）：P0 代码与文档已在 0.2.0 落地。安装段只写本插件，不写官方 web-app。GitHub topics、npm 发布 `dsh-full-remote`、awesome PR 改名，仍待本仓库推送后执行。下文是当时的分析原文，未逐条改写成完成记录。
+> 状态（2026-08-15）：P0 代码与文档已在 0.2.0 落地。安装段只写本插件，不写官方 web-app。GitHub 仓库已改名为 `dsh-full-remote`。GitHub topics、npm 发布、awesome PR 改名仍待执行。下文是当时的分析原文，未逐条改写成完成记录。
 
 汇总 2026-08-15 的代码通读、harness 源码交叉验证、生态实测与三轮实验结论。文中每条事实都标注了来源；凡是「实测」二字，均指本机跑过脚本或调过 registry API，不是推理。
 
@@ -31,7 +31,7 @@
 
 | 项 | 值 | 来源 |
 |---|---|---|
-| 仓库 | `JUANWANG-BUAA/dsh-remote`，创建 2026-08-15T01:39 | GitHub API |
+| 仓库 | 创建时为 `JUANWANG-BUAA/dsh-remote`，现已改名为 `JUANWANG-BUAA/dsh-full-remote` | GitHub API |
 | 关注度 | 0 star / 0 fork / 0 watcher，`topics: []` | GitHub API |
 | npm | `dsh-reverse-proxy@0.1.0`，发布 2026-08-15T11:07 | npm registry |
 | Host 源码 | 1,357 行 JS（proxy 416 / index 421 / sessions 248 / http-util 85 / pages 84 / persist 65 / security 38） | `wc -l` |
@@ -402,7 +402,7 @@ P0-2（通配地址）与上面三条无依赖，可随时插入。
 
 - [ ] **给仓库打 topics**（30 秒，全项目投产比最高）—— 命令已写入 `docs/github-metadata.md`，需本机 `gh` 鉴权执行。
   值：`dsh-plugin deepseek-harness dsh reverse-proxy remote-access tunnel mobile websocket security`。`dsh-plugin` 必须在第一位。
-- [x] **改名为 `dsh-full-remote`**（npm / patch / README 安装命令）。第 2–4 类标识符全部冻结。GitHub 仓库 URL 未改（重定向仍指向 `dsh-remote`；仓库改名是另一次 GitHub UI 操作）。`npm deprecate` 待发布新包后执行。
+- [x] **改名为 `dsh-full-remote`**（npm / patch / README 安装命令）。第 2–4 类标识符全部冻结。GitHub 仓库已改名为 `dsh-full-remote`。`npm deprecate` 待发布新包后执行。
 - [x] **修正 README 的安装段**：主路径改为钉版本的 `dsh plugin --profile web add @deepseek-ai/dsh-web-app@0.1.0-rc.6`。
 - [ ] **上传 social preview**（`Settings → General → Social preview`，用 `docs/rp-demo-panel.png`）。
 - [ ] **提交 awesome 列表收录 PR**：草稿在 `docs/release-0.1.0.md`，条目需改成 `dsh-full-remote` 后再提。

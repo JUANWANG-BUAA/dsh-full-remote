@@ -7,9 +7,9 @@ documented in this file.
 
 ### Changed
 
-- npm package renamed to `dsh-full-remote`. Plugin id, cookie name, control
-  prefix, forwarding headers, polyfill marker, and state file name are
-  frozen so existing sessions keep working.
+- npm package and GitHub repository renamed to `dsh-full-remote`. Plugin
+  id, cookie name, control prefix, forwarding headers, polyfill marker,
+  and state file name are frozen so existing sessions keep working.
 - README lead is now the Host/Origin rewrite story, scoped to **server-side
   API completeness**, with the client `isLoopback` boundary written down.
 - Install is a single command: `dsh plugin --profile web add dsh-full-remote`.

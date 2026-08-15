@@ -147,13 +147,13 @@ host.listDirectory。令牌门、按设备会话、可选首访审批。
 **README 列表条目（英文，插入 `Browser & Remote` 或 `UI Enhancements` 分类，按字母序）**：
 
 ```markdown
-- [JUANWANG-BUAA/dsh-remote](https://github.com/JUANWANG-BUAA/dsh-remote) - Remote DeepSeek Harness with full server-side API access (`settings.*` / `credentials.*` / `host.listDirectory`). Token-gated reverse proxy, per-device sessions, optional approval, WebSocket/SSE, sidebar panel.
+- [JUANWANG-BUAA/dsh-full-remote](https://github.com/JUANWANG-BUAA/dsh-full-remote) - Remote DeepSeek Harness with full server-side API access (`settings.*` / `credentials.*` / `host.listDirectory`). Token-gated reverse proxy, per-device sessions, optional approval, WebSocket/SSE, sidebar panel.
 ```
 
 **README.zh 列表条目（如有中文列表，同样插入）**：
 
 ```markdown
-- [JUANWANG-BUAA/dsh-remote](https://github.com/JUANWANG-BUAA/dsh-remote) - 带认证的 DeepSeek Harness Web 反向代理 bundle：令牌门、按设备会话与单独踢出、首访审批模式、登录限流、WebSocket/SSE 转发，以及支持运行时改发布地址的侧边栏控制面板。
+- [JUANWANG-BUAA/dsh-full-remote](https://github.com/JUANWANG-BUAA/dsh-full-remote) - 带认证的 DeepSeek Harness Web 反向代理 bundle：令牌门、按设备会话与单独踢出、首访审批模式、登录限流、WebSocket/SSE 转发，以及支持运行时改发布地址的侧边栏控制面板。
 ```
 
 **提交前自检（对应其贡献指南）**：

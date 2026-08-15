@@ -58,11 +58,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/JUANWANG-BUAA/dsh-remote.git"
+    "url": "git+https://github.com/JUANWANG-BUAA/dsh-full-remote.git"
   },
-  "homepage": "https://github.com/JUANWANG-BUAA/dsh-remote#readme",
+  "homepage": "https://github.com/JUANWANG-BUAA/dsh-full-remote#readme",
   "bugs": {
-    "url": "https://github.com/JUANWANG-BUAA/dsh-remote/issues"
+    "url": "https://github.com/JUANWANG-BUAA/dsh-full-remote/issues"
   },
   "keywords": [
     "dsh",

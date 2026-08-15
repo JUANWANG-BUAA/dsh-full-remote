@@ -26,7 +26,7 @@ on it.
 Apply with:
 
 ```sh
-gh api -X PUT /repos/JUANWANG-BUAA/dsh-remote/topics \
+gh api -X PUT /repos/JUANWANG-BUAA/dsh-full-remote/topics \
   -H 'Accept: application/vnd.github+json' \
   -f names[]=dsh-plugin \
   -f names[]=deepseek-harness \
