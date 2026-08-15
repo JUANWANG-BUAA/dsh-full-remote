@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+  # Manual retry button on the Actions page (no new tag needed).
+  workflow_dispatch:
 
 permissions:
   contents: read
