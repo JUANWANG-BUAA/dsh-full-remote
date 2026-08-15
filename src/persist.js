@@ -1,0 +1,43 @@
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
+
+/** Default durable state location. */
+export function defaultStateFile() {
+  return join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'reverse-proxy.json')
+}
+
+/**
+ * Missing or malformed state is treated as a clean disabled installation.
+ * @param {string} path
+ * @returns {Promise<{ enabled: boolean, accessToken?: string }>}
+ */
+export async function readState(path = defaultStateFile()) {
+  try {
+    const parsed = JSON.parse(await readFile(path, 'utf8'))
+    return {
+      enabled: parsed?.enabled === true,
+      ...(typeof parsed?.accessToken === 'string' && parsed.accessToken.length >= 24
+        ? { accessToken: parsed.accessToken }
+        : {}),
+    }
+  } catch {
+    return { enabled: false }
+  }
+}
+
+/**
+ * Write atomically so a terminated process cannot leave truncated JSON.
+ * @param {string} path
+ * @param {{ enabled: boolean, accessToken: string }} state
+ * @returns {Promise<void>}
+ */
+export async function writeState(path, state) {
+  await mkdir(dirname(path), { recursive: true })
+  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`
+  await writeFile(temporary, `${JSON.stringify(state, null, 2)}\n`, {
+    encoding: 'utf8',
+    mode: 0o600,
+  })
+  await rename(temporary, path)
+}

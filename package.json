@@ -1,0 +1,80 @@
+{
+  "name": "dsh-reverse-proxy",
+  "version": "0.1.0",
+  "description": "Authenticated provider-neutral reverse proxy and mobile control UI for DSh Web",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\"",
+    "build": "pnpm run clean && tsdown",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "node --test tests/*.test.js",
+    "test:client": "vitest run",
+    "test": "pnpm run test:unit && pnpm run test:client",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run build",
+    "prepare": "pnpm run build"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/index.js.map",
+    "lib/client.js",
+    "lib/client.js.map",
+    "cordis.patch.yml",
+    "LICENSE",
+    "README.md",
+    "README.zh.md"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.1 <5",
+    "@deepseek-ai/dsh-client-runtime": ">=0.1.0-rc.5 <0.2",
+    "@deepseek-ai/dsh-client-ui-layout": ">=0.1.0-rc.5 <0.2",
+    "@deepseek-ai/dsh-client-ui-sidebar": ">=0.1.0-rc.5 <0.2",
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.1.0-rc.5 <0.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "link:../deepseek-harness/vendor/cordis",
+    "@deepseek-ai/dsh-client-runtime": "link:../deepseek-harness/packages/client/runtime",
+    "@deepseek-ai/dsh-client-ui-layout": "link:../deepseek-harness/packages/client/ui-layout",
+    "@deepseek-ai/dsh-client-ui-sidebar": "link:../deepseek-harness/packages/client/ui-sidebar",
+    "@deepseek-ai/dsh-client-ui-slots": "link:../deepseek-harness/packages/client/ui-slots",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.20.0",
+    "@types/react": "~18.3.1",
+    "@types/react-dom": "18.3.7",
+    "jsdom": "29.1.1",
+    "lightningcss": "^1.33.0",
+    "react": "^18.2.0",
+    "react-dom": "18.3.1",
+    "tsdown": "^0.22.14",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  }
+}

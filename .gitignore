@@ -1,0 +1,15 @@
+node_modules/
+.pnpm-store/
+lib/
+coverage/
+output/
+playwright-report/
+test-results/
+*.tgz
+*.log
+.DS_Store
+.cursor/
+.playwright-cli/
+.env
+.env.*
+!.env.example
