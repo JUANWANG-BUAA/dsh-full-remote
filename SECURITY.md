@@ -33,7 +33,10 @@ Web UI. Please take security issues seriously.
 
 - 192-bit access token, stored locally with mode `0600`.
 - Remote browsers exchange the token for an HttpOnly, SameSite session cookie
-  derived from the token.
+  carrying a per-device secret; only its hash is stored, so one kicked device
+  cannot affect any other.
+- Optional approval mode holds new devices on a waiting page until the local
+  panel approves or rejects them.
 - Control routes (`/dsh-reverse-proxy/*`) are loopback-only and never
   forwarded through the public proxy.
 - Failed logins are rate-limited per remote IP (configurable

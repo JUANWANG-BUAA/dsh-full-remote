@@ -4,10 +4,13 @@ import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRuntime } from '../src/index.js'
+import { request } from 'node:http'
 
 const cleanups = []
 afterEach(async () => {
-  await Promise.all(cleanups.splice(0).reverse().map(fn => fn()))
+  // Sequential reverse order: disposers may write state files, so a parallel
+  // rm would race them.
+  for (const fn of cleanups.splice(0).reverse()) await fn()
 })
 
 function makeConfig(stateFile, extra = {}) {
@@ -70,6 +73,23 @@ function fakeReq({ path, method = 'GET', headers = {}, remoteAddress = '127.0.0.
   return req
 }
 
+function http({ port, path = '/', method = 'GET', headers = {}, body }) {
+  return new Promise((resolve, reject) => {
+    const req = request({ hostname: '127.0.0.1', port, path, method, headers }, (res) => {
+      const chunks = []
+      res.on('data', chunk => chunks.push(chunk))
+      res.on('end', () => resolve({
+        status: res.statusCode,
+        headers: res.headers,
+        body: Buffer.concat(chunks).toString('utf8'),
+      }))
+    })
+    req.on('error', reject)
+    if (body !== undefined) req.end(body)
+    else req.end()
+  })
+}
+
 const CONTROL = {
   'x-dsh-reverse-proxy-control': '1',
   origin: 'http://127.0.0.1:3080',
@@ -83,6 +103,72 @@ async function call(runtime, { path, method = 'GET', headers = {}, remoteAddress
     body: res.body === '' ? {} : JSON.parse(res.body),
   }
 }
+
+describe('device session control', () => {
+  it('lists devices and approves/revokes them through the control surface', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-session-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const ctx = makeContext()
+    const stateFile = join(dir, 'state.json')
+    const runtime = createRuntime(ctx, makeConfig(stateFile, { approvalMode: true }))
+    cleanups.push(() => runtime.dispose())
+
+    const started = await runtime.start()
+    assert.equal(started.running, true)
+    const proxyPort = new URL(started.target).port
+
+    // A remote device logs in through the real proxy.
+    const token = await runtime.token()
+    const login = await http({
+      port: proxyPort,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': 'Mozilla/5.0 (Macintosh) Chrome/126' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    assert.equal(login.status, 303)
+    assert.match(login.headers.location, /^\/_dsh_reverse_proxy\/wait\//)
+
+    // The control surface lists the pending device.
+    const listed = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET' })
+    assert.equal(listed.status, 200)
+    assert.equal(listed.body.sessions.length, 1)
+    assert.equal(listed.body.sessions[0].status, 'pending')
+    assert.equal(listed.body.sessions[0].label, 'Chrome on macOS')
+    const id = listed.body.sessions[0].id
+
+    // Mutations require the control header; approve without it is rejected.
+    const blocked = await call(runtime, {
+      path: '/dsh-reverse-proxy/sessions/approve',
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    assert.equal(blocked.status, 403)
+
+    // Approve, then the same device appears active.
+    const approved = await call(runtime, {
+      path: '/dsh-reverse-proxy/sessions/approve',
+      method: 'POST',
+      headers: { ...CONTROL, 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    assert.deepEqual(approved.body, { ok: true })
+    const afterApprove = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET' })
+    assert.equal(afterApprove.body.sessions[0].status, 'active')
+
+    // Revoke; the list drains.
+    const revoked = await call(runtime, {
+      path: '/dsh-reverse-proxy/sessions/revoke',
+      method: 'POST',
+      headers: { ...CONTROL, 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    assert.deepEqual(revoked.body, { ok: true })
+    const afterRevoke = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET' })
+    assert.deepEqual(afterRevoke.body.sessions, [])
+  })
+})
 
 describe('runtime control surface', () => {
   it('starts and stops the proxy and keeps the token stable', async () => {

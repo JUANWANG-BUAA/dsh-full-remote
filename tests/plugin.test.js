@@ -8,17 +8,14 @@ import { join } from 'node:path'
 import { injectIndexEnhancements, injectViewport } from '../src/index.js'
 import { readState, writeState } from '../src/persist.js'
 import { forwardHeaders, listenProxy } from '../src/proxy.js'
-import {
-  generateAccessToken,
-  isAuthenticated,
-  parseCookies,
-  safeEqual,
-  sessionCookie,
-} from '../src/security.js'
+import { generateAccessToken, safeEqual } from '../src/security.js'
+import { createSessionStore, encodeSessionCookie, hashSessionSecret, newSessionId, newSessionSecret } from '../src/sessions.js'
 
 const cleanups = []
 afterEach(async () => {
-  await Promise.all(cleanups.splice(0).reverse().map(fn => fn()))
+  // Sequential reverse order: disposers may write state files, so a parallel
+  // rm would race them.
+  for (const fn of cleanups.splice(0).reverse()) await fn()
 })
 
 function http({ port, path = '/', method = 'GET', headers = {}, body }) {
@@ -125,15 +122,30 @@ describe('security', () => {
     assert.equal(safeEqual(token, 'wrong'), false)
   })
 
-  it('creates and validates an HttpOnly session cookie', () => {
-    const token = generateAccessToken()
-    const cookie = sessionCookie(token, 'session')
-    assert.match(cookie, /HttpOnly/)
-    assert.match(cookie, /SameSite=Strict/)
-    const pair = cookie.split(';', 1)[0]
-    assert.deepEqual(Object.keys(parseCookies(pair)), ['session'])
-    assert.equal(isAuthenticated({ headers: { cookie: pair } }, token, 'session'), true)
-    assert.equal(isAuthenticated({ headers: { cookie: pair } }, 'other', 'session'), false)
+  it('issues independent per-device session cookies that revoke cleanly', () => {
+    const store = createSessionStore({ maxAgeSeconds: 3600 })
+    const first = store.login({ userAgent: 'Mozilla/5.0 (Macintosh) Chrome/126' })
+    const second = store.login({ userAgent: 'Mozilla/5.0 (iPhone) Safari/604' })
+    const cookieA = encodeSessionCookie(first.id, first.secret)
+    const cookieB = encodeSessionCookie(second.id, second.secret)
+    // Both devices authenticate independently.
+    assert.equal(store.validate(cookieA)?.id, first.id)
+    assert.equal(store.validate(cookieB)?.id, second.id)
+    // Tampering with the secret or reusing another device's secret fails.
+    assert.equal(store.validate(encodeSessionCookie(first.id, 'x'.repeat(32))), undefined)
+    assert.equal(store.validate(encodeSessionCookie(first.id, second.secret)), undefined)
+    // Kicking device A leaves device B untouched.
+    assert.equal(store.revoke(first.id), true)
+    assert.equal(store.validate(cookieA), undefined)
+    assert.equal(store.validate(cookieB)?.id, second.id)
+    // Labels are derived from the User-Agent.
+    assert.equal(first.label, 'Chrome on macOS')
+    assert.equal(second.label, 'Safari on iOS')
+    // Secrets are hashed at rest: the serialized form never carries them.
+    for (const record of store.serialize()) {
+      assert.equal(record.secretHash.length, 43)
+      assert.equal('secret' in record, false)
+    }
   })
 })
 
@@ -397,6 +409,132 @@ describe('authenticated reverse proxy', () => {
       chunks: ['a'.repeat(200), 'b'.repeat(200)],
     })
     assert.equal(under.status, 200)
+  })
+})
+
+describe('device sessions', () => {
+  async function proxyWith(storeOptions = {}, spec = {}) {
+    const backend = createServer((req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end('{"ok":true}')
+    })
+    await new Promise((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise(resolve => backend.close(resolve)))
+    const sessionStore = createSessionStore(storeOptions)
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: backend.address().port,
+      accessToken: 'correct-token',
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 4096,
+      upstreamTimeoutMs: 2000,
+      loginDelayMs: 0,
+      sessionStore,
+      ...spec,
+    })
+    cleanups.push(proxy.close)
+    return { proxy, sessionStore }
+  }
+
+  const login = (port, token = 'correct-token', headers = {}) => http({
+    port,
+    path: '/_dsh_reverse_proxy/login',
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', ...headers },
+    body: `token=${encodeURIComponent(token)}`,
+  })
+
+  const cookieOf = (response) => response.headers['set-cookie'][0].split(';', 1)[0]
+
+  it('issues a per-device session on login that revocation kills immediately', async () => {
+    const { proxy, sessionStore } = await proxyWith()
+    const good = await login(proxy.port)
+    assert.equal(good.status, 303)
+    assert.equal(good.headers.location, '/')
+    const cookie = cookieOf(good)
+
+    const authed = await http({ port: proxy.port, headers: { cookie } })
+    assert.equal(authed.status, 200)
+
+    const [device] = sessionStore.list()
+    assert.equal(device.status, 'active')
+    assert.equal(sessionStore.revoke(device.id), true)
+    const afterKick = await http({ port: proxy.port, headers: { cookie } })
+    assert.equal(afterKick.status, 303)
+    assert.equal(afterKick.headers.location, '/_dsh_reverse_proxy/login')
+  })
+
+  it('holds new devices on the wait page until approved, then admits them', async () => {
+    const { proxy, sessionStore } = await proxyWith({ approvalRequired: true })
+    const loginRes = await login(proxy.port, 'correct-token', { 'user-agent': 'Mozilla/5.0 (Macintosh) Chrome/126' })
+    assert.equal(loginRes.status, 303)
+    assert.match(loginRes.headers.location, /^\/_dsh_reverse_proxy\/wait\//)
+    const waitPath = loginRes.headers.location
+    const cookie = cookieOf(loginRes)
+
+    // Pending cookie is rejected by the auth gate.
+    const blocked = await http({ port: proxy.port, headers: { cookie } })
+    assert.equal(blocked.status, 303)
+
+    // The wait page renders with the device label and a poll endpoint.
+    const page = await http({ port: proxy.port, path: waitPath, headers: { cookie } })
+    assert.equal(page.status, 200)
+    assert.match(page.body, /Chrome on macOS/)
+    assert.match(page.body, /等待审批/)
+
+    const status = await http({ port: proxy.port, path: `${waitPath}/status`, headers: { cookie } })
+    assert.deepEqual(JSON.parse(status.body), { status: 'pending' })
+
+    const [device] = sessionStore.list()
+    assert.equal(device.status, 'pending')
+    assert.equal(sessionStore.approve(device.id), true)
+
+    const approved = await http({ port: proxy.port, path: `${waitPath}/status`, headers: { cookie } })
+    assert.deepEqual(JSON.parse(approved.body), { status: 'active' })
+    const admitted = await http({ port: proxy.port, headers: { cookie } })
+    assert.equal(admitted.status, 200)
+  })
+
+  it('keeps rejected devices out and answers unknown wait ids with a login redirect', async () => {
+    const { proxy, sessionStore } = await proxyWith({ approvalRequired: true })
+    const loginRes = await login(proxy.port)
+    const waitPath = loginRes.headers.location
+    const cookie = cookieOf(loginRes)
+    const [device] = sessionStore.list()
+    sessionStore.revoke(device.id)
+    const status = await http({ port: proxy.port, path: `${waitPath}/status`, headers: { cookie } })
+    assert.deepEqual(JSON.parse(status.body), { status: 'unknown' })
+    const unknown = await http({ port: proxy.port, path: '/_dsh_reverse_proxy/wait/not-a-session', headers: { cookie } })
+    assert.equal(unknown.status, 303)
+    assert.equal(unknown.headers.location, '/_dsh_reverse_proxy/login')
+  })
+
+  it('escapes hostile labels from the persisted state file on the wait page', async () => {
+    // deviceLabel() only emits whitelisted text, but hydrate() accepts any
+    // label string — a hand-edited state file is the real injection vector.
+    const sessionStore = createSessionStore({ approvalRequired: true })
+    const now = Date.now()
+    const id = newSessionId()
+    const secret = newSessionSecret()
+    sessionStore.hydrate([{
+      id,
+      secretHash: hashSessionSecret(secret),
+      label: '<img src=x onerror=alert(1)>',
+      status: 'pending',
+      createdAt: now,
+      lastSeenAt: now,
+    }])
+    const { proxy } = await proxyWith({ approvalRequired: true }, { sessionStore })
+    const cookie = `session=${encodeSessionCookie(id, secret)}`
+    const page = await http({ port: proxy.port, path: `/_dsh_reverse_proxy/wait/${id}`, headers: { cookie } })
+    assert.equal(page.body.includes('<img src=x'), false)
+    assert.equal(page.body.includes('&lt;img src=x onerror=alert(1)&gt;'), true)
   })
 })
 

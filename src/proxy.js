@@ -1,5 +1,6 @@
 import { createServer, request as httpRequest } from 'node:http'
-import { isAuthenticated, safeEqual, sessionCookie } from './security.js'
+import { escapeHtml, parseCookies, safeEqual } from './security.js'
+import { createSessionStore, encodeSessionCookie } from './sessions.js'
 
 const HOP_BY_HOP = new Set([
   'connection',
@@ -149,6 +150,32 @@ function loginLocale(req) {
   return 'zh'
 }
 
+const WAIT_COPY = {
+  zh: {
+    title: '等待审批',
+    intro: '此设备已提交访问请求，请在本机控制面板中批准。',
+    pending: '等待批准中…',
+    rejected: '访问请求被拒绝。',
+  },
+  en: {
+    title: 'Waiting for approval',
+    intro: 'This device has requested access. Approve it from the local control panel.',
+    pending: 'Waiting for approval…',
+    rejected: 'Access request was rejected.',
+  },
+}
+
+/** First-visit approval waiting page: polls its own session status. */
+function waitPage(locale, id, label) {
+  const copy = WAIT_COPY[locale] ?? WAIT_COPY.zh
+  const safeId = escapeHtml(id)
+  const safeLabel = escapeHtml(label)
+  const rejected = copy.rejected.replaceAll("'", "\\'")
+  const poll = `fetch('/_dsh_reverse_proxy/wait/${safeId}/status',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.json()}).then(function(d){if(d.status==='active'){location.href='/'}else if(d.status==='rejected'||d.status==='unknown'){clearInterval(t);document.getElementById('state').textContent='${rejected}'}},function(){})`
+  return `<!doctype html><html lang="${locale === 'en' ? 'en' : 'zh-CN'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${copy.title}</title><style>
+  :root{color-scheme:light dark;font-family:ui-sans-serif,system-ui,sans-serif}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#f4f6f8;color:#15171a}.card{box-sizing:border-box;width:min(92vw,420px);padding:28px;border:1px solid #d9dde3;border-radius:20px;background:#fff;box-shadow:0 16px 48px #0002}h1{font-size:22px;margin:0 0 8px}p{font-size:14px;line-height:1.6;color:#5b6470}.device{font-size:13px;color:#8a93a0;margin-top:14px}.spinner{width:18px;height:18px;border:2px solid #c8ced7;border-top-color:#111;border-radius:50%;margin-top:22px;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(prefers-color-scheme:dark){body{background:#111418;color:#f7f8fa}.card{background:#1b1f24;border-color:#343a43}p{color:#aeb6c2}.device{color:#7c8694}.spinner{border-color:#4b535e;border-top-color:#f7f8fa}}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.intro}</p><p class="device">${safeLabel}</p><div class="spinner" aria-hidden="true"></div><p id="state">${copy.pending}</p><script>var t=setInterval(function(){${poll}},2000)</script></main></body></html>`
+}
+
 function loginPage(locale, error = '') {
   const copy = LOGIN_COPY[locale] ?? LOGIN_COPY.zh
   const message = error === '' ? '' : `<p role="alert">${error}</p>`
@@ -269,10 +296,11 @@ async function handleLogin(req, res, spec) {
       return
     }
     spec.loginTracker.success(remote)
+    const session = spec.sessionStore.login({ userAgent: req.headers['user-agent'] })
     const secure = req.headers['x-forwarded-proto'] === 'https'
     res.writeHead(303, {
-      location: '/',
-      'set-cookie': sessionCookie(spec.accessToken, spec.cookieName, secure, spec.sessionMaxAgeSeconds),
+      location: session.status === 'pending' ? `/_dsh_reverse_proxy/wait/${session.id}` : '/',
+      'set-cookie': `${spec.cookieName}=${encodeSessionCookie(session.id, session.secret)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${spec.sessionMaxAgeSeconds}${secure ? '; Secure' : ''}`,
       'cache-control': 'no-store',
     })
     res.end()
@@ -289,6 +317,7 @@ async function handleLogin(req, res, spec) {
  *  maxRequestBytes: number, upstreamTimeoutMs: number, sessionMaxAgeSeconds: number,
  *  maxHeaderSizeBytes?: number, headersTimeoutMs?: number, keepAliveTimeoutMs?: number,
  *  loginDelayMs?: number, loginMaxAttempts?: number, loginLockoutMs?: number,
+ *  sessionStore: import('./sessions.js').ReturnType<typeof import('./sessions.js').createSessionStore>,
  *  log?: (entry: { method: string, path: string, status: number, remote: string }) => void,
  * }} spec
  * @returns {Promise<{ host: string, port: number, close: () => Promise<void> }>}
@@ -304,7 +333,13 @@ export function listenProxy(spec) {
     upstreamSockets.add(up)
     up.once('close', () => upstreamSockets.delete(up))
   }
-  const runtimeSpec = { ...spec, backendAuthority, trackUpstream, loginTracker: createLoginTracker(spec) }
+  const runtimeSpec = {
+    ...spec,
+    backendAuthority,
+    trackUpstream,
+    loginTracker: createLoginTracker(spec),
+    sessionStore: spec.sessionStore ?? createSessionStore({ maxAgeSeconds: spec.sessionMaxAgeSeconds }),
+  }
   const logRequest = spec.log === undefined ? undefined : (req, res) => {
     res.once('finish', () => {
       spec.log({ method: req.method, path: req.url ?? '/', status: res.statusCode, remote: req.socket.remoteAddress ?? '' })
@@ -318,6 +353,7 @@ export function listenProxy(spec) {
   }, async (req, res) => {
     logRequest?.(req, res)
     const path = pathnameOf(req.url)
+    const cookie = parseCookies(req.headers.cookie)[spec.cookieName]
     if (path === '/_dsh_reverse_proxy/healthz') {
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
       res.end('{"ok":true}\n')
@@ -327,12 +363,40 @@ export function listenProxy(spec) {
       await handleLogin(req, res, runtimeSpec)
       return
     }
+    const waitStatus = path.match(/^\/_dsh_reverse_proxy\/wait\/([^/]+)\/status$/)
+    if (waitStatus !== null && req.method === 'GET') {
+      const session = runtimeSpec.sessionStore.pending(cookie, waitStatus[1])
+      const body = session === undefined
+        ? '{"status":"unknown"}\n'
+        : `{"status":"${session.status}"}\n`
+      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+      res.end(body)
+      return
+    }
+    const waitPageMatch = path.match(/^\/_dsh_reverse_proxy\/wait\/([^/]+)$/)
+    if (waitPageMatch !== null && req.method === 'GET') {
+      const session = runtimeSpec.sessionStore.pending(cookie, waitPageMatch[1])
+      if (session === undefined) {
+        res.writeHead(303, { location: LOGIN_PATH, 'cache-control': 'no-store' })
+        res.end()
+        return
+      }
+      if (session.status === 'active') {
+        res.writeHead(303, { location: '/', 'cache-control': 'no-store' })
+        res.end()
+        return
+      }
+      html(res, 200, waitPage(loginLocale(req), session.id, session.label), {
+        'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+      })
+      return
+    }
     if (path.startsWith(spec.controlPrefix)) {
       res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' })
       res.end('forbidden\n')
       return
     }
-    if (!isAuthenticated(req, spec.accessToken, spec.cookieName)) {
+    if (runtimeSpec.sessionStore.validate(cookie) === undefined) {
       if (req.method === 'GET' || req.method === 'HEAD') {
         res.writeHead(303, { location: LOGIN_PATH, 'cache-control': 'no-store' })
         res.end()
@@ -349,7 +413,8 @@ export function listenProxy(spec) {
     upgradedSockets.add(socket)
     socket.once('close', () => upgradedSockets.delete(socket))
     const path = pathnameOf(req.url)
-    if (path.startsWith(spec.controlPrefix) || !isAuthenticated(req, spec.accessToken, spec.cookieName)) {
+    const cookie = parseCookies(req.headers.cookie)[spec.cookieName]
+    if (path.startsWith(spec.controlPrefix) || runtimeSpec.sessionStore.validate(cookie) === undefined) {
       denySocket(socket, '401 Unauthorized')
       spec.log?.({ method: req.method, path: req.url ?? '/', status: 401, remote: req.socket.remoteAddress ?? '' })
       return

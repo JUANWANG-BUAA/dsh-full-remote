@@ -30,7 +30,9 @@
 ## 功能
 
 - 带认证的反向代理，支持 HTTP、SSE 与 WebSocket 流量。
-- 侧边栏面板：启停、状态、一键复制目标地址、显示/轮换令牌。
+- **按设备会话**：每个登录设备拥有独立凭据；面板列出已连接设备，可随时单独踢出。
+- **首访审批模式**（可选）：新设备先停留在等待页轮询，直到你在本机面板批准或拒绝。
+- 侧边栏面板：启停、状态、一键复制目标地址、显示/轮换令牌、设备管理。
 - **运行时发布地址**：无需改 `cordis.yml`，直接在 UI 中指定代理发布的 IP 与端口；选择会持久化并在重启后生效。运行中的代理会自动重启到新地址，绑定失败则自动回滚到原地址。
 - 状态持久化（`0600` 权限、原子写入）；`autoRestore` 使 DeepSeek Harness 重启后自动恢复代理。
 - 移动端友好的登录页与 viewport 注入；登录页按浏览器语言显示中文或英文。
@@ -43,7 +45,8 @@
 DeepSeek Harness 默认信任 loopback Web 端点。任意 tunnel 可能把它发布到公网，因此仅改写 `Host` 会直接暴露受信任 API。本插件在反代前增加认证门：
 
 - 本机生成 192-bit 访问令牌，以 `0600` 权限持久化；
-- 远程浏览器用令牌换取 HttpOnly、SameSite 会话 Cookie（Cookie 值为令牌派生值，不额外存储第二凭据）；
+- 远程浏览器用令牌换取 HttpOnly、SameSite 会话 Cookie，Cookie 携带每设备独立的随机会话秘密，状态文件只存其哈希——踢出某台设备立即生效，不影响其他设备；
+- 可选审批模式：新设备先停留在等待页，直到本机面板批准或拒绝；
 - 登录失败固定延时，拖慢令牌猜测；另按远程 IP 计数限流：窗口内失败超过
   `loginMaxAttempts` 次即锁定（返回 `429` 与 `Retry-After`），锁定期满自动解除；
 - 代理的监听地址与后端地址相同时拒绝启动（防自环）；
@@ -64,7 +67,9 @@ registry）；下表基于该 registry 的描述与各项目 README。
 | | **dsh-reverse-proxy**（本项目） | [dsh-web-lan-access](https://github.com/AcidGr/dsh-web-lan-access) | [dsh-mobile-gate](https://github.com/Bernardxu123/dsh-mobile-gate) |
 |---|---|---|---|
 | 模式 | 带认证的反向代理，可对接**任意** tunnel（frp/ngrok/cloudflared/SSH） | 局域网直连：注入 `crypto.randomUUID` polyfill，让官方前端在 plain-HTTP 下可用 | 子进程隔离的反向代理，LAN 移动网关 |
-| 认证 | 192-bit 令牌 → 派生 HttpOnly Cookie | 无（信任局域网） | 首访审批 + 按设备绑定令牌 |
+| 认证 | 192-bit 令牌 → 每设备独立 HttpOnly 会话 Cookie（只存哈希） | 无（信任局域网） | 首访审批 + 按设备绑定令牌 |
+| 首访审批 | 可选审批模式 + 轮询等待页 | — | 内置首访审批 |
+| 设备管理 | 面板列出设备、可单独踢出 | — | 按设备绑定 |
 | 登录限流 | 按 IP `429` 锁定 + 固定延时 | — | 有速率限制 |
 | WebSocket / SSE | 完整转发，并主动拆除会话 | 不适用 | — |
 | 控制面 | 侧边栏面板：启停、运行时改发布地址（失败自动回滚）、令牌显示/轮换 | — | — |
@@ -160,6 +165,8 @@ dsh --profile mobile --port 3082
     loginDelayMs: 250
     loginMaxAttempts: 5
     loginLockoutSeconds: 300
+    approvalMode: false
+    maxSessions: 16
     logRequests: false
     stateFile: ""
 ```
@@ -172,6 +179,8 @@ dsh --profile mobile --port 3082
 - `loginMaxAttempts` / `loginLockoutSeconds` 按远程 IP 限流登录失败：窗口内失败
   超过 `loginMaxAttempts` 次后返回 `429`（带 `Retry-After`），锁定期满自动解除。
   共享 NAT 出口的用户共用同一个计数桶，受影响时调高阈值。
+- `approvalMode: true` 让每个新设备停留在等待页，直到在面板批准（被拒绝的设备永远无法到达 DeepSeek Harness）。
+- `maxSessions` 限制并发设备数，超过上限时逐出最久未活动的会话；会话超过 `sessionMaxAgeSeconds` 无活动自动过期。
 - `logRequests: true` 以 debug 级别记录每个代理请求；生命周期事件（启动、停止、令牌轮换、发布地址变更）始终以 info 级别记录。
 - tunnel 进程在本机时应保持 `listenHost: 127.0.0.1`。绑定局域网地址会主动扩大攻击面。
 - 本插件依赖 `webServer` 服务，只能装进包含 `@deepseek-ai/dsh-web-app` 的
@@ -227,6 +236,9 @@ CI 在每次 push 与 PR 上跑 `check:ci`，外加一个真实启动冒烟任�
 | `POST` | `/dsh-reverse-proxy/stop` | — | 快照 |
 | `POST` | `/dsh-reverse-proxy/rotate-token` | — | 快照 + 新 `accessToken` |
 | `POST` | `/dsh-reverse-proxy/listen` | `{ "host": "127.0.0.1", "port": 3081 }` | 快照（port 填 `0` = 自动选空闲端口） |
+| `GET` | `/dsh-reverse-proxy/sessions` | — | `{ sessions: [{ id, label, status, createdAt, lastSeenAt }] }` |
+| `POST` | `/dsh-reverse-proxy/sessions/approve` | `{ "id": "…" }` | `{ "ok": true }`（待审批 → 在线） |
+| `POST` | `/dsh-reverse-proxy/sessions/revoke` | `{ "id": "…" }` | `{ "ok": true }`（该设备立即失效） |
 
 代理自身的 `/dsh-reverse-proxy/healthz` 返回 `{"ok":true}`，登录页位于 `/_dsh_reverse_proxy/login`。
 

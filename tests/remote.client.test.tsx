@@ -34,6 +34,9 @@ function api(overrides: Partial<ProxyApi> = {}): ProxyApi {
     token: vi.fn().mockResolvedValue('secret-token'),
     rotateToken: vi.fn().mockResolvedValue({ ...stopped, accessToken: 'next-token' }),
     setListen: vi.fn().mockResolvedValue(stopped),
+    sessions: vi.fn().mockResolvedValue([]),
+    approveSession: vi.fn().mockResolvedValue({ ok: true }),
+    revokeSession: vi.fn().mockResolvedValue({ ok: true }),
     ...overrides,
   }
 }
@@ -171,6 +174,36 @@ describe('remote client UI', () => {
     fireEvent.click(screen.getByRole('button', { name: '应用发布地址' }))
     expect(service.setListen).not.toHaveBeenCalled()
     expect(await screen.findByText(/请输入有效的发布地址/)).toBeTruthy()
+  })
+
+  it('lists connected devices and kicks one', async () => {
+    const now = Date.now()
+    const device = { id: 's1', label: 'Chrome on macOS', status: 'active', createdAt: now, lastSeenAt: now }
+    const service = api({ sessions: vi.fn().mockResolvedValue([device]) })
+    render(<RemoteOverlay {...overlayProps(service)} />)
+    expect(await screen.findByText('Chrome on macOS')).toBeTruthy()
+    expect(screen.getByText('在线')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '踢出' }))
+    await waitFor(() => expect(service.revokeSession).toHaveBeenCalledWith('s1'))
+    expect(await screen.findByText('已踢出该设备。')).toBeTruthy()
+  })
+
+  it('approves a pending device from the panel', async () => {
+    const now = Date.now()
+    const pending = { id: 'p1', label: 'Safari on iOS', status: 'pending', createdAt: now, lastSeenAt: now }
+    const service = api({ sessions: vi.fn().mockResolvedValue([pending]) })
+    render(<RemoteOverlay {...overlayProps(service)} />)
+    expect(await screen.findByText('Safari on iOS')).toBeTruthy()
+    expect(screen.getByText('待审批')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '批准' }))
+    await waitFor(() => expect(service.approveSession).toHaveBeenCalledWith('p1'))
+    expect(await screen.findByText('已批准该设备。')).toBeTruthy()
+  })
+
+  it('shows the approval-mode hint and an empty devices state', async () => {
+    const service = api({ sessions: vi.fn().mockResolvedValue([]) })
+    render(<RemoteOverlay {...overlayProps(service)} />)
+    expect(await screen.findByText('暂无设备。远程浏览器登录后会显示在这里。')).toBeTruthy()
   })
 
   it('copies the tunnel target via execCommand when the async Clipboard API is unavailable', async () => {

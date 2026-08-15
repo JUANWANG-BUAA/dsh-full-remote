@@ -395,3 +395,94 @@ button:disabled {
     }
   }
 }
+
+/* Connected devices list */
+.emptyText {
+  font-size: 13px;
+  color: var(--rp-muted, #8a93a0);
+  margin: 8px 0 0;
+}
+
+.deviceList {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.deviceItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--rp-border, #d9dde3);
+  border-radius: 12px;
+  background: var(--rp-card, #fff);
+}
+
+.deviceInfo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.deviceInfo strong {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deviceMeta {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--rp-muted, #8a93a0);
+}
+
+.pendingBadge,
+.onlineBadge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.onlineBadge {
+  color: #0a7d32;
+  background: #e5f6ec;
+}
+
+.pendingBadge {
+  color: #8a5a00;
+  background: #fdf3dd;
+}
+
+.deviceActions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .deviceItem {
+    border-color: var(--rp-border-dark, #343a43);
+    background: var(--rp-card-dark, #1b1f24);
+  }
+
+  .onlineBadge {
+    color: #7fe0a8;
+    background: #14331f;
+  }
+
+  .pendingBadge {
+    color: #f2c879;
+    background: #33260d;
+  }
+}

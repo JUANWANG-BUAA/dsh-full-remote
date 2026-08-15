@@ -34,8 +34,12 @@ Each feature is shown against a clean harness profile (no personal data).
 ## Features
 
 - Authenticated reverse proxy for HTTP, SSE, and WebSocket traffic.
+- **Per-device sessions**: every device that logs in gets its own credential;
+  the panel lists connected devices and can kick any one of them instantly.
+- **First-visit approval mode** (optional): new devices wait on a polling
+  page until you approve or reject them from the local panel.
 - Sidebar panel: start/stop, status, one-click target copy, token reveal and
-  rotation.
+  rotation, device management.
 - **Runtime listen address**: republish the proxy on any IP/port from the UI
   without editing `cordis.yml`; the choice persists and survives restarts.
   A running proxy restarts on the new address, and a failed bind rolls back
@@ -52,7 +56,8 @@ authentication gate before the proxy:
 
 - a 192-bit access token is generated locally and stored with mode `0600`;
 - remote browsers exchange the token for an HttpOnly, SameSite session cookie
-  derived from the token (no second credential is stored);
+  carrying a per-device secret; only its hash is stored, so a kicked device
+  loses access immediately while every other device stays connected;
 - failed logins cost a fixed delay, slowing token guessing;
 - DeepSeek Harness control routes are never forwarded through the proxy;
 - start, stop, token reveal, rotation, and listen changes require a direct
@@ -76,7 +81,9 @@ project's own README.
 | | **dsh-reverse-proxy** (this) | [dsh-web-lan-access](https://github.com/AcidGr/dsh-web-lan-access) | [dsh-mobile-gate](https://github.com/Bernardxu123/dsh-mobile-gate) |
 |---|---|---|---|
 | Model | Authenticated reverse proxy you point **any** tunnel at (frp/ngrok/cloudflared/SSH) | Direct LAN links: injects a `crypto.randomUUID` polyfill so the stock frontend survives plain-HTTP origins | Isolated child-process reverse proxy with a LAN mobile gateway |
-| Authentication | 192-bit token → derived HttpOnly cookie | None (trusts the LAN) | First-visit approval + per-device token binding |
+| Authentication | 192-bit token → per-device HttpOnly session cookie (hash at rest) | None (trusts the LAN) | First-visit approval + per-device token binding |
+| First-visit approval | Optional approval mode with polling wait page | — | Built-in first-visit approval |
+| Device management | Panel lists devices, kick any one instantly | — | Per-device binding |
 | Login throttling | Per-IP `429` lockout + fixed delay | — | Rate limiting |
 | WebSocket / SSE | Full forwarding with session teardown | n/a | — |
 | Control surface | Sidebar panel: start/stop, runtime listen address with rollback, token reveal/rotate | — | — |
@@ -197,6 +204,8 @@ isolation: the desktop bundle is never part of the `mobile` process.
     loginDelayMs: 250
     loginMaxAttempts: 5
     loginLockoutSeconds: 300
+    approvalMode: false
+    maxSessions: 16
     logRequests: false
     stateFile: ""
 ```
@@ -213,6 +222,10 @@ isolation: the desktop bundle is never part of the `mobile` process.
   remote IP: after `loginMaxAttempts` failures within the window the IP is
   rejected with `429` (and `Retry-After`) until the lockout expires. Users
   behind a shared NAT IP share one bucket — raise the limits if that hurts.
+- `approvalMode: true` holds every new device on a waiting page until it is
+  approved from the panel (rejected devices never reach DeepSeek Harness).
+- `maxSessions` caps concurrent devices; the stalest session is evicted past
+  the cap and sessions expire after `sessionMaxAgeSeconds` without activity.
 - `logRequests: true` logs every proxied request at debug level; lifecycle
   events (start, stop, token rotation, publish-address changes) are always
   logged at info level.
@@ -281,6 +294,9 @@ require the `x-dsh-reverse-proxy-control: 1` header and a loopback `Origin`.
 | `POST` | `/dsh-reverse-proxy/stop` | — | snapshot |
 | `POST` | `/dsh-reverse-proxy/rotate-token` | — | snapshot + new `accessToken` |
 | `POST` | `/dsh-reverse-proxy/listen` | `{ "host": "127.0.0.1", "port": 3081 }` | snapshot (port `0` = pick a free port) |
+| `GET` | `/dsh-reverse-proxy/sessions` | — | `{ sessions: [{ id, label, status, createdAt, lastSeenAt }] }` |
+| `POST` | `/dsh-reverse-proxy/sessions/approve` | `{ "id": "…" }` | `{ "ok": true }` (pending → active) |
+| `POST` | `/dsh-reverse-proxy/sessions/revoke` | `{ "id": "…" }` | `{ "ok": true }` (device loses access immediately) |
 
 On the proxy itself, `/dsh-reverse-proxy/healthz` answers `{"ok":true}` and the
 login page lives at `/_dsh_reverse_proxy/login`.

@@ -2,6 +2,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { listenProxy } from './proxy.js'
 import { defaultStateFile, readState, writeState } from './persist.js'
 import { generateAccessToken } from './security.js'
+import { createSessionStore } from './sessions.js'
 
 export const name = 'reverse-proxy'
 export const inject = ['webServer']
@@ -23,6 +24,8 @@ export const Config = Schema.object({
   loginDelayMs: Schema.number().min(0).max(10_000).default(250).description('Fixed delay after a failed login, slowing token guessing.'),
   loginMaxAttempts: Schema.number().min(1).default(5).description('Failed login attempts per remote IP before that IP is locked out.'),
   loginLockoutSeconds: Schema.number().min(10).default(300).description('Lockout duration for a remote IP that exceeded loginMaxAttempts.'),
+  approvalMode: Schema.boolean().default(false).description('Require local approval for every new device before it can reach DeepSeek Harness.'),
+  maxSessions: Schema.number().min(1).max(64).default(16).description('Maximum concurrent device sessions; the stalest session is evicted past this cap.'),
   logRequests: Schema.boolean().default(false).description('Log every proxied request at debug level.'),
 })
 
@@ -139,13 +142,31 @@ export function createRuntime(ctx, config) {
     return run
   }
 
+  let sessionStore
+  let saveTimer
+  const scheduleSave = () => {
+    if (saveTimer !== undefined) return
+    saveTimer = setTimeout(() => {
+      saveTimer = undefined
+      void save()
+    }, 2000)
+    saveTimer.unref?.()
+  }
+
   const load = async () => {
     if (state !== undefined) return state
     state = await readState(statePath)
     if (state.accessToken === undefined) {
       state.accessToken = generateAccessToken()
-      await save()
     }
+    sessionStore = createSessionStore({
+      maxSessions: config.maxSessions,
+      maxAgeSeconds: config.sessionMaxAgeSeconds,
+      approvalRequired: config.approvalMode,
+      onChange: scheduleSave,
+    })
+    sessionStore.hydrate(state.sessions)
+    await save()
     return state
   }
 
@@ -155,6 +176,7 @@ export function createRuntime(ctx, config) {
       await writeState(statePath, {
         enabled: state.enabled,
         accessToken: state.accessToken,
+        sessions: sessionStore.serialize(),
         ...(state.listenHost !== undefined ? { listenHost: state.listenHost } : {}),
         ...(state.listenPort !== undefined ? { listenPort: state.listenPort } : {}),
       })
@@ -181,6 +203,7 @@ export function createRuntime(ctx, config) {
         : `http://${bound.host}:${bound.port}`,
       backend: `http://${config.backendHost}:${backendPort}`,
       listen: effectiveListen(),
+      approvalMode: config.approvalMode,
       authenticated: true,
       ...extra,
     }
@@ -233,6 +256,7 @@ export function createRuntime(ctx, config) {
         loginDelayMs: config.loginDelayMs,
         loginMaxAttempts: config.loginMaxAttempts,
         loginLockoutMs: config.loginLockoutSeconds * 1000,
+        sessionStore,
         log: config.logRequests
           ? entry => { ctx.logger.debug(`reverse-proxy: ${entry.remote ?? '-'} ${entry.method} ${entry.path} -> ${entry.status}`) }
           : undefined,
@@ -252,6 +276,9 @@ export function createRuntime(ctx, config) {
     const restart = bound !== undefined
     await closeBound()
     state.accessToken = generateAccessToken()
+    // Rotation invalidates every device: sessions are independent of the
+    // token, so they must be revoked explicitly.
+    sessionStore.clear()
     await save()
     ctx.logger.info('reverse-proxy: access token rotated')
     if (restart) await start()
@@ -314,6 +341,32 @@ export function createRuntime(ctx, config) {
       [`${CONTROL_PREFIX}/stop`, () => stop],
       [`${CONTROL_PREFIX}/rotate-token`, () => rotateToken],
     ])
+    if (path === `${CONTROL_PREFIX}/sessions` && req.method === 'GET') {
+      json(res, 200, { sessions: await serial(async () => {
+        await load()
+        return sessionStore.list()
+      }) })
+      return
+    }
+    const sessionAction = path.match(/^\/dsh-reverse-proxy\/sessions\/(approve|revoke)$/)
+    if (sessionAction !== null && req.method === 'POST') {
+      if (!allowed) {
+        json(res, 403, { error: 'forbidden' })
+        return
+      }
+      try {
+        const body = await readJson(req)
+        const id = typeof body?.id === 'string' ? body.id : ''
+        const result = await serial(async () => {
+          await load()
+          return sessionAction[1] === 'approve' ? sessionStore.approve(id) : sessionStore.revoke(id)
+        })
+        json(res, 200, { ok: result })
+      } catch {
+        json(res, 400, { error: 'invalid-request' })
+      }
+      return
+    }
     const action = actions.get(path)
     if (action !== undefined && req.method === 'POST') {
       if (!allowed) {
@@ -350,7 +403,12 @@ export function createRuntime(ctx, config) {
     }),
     dispose: () => serial(async () => {
       disposed = true
+      if (saveTimer !== undefined) {
+        clearTimeout(saveTimer)
+        saveTimer = undefined
+      }
       await closeBound()
+      await save()
     }),
     status: () => serial(() => snapshot()),
     start: () => serial(start),

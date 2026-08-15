@@ -41,6 +41,18 @@ export const zh = {
   'copied.target': '端点已复制。',
   'copied.token': '令牌已复制。',
   'copy.failed': '无法复制{label}。',
+  'devices.title': '已连接设备',
+  'devices.empty': '暂无设备。远程浏览器登录后会显示在这里。',
+  'devices.approvalHint': '审批模式已开启：新设备需要在这里批准后才能访问。',
+  'devices.pending': '待审批',
+  'devices.active': '在线',
+  'devices.kick': '踢出',
+  'devices.approve': '批准',
+  'devices.reject': '拒绝',
+  'devices.lastSeen': '最近活动 {time}',
+  'devices.kicked': '已踢出该设备。',
+  'devices.approved': '已批准该设备。',
+  'devices.rejected': '已拒绝该设备。',
 } as const
 
 export const en: Record<keyof typeof zh, string> = {
@@ -74,6 +86,18 @@ export const en: Record<keyof typeof zh, string> = {
   'copied.target': 'Target copied.',
   'copied.token': 'Token copied.',
   'copy.failed': 'Cannot copy {label}.',
+  'devices.title': 'Connected devices',
+  'devices.empty': 'No devices yet. Remote browsers appear here after logging in.',
+  'devices.approvalHint': 'Approval mode is on: new devices must be approved here before they can connect.',
+  'devices.pending': 'Pending approval',
+  'devices.active': 'Online',
+  'devices.kick': 'Kick',
+  'devices.approve': 'Approve',
+  'devices.reject': 'Reject',
+  'devices.lastSeen': 'Last seen {time}',
+  'devices.kicked': 'Device kicked.',
+  'devices.approved': 'Device approved.',
+  'devices.rejected': 'Device rejected.',
 }
 
 export type ReverseProxyTranslate = (key: keyof typeof zh, params?: Record<string, unknown>) => string

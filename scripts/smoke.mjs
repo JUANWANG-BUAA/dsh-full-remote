@@ -195,7 +195,20 @@ async function main() {
     assert(html.includes('viewport-fit=cover'), 'viewport injection', 'viewport-fit missing from index')
 
     phase = 'step9-stop'
-    // 9. Clean stop.
+    // 9. Per-device sessions: the login created one device; kicking it must
+    // revoke the cookie immediately.
+    const listed = await json(await fetch(`${BASE}/dsh-reverse-proxy/sessions`), 'sessions list')
+    assert(Array.isArray(listed?.sessions) && listed.sessions.length >= 1, 'device session listed', JSON.stringify(listed))
+    const deviceId = listed.sessions[0].id
+    const revoked = await json(await fetch(`${BASE}/dsh-reverse-proxy/sessions/revoke`, {
+      method: 'POST', headers: { ...CONTROL, 'content-type': 'application/json' },
+      body: JSON.stringify({ id: deviceId }),
+    }), 'session revoke')
+    assert(revoked?.ok === true, 'session revoke ok', JSON.stringify(revoked))
+    const kicked = await fetch(restartedProxy, { headers: { cookie }, redirect: 'manual' })
+    assert(kicked.status === 303, 'revoked device redirected to login', `status ${kicked.status}`)
+
+    // 10. Clean stop.
     const stopped = await json(await fetch(`${BASE}/dsh-reverse-proxy/stop`, { method: 'POST', headers: CONTROL }), 'stop')
     assert(stopped?.running === false, 'proxy stop', JSON.stringify(stopped))
   } finally {
@@ -206,7 +219,7 @@ async function main() {
     console.error(`[smoke] ${failures.length} failure(s).`)
     process.exit(1)
   }
-  console.log('[smoke] PASS: real-boot control surface, login gate, rate limit, polyfill all verified.')
+  console.log('[smoke] PASS: control surface, login gate, rate limit, polyfill, device sessions all verified.')
 }
 
 const home = await mkdtemp(join(tmpdir(), 'dsh-smoke-'))

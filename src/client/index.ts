@@ -5,7 +5,7 @@ import { RemoteAction } from './RemoteAction.tsx'
 import { RemoteOverlay } from './RemoteOverlay.tsx'
 import { createRemotePanelStore } from './store.ts'
 import { bindTranslate } from './i18n.ts'
-import type { ProxyApi, ProxyStatus } from './types.ts'
+import type { ProxyApi, ProxyStatus, SessionInfo } from './types.ts'
 
 export const inject = ['slots']
 
@@ -38,6 +38,17 @@ function createApi(): ProxyApi {
     token: async () => (await request<{ accessToken: string }>('/token')).accessToken,
     rotateToken: () => request<ProxyStatus & { accessToken: string }>('/rotate-token', { method: 'POST' }),
     setListen: (host, port) => post('/listen', { host, port }),
+    sessions: async () => (await request<{ sessions: SessionInfo[] }>('/sessions')).sessions,
+    approveSession: id => request<{ ok: boolean }>(`/sessions/approve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
+    }),
+    revokeSession: id => request<{ ok: boolean }>(`/sessions/revoke`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
+    }),
   }
 }
 

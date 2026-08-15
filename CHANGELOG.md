@@ -16,6 +16,12 @@ All notable changes to dsh-reverse-proxy are documented in this file.
 
 - Authenticated reverse proxy for HTTP, SSE, and WebSocket traffic with a
   192-bit access token and derived HttpOnly session cookies.
+- Per-device sessions: each login mints an independent device credential
+  (hash at rest, never the raw secret); the control panel lists devices and
+  can kick any one instantly. Sessions are persisted, capped
+  (`maxSessions`), and expire after `sessionMaxAgeSeconds` without activity.
+- First-visit approval mode (`approvalMode`): new devices wait on a polling
+  page until the local panel approves or rejects them.
 - Sidebar entry and control panel: start/stop, status, one-click target copy,
   token reveal and rotation.
 - Runtime listen-address UI (IP/port) with persistence and automatic rollback

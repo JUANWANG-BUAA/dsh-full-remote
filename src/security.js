@@ -7,11 +7,6 @@ export function generateAccessToken() {
   return randomBytes(TOKEN_BYTES).toString('base64url')
 }
 
-/** Derive the cookie value without storing a second credential. */
-export function sessionValue(token) {
-  return createHash('sha256').update(`dsh-reverse-proxy/session/v1\0${token}`).digest('base64url')
-}
-
 /** Compare secrets without leaking a useful length or prefix timing signal. */
 export function safeEqual(actual, expected) {
   const left = Buffer.from(String(actual))
@@ -35,17 +30,12 @@ export function parseCookies(header) {
   return cookies
 }
 
-export function isAuthenticated(req, token, cookieName) {
-  return safeEqual(parseCookies(req.headers.cookie)[cookieName] ?? '', sessionValue(token))
-}
-
-export function sessionCookie(token, cookieName, secure = false, maxAgeSeconds = 2592000) {
-  return [
-    `${cookieName}=${sessionValue(token)}`,
-    'Path=/',
-    'HttpOnly',
-    'SameSite=Strict',
-    `Max-Age=${maxAgeSeconds}`,
-    secure ? 'Secure' : '',
-  ].filter(Boolean).join('; ')
+/** Escape user-influenced text before it lands inside HTML. */
+export function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
 }

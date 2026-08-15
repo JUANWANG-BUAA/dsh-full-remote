@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import type { PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { createRemotePanelStore } from './store.ts'
-import type { ProxyApi, ProxyStatus } from './types.ts'
+import type { ProxyApi, ProxyStatus, SessionInfo } from './types.ts'
 import type { ReverseProxyTranslate } from './i18n.ts'
 import css from './remote.module.css'
 
@@ -24,6 +24,7 @@ export function RemoteOverlay({ useStore, actions, api, t }: RemoteOverlayProps)
   const [error, setError] = useState('')
   const [listenHost, setListenHost] = useState('')
   const [listenPort, setListenPort] = useState('')
+  const [sessions, setSessions] = useState<SessionInfo[]>([])
   const dialog = useRef<HTMLDialogElement | null>(null)
   const closeButton = useRef<HTMLButtonElement | null>(null)
 
@@ -46,12 +47,17 @@ export function RemoteOverlay({ useStore, actions, api, t }: RemoteOverlayProps)
     const node = dialog.current
     if (node && typeof node.showModal === 'function' && !node.open) node.showModal()
     closeButton.current?.focus()
+    void api.sessions().then(list => { if (active) setSessions(list) }, () => {})
+    const sessionTimer = setInterval(() => {
+      void api.sessions().then(list => { if (active) setSessions(list) }, () => {})
+    }, 3000)
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') actions.close()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => {
       active = false
+      clearInterval(sessionTimer)
       document.removeEventListener('keydown', onKeyDown)
       if (node && typeof node.close === 'function' && node.open) node.close()
     }
@@ -166,6 +172,34 @@ export function RemoteOverlay({ useStore, actions, api, t }: RemoteOverlayProps)
     }
   }
 
+  const kick = async (id: string) => {
+    setBusy(true)
+    setError('')
+    try {
+      await api.revokeSession(id)
+      setSessions(await api.sessions())
+      setError(t('devices.kicked'))
+    } catch (reason) {
+      setError(messageOf(reason) || t('error.generic'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const decide = async (id: string, approve: boolean) => {
+    setBusy(true)
+    setError('')
+    try {
+      await (approve ? api.approveSession(id) : api.revokeSession(id))
+      setSessions(await api.sessions())
+      setError(t(approve ? 'devices.approved' : 'devices.rejected'))
+    } catch (reason) {
+      setError(messageOf(reason) || t('error.generic'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const nonLoopback = listenHost.trim() !== ''
     && !['127.0.0.1', 'localhost', '::1', '[::1]', '::ffff:127.0.0.1'].includes(listenHost.trim())
 
@@ -264,6 +298,40 @@ export function RemoteOverlay({ useStore, actions, api, t }: RemoteOverlayProps)
               </button>
               <button className={css.textButton} type="button" disabled={busy} onClick={() => { void rotate() }}>{t('token.rotate')}</button>
             </div>
+          )}
+        </div>
+
+        <div className={css.section}>
+          <span className={css.label}>DEVICES</span>
+          {status?.approvalMode === true && <p>{t('devices.approvalHint')}</p>}
+          {sessions.length === 0 ? (
+            <p className={css.emptyText}>{t('devices.empty')}</p>
+          ) : (
+            <ul className={css.deviceList}>
+              {sessions.map(session => (
+                <li key={session.id} className={css.deviceItem}>
+                  <div className={css.deviceInfo}>
+                    <strong>{session.label}</strong>
+                    <span className={session.status === 'pending' ? css.pendingBadge : css.onlineBadge}>
+                      {session.status === 'pending' ? t('devices.pending') : t('devices.active')}
+                    </span>
+                    <span className={css.deviceMeta}>
+                      {t('devices.lastSeen', { time: new Date(session.lastSeenAt).toLocaleString() })}
+                    </span>
+                  </div>
+                  <div className={css.deviceActions}>
+                    {session.status === 'pending' ? (
+                      <>
+                        <button className={css.textButton} type="button" disabled={busy} onClick={() => { void decide(session.id, true) }}>{t('devices.approve')}</button>
+                        <button className={css.textButton} type="button" disabled={busy} onClick={() => { void decide(session.id, false) }}>{t('devices.reject')}</button>
+                      </>
+                    ) : (
+                      <button className={css.textButton} type="button" disabled={busy} onClick={() => { void kick(session.id) }}>{t('devices.kick')}</button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
 

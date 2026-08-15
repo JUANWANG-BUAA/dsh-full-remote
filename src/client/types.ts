@@ -4,7 +4,18 @@ export type ProxyStatus = {
   target: string
   backend: string
   listen?: { host: string, port: number }
+  approvalMode?: boolean
   reason?: string
+}
+
+export type SessionStatus = 'active' | 'pending'
+
+export type SessionInfo = {
+  id: string
+  label: string
+  status: SessionStatus
+  createdAt: number
+  lastSeenAt: number
 }
 
 export type ProxyApi = {
@@ -14,4 +25,7 @@ export type ProxyApi = {
   token: () => Promise<string>
   rotateToken: () => Promise<ProxyStatus & { accessToken: string }>
   setListen: (host: string, port: number) => Promise<ProxyStatus>
+  sessions: () => Promise<SessionInfo[]>
+  approveSession: (id: string) => Promise<{ ok: boolean }>
+  revokeSession: (id: string) => Promise<{ ok: boolean }>
 }
