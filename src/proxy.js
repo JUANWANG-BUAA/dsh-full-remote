@@ -167,7 +167,7 @@ async function handleLogin(req, res, spec) {
     if (!safeEqual(form.get('token') ?? '', spec.accessToken)) {
       // Fixed delay so a failed login costs the same as a successful one,
       // slowing token guessing without a measurable timing difference.
-      await new Promise(resolve => setTimeout(resolve, LOGIN_FAILURE_DELAY_MS))
+      await new Promise(resolve => setTimeout(resolve, spec.loginDelayMs ?? LOGIN_FAILURE_DELAY_MS))
       html(res, 401, loginPage('令牌无效，请重试。'))
       return
     }
@@ -189,6 +189,8 @@ async function handleLogin(req, res, spec) {
  *  listenHost: string, listenPort: number, backendHost: string, backendPort: number,
  *  accessToken: string, cookieName: string, controlPrefix: string,
  *  maxRequestBytes: number, upstreamTimeoutMs: number, sessionMaxAgeSeconds: number,
+ *  maxHeaderSizeBytes?: number, headersTimeoutMs?: number, keepAliveTimeoutMs?: number,
+ *  loginDelayMs?: number,
  * }} spec
  * @returns {Promise<{ host: string, port: number, close: () => Promise<void> }>}
  */
@@ -196,10 +198,10 @@ export function listenProxy(spec) {
   const backendAuthority = `${spec.backendHost}:${spec.backendPort}`
   const runtimeSpec = { ...spec, backendAuthority }
   const server = createServer({
-    maxHeaderSize: 16 * 1024,
+    maxHeaderSize: spec.maxHeaderSizeBytes ?? 16 * 1024,
     requestTimeout: 0,
-    headersTimeout: 15_000,
-    keepAliveTimeout: 5_000,
+    headersTimeout: spec.headersTimeoutMs ?? 15_000,
+    keepAliveTimeout: spec.keepAliveTimeoutMs ?? 5_000,
   }, async (req, res) => {
     const path = pathnameOf(req.url)
     if (path === '/_dsh_reverse_proxy/healthz') {

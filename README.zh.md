@@ -98,6 +98,10 @@ dsh --profile mobile --port 3082
     upstreamTimeoutMs: 15000
     sessionMaxAgeSeconds: 2592000
     cookieName: dsh_reverse_proxy_session
+    maxHeaderSizeBytes: 16384
+    headersTimeoutMs: 15000
+    keepAliveTimeoutMs: 5000
+    loginDelayMs: 250
     stateFile: ""
 ```
 
@@ -105,8 +109,13 @@ dsh --profile mobile --port 3082
 - `backendPort: 0` 自动跟随 `webServer.port`。
 - `listenPort: 0` 自动选择空闲端口，实际值会显示在 UI。
 - `stateFile: ""` 使用 `$DSH_HOME/reverse-proxy.json`。
+- `maxHeaderSizeBytes`、`headersTimeoutMs`、`keepAliveTimeoutMs`、`loginDelayMs` 是服务器加固旋钮，默认值已安全，一般无需修改。
 - tunnel 进程在本机时应保持 `listenHost: 127.0.0.1`。绑定局域网地址会主动扩大攻击面。
 - 本插件依赖 `webServer` 服务，请只安装进提供 Web 服务的 profile；装进 headless profile 时该行会一直处于 PENDING。
+
+## 兼容性
+
+侧边栏入口与面板挂载在 client 包 `0.1.0-rc.5`（当前 run-from-source checkout）才引入的 `sidebar.footer.action` 与 `shell.overlay` 两个 slot 上。npm registry 目前只有 `0.0.1-rc.1`，早于这两个 slot——在它上面 peer 范围会**响亮失败**，而不是静默装不上 UI。在 DeepSeek 发布更新版 client 包之前，请从源码 checkout 安装（devDependencies 有意使用 `link:` 指向该 checkout）。
 
 ## 开发
 

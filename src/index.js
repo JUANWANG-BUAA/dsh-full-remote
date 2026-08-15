@@ -17,6 +17,10 @@ export const Config = Schema.object({
   upstreamTimeoutMs: Schema.number().min(1000).default(15_000).description('Timeout while connecting to the DeepSeek Harness backend.'),
   sessionMaxAgeSeconds: Schema.number().min(60).default(30 * 24 * 3600).description('Lifetime of the remote browser session cookie.'),
   cookieName: Schema.string().default('dsh_reverse_proxy_session').description('Authentication session cookie name.'),
+  maxHeaderSizeBytes: Schema.number().min(1024).default(16 * 1024).description('Maximum HTTP header size accepted by the proxy.'),
+  headersTimeoutMs: Schema.number().min(1000).default(15_000).description('Timeout for a client to send a complete request head.'),
+  keepAliveTimeoutMs: Schema.number().min(1000).default(5_000).description('Keep-alive timeout for idle proxy connections.'),
+  loginDelayMs: Schema.number().min(0).max(10_000).default(250).description('Fixed delay after a failed login, slowing token guessing.'),
 })
 
 const CONTROL_PREFIX = '/dsh-reverse-proxy'
@@ -183,6 +187,10 @@ export function createRuntime(ctx, config) {
         maxRequestBytes: config.maxRequestBytes,
         upstreamTimeoutMs: config.upstreamTimeoutMs,
         sessionMaxAgeSeconds: config.sessionMaxAgeSeconds,
+        maxHeaderSizeBytes: config.maxHeaderSizeBytes,
+        headersTimeoutMs: config.headersTimeoutMs,
+        keepAliveTimeoutMs: config.keepAliveTimeoutMs,
+        loginDelayMs: config.loginDelayMs,
       })
     } catch (error) {
       ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))

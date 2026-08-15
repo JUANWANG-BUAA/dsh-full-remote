@@ -178,6 +178,10 @@ describe('authenticated reverse proxy', () => {
       maxRequestBytes: 1024,
       upstreamTimeoutMs: 2000,
       sessionMaxAgeSeconds: 3600,
+      maxHeaderSizeBytes: 16384,
+      headersTimeoutMs: 2000,
+      keepAliveTimeoutMs: 1000,
+      loginDelayMs: 0,
     })
     cleanups.push(proxy.close)
 

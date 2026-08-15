@@ -132,6 +132,10 @@ isolation: the desktop bundle is never part of the `mobile` process.
     upstreamTimeoutMs: 15000
     sessionMaxAgeSeconds: 2592000
     cookieName: dsh_reverse_proxy_session
+    maxHeaderSizeBytes: 16384
+    headersTimeoutMs: 15000
+    keepAliveTimeoutMs: 5000
+    loginDelayMs: 250
     stateFile: ""
 ```
 
@@ -140,10 +144,23 @@ isolation: the desktop bundle is never part of the `mobile` process.
 - `backendPort: 0` follows the active `webServer.port`.
 - `listenPort: 0` chooses a free port and displays it in the UI.
 - `stateFile: ""` uses `$DSH_HOME/reverse-proxy.json`.
+- `maxHeaderSizeBytes`, `headersTimeoutMs`, `keepAliveTimeoutMs`, and
+  `loginDelayMs` are server-hardening knobs; the defaults are safe and rarely
+  need changing.
 - Keep `listenHost` on loopback when the tunnel process runs locally. Binding a
   LAN address is an explicit expansion of the attack surface.
 - This plugin injects `webServer`, so install it into Web-serving profiles
   only; in a headless profile the row stays PENDING.
+
+## Compatibility
+
+The sidebar entry and panel mount on the `sidebar.footer.action` and
+`shell.overlay` slots introduced in client packages `0.1.0-rc.5` (the current
+run-from-source checkout). The npm registry still only carries `0.0.1-rc.1`,
+which predates both slots — on it the peer range fails loudly instead of
+silently mounting nothing. Until DeepSeek publishes newer client packages,
+install from a source checkout (the `link:` devDependencies intentionally pin
+development to that checkout).
 
 ## Development
 
