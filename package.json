@@ -86,7 +86,7 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "link:../deepseek-harness/vendor/cordis",
+    "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-client-runtime": "link:../deepseek-harness/packages/client/runtime",
     "@deepseek-ai/dsh-client-ui-layout": "link:../deepseek-harness/packages/client/ui-layout",
     "@deepseek-ai/dsh-client-ui-sidebar": "link:../deepseek-harness/packages/client/ui-sidebar",
