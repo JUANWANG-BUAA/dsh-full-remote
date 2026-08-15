@@ -21,7 +21,7 @@
   min-width: 44px;
   min-height: 44px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 12px;
   color: var(--dsw-alias-label-secondary);
   background: transparent;
   cursor: pointer;
@@ -33,12 +33,14 @@
   width: 100%;
 }
 
+/* Match the official sidebar footer controls: 10px left padding (icon lands
+   at x=18 like the Settings trigger), 8px icon-text gap, 16px icon box. */
 .sidebarAction {
-  gap: 9px;
+  gap: 8px;
   justify-content: flex-start;
   width: auto;
   max-width: 100%;
-  padding: 0 12px;
+  padding: 0 10px;
 }
 
 .sidebarActionRail {
@@ -55,8 +57,8 @@
   display: grid;
   flex: none;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 
 .actionLabel {
