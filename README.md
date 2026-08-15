@@ -8,6 +8,8 @@
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-plugin-4D6BFE?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/JUANWANG-BUAA/dsh-remote/pulls)
 
+**English** | [中文](./README.zh.md)
+
 An installable DeepSeek Harness bundle that creates an authenticated local
 reverse-proxy endpoint for the DSh Web UI, plus a sidebar control panel to run
 it. It is intentionally independent of Tailscale, frp, ngrok, cloudflared,
@@ -240,3 +242,17 @@ effects are zero.
   upgrade, so those sessions follow the backend's own idle policy.
 - HTTP/2 terminates at the tunnel or browser edge; the local proxy forwards
   HTTP/1.1, SSE, and WebSocket traffic.
+
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md) for the
+development setup, checks, and conventions.
+
+## Security
+
+Security issues are handled privately — see [SECURITY.md](./SECURITY.md) for
+the disclosure process and the supported-versions policy.
+
+## License
+
+[MIT](./LICENSE) © 2026 [JUANWANG-BUAA](https://github.com/JUANWANG-BUAA)

@@ -4,6 +4,12 @@ All notable changes to dsh-reverse-proxy are documented in this file.
 
 ## 0.1.0 (unreleased)
 
+### Documentation
+
+- Standard open-source project docs: bilingual READMEs with cross-links and
+  badge strip, CONTRIBUTING, SECURITY, issue/PR templates, EditorConfig and
+  gitattributes.
+
 ### Added
 
 - Authenticated reverse proxy for HTTP, SSE, and WebSocket traffic with a

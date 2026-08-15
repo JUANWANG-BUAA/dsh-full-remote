@@ -8,6 +8,8 @@
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-plugin-4D6BFE?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/JUANWANG-BUAA/dsh-remote/pulls)
 
+[English](./README.md) | **中文**
+
 这是一个可安装的 DeepSeek Harness bundle，为 DSh Web UI 提供带认证的本地反向代理端点与侧边栏控制面板。它不特化于 Tailscale、frp、ngrok、cloudflared、WireGuard 或 SSH。
 
 插件不会启动、停止或管理任何穿透软件。你只需把所选 tunnel 的本地目标指向 DSh 侧栏中显示的地址，例如 `http://127.0.0.1:3081`。
@@ -175,3 +177,15 @@ CI 在每次 push 与 PR 上跑同样的 `check` 流水线（`.github/workflows/
 - 登录端除固定失败延时外无频率限制；192-bit 令牌使暴力猜测不现实，轮换令牌即可使全部会话失效。
 - 停止代理不会拆除后端已升级的 WebSocket 会话：Node 在 upgrade 后不会把客户端侧 socket 销毁传播到服务端，这些会话按后端自身的空闲策略回收。
 - HTTP/2 在 tunnel 或浏览器边缘终止；本地代理转发 HTTP/1.1、SSE 与 WebSocket。
+
+## 参与贡献
+
+欢迎贡献——开发环境搭建、检查命令与提交约定见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
+
+## 安全
+
+安全问题请通过私有渠道报告——披露流程与支持版本政策见 [SECURITY.md](./SECURITY.md)。
+
+## 许可证
+
+[MIT](./LICENSE) © 2026 [JUANWANG-BUAA](https://github.com/JUANWANG-BUAA)

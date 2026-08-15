@@ -1,0 +1,53 @@
+# Contributing
+
+Thanks for your interest in dsh-reverse-proxy! It is a small,
+single-purpose [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
+bundle, so most changes are small and self-contained.
+
+## Getting started
+
+The DeepSeek Harness client type packages are pinned as `link:` devDependencies
+to a sibling checkout (their npm releases predate the slot API this plugin
+mounts on). One command sets everything up:
+
+```sh
+pnpm run bootstrap   # clones deepseek-harness at the pinned commit if missing, then installs
+```
+
+## Checks
+
+```sh
+pnpm run check       # typecheck (real harness types) + unit/client tests + build
+pnpm run check:ci    # typecheck with the CI fallback declarations + tests + build
+```
+
+CI runs `pnpm run check:ci` on every push and pull request.
+
+## Tests
+
+- `tests/*.test.js` — unit/integration tests via `node:test` (proxy behavior,
+  security primitives, control surface, Cordis lifecycle, WebSocket upgrade).
+- `tests/remote.client.test.tsx` — client UI tests via `vitest` +
+  Testing Library.
+
+Add or update tests for every behavior change.
+
+## Commit messages
+
+Follow the repo's existing style: short imperative summary lines in Chinese
+or English describing the change, e.g. `修复 …` / `Add …`.
+
+## Pull requests
+
+1. Fork, branch, change, test (`pnpm run check` green locally).
+2. Update `README.md` / `README.zh.md` and `CHANGELOG.md` when behavior,
+   configuration, or docs change.
+3. Keep the two READMEs in sync — they are translations of each other.
+4. Do not commit build outputs (`lib/`), tarballs, or secrets.
+5. If you touch `src/client` and use more of the DeepSeek Harness client API,
+   keep `types/ci.d.ts` (the CI fallback declarations) in sync.
+
+## Release notes
+
+Unreleased changes go under the `0.1.0 (unreleased)` heading of
+`CHANGELOG.md` until the next version is cut.

@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a defect in dsh-reverse-proxy
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please include enough detail for us to
+        reproduce the problem. Security issues must NOT be filed here —
+        use the **Security** tab → **Report a vulnerability** instead.
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Plugin version and DeepSeek Harness version / checkout commit
+      placeholder: "dsh-reverse-proxy 0.1.0, deepseek-harness 0.1.0-rc.5"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS, Linux, Windows, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe the observed behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened instead?
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and context
+      description: dsh output, browser console output, screenshots, or relevant config.

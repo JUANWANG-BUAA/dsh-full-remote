@@ -40,6 +40,10 @@
   },
   "packageManager": "pnpm@11.21.0",
   "license": "MIT",
+  "author": {
+    "name": "JUANWANG-BUAA",
+    "url": "https://github.com/JUANWANG-BUAA"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/JUANWANG-BUAA/dsh-remote.git"
