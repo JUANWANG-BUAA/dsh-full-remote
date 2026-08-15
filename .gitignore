@@ -13,3 +13,4 @@ test-results/
 .env
 .env.*
 !.env.example
+.dsh-vision-toolkit/

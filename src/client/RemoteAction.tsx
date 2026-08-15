@@ -10,20 +10,30 @@ export type RemoteActionProps =
   & PropsStore<ReturnType<typeof createRemotePanelStore>>
 
 /**
- * Official DeepSeek Harness icons are 16×16 fill glyphs; this "outgoing link"
- * icon follows the same convention so the entry lines up with the Settings
- * trigger below it.
+ * "Relay ring" glyph: a hollow hexagonal gateway node with an inbound arrow
+ * on the left and an outbound arrow on the right — traffic enters, is relayed
+ * by the proxy, and exits. Pure 16×16 fill paths in the official DSh icon
+ * language (fill-based, currentColor); no emoji, no stroke outlines.
  */
 function ReverseProxyIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      {/* Hollow hexagonal relay node (outer + inner cut, evenodd). */}
       <path
-        d="M6.25 2.5h6.5a.75.75 0 0 1 .75.75v6.5a.5.5 0 0 1-1 0V4.707L7.354 9.854a.5.5 0 0 1-.708-.708L11.793 4H6.25a.5.5 0 0 1 0-1Z"
         fill="currentColor"
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M8 3.2 12.2 5.6v4.8L8 12.8 3.8 10.4V5.6L8 3.2Zm0 1.2-3.2 1.9v3.4L8 11.6l3.2-1.9V6.3L8 4.4Z"
       />
+      {/* Inbound arrow (left, pointing right into the node). */}
       <path
-        d="M3.5 4.5a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1V9.75a.5.5 0 0 1 1 0v2.75a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h2.75a.5.5 0 0 1 0 1H3.5Z"
         fill="currentColor"
+        d="M.3 7.15h1.1v1.7H.3V7.15Zm1.1-1.15 2.1 2-2.1 2V6Z"
+      />
+      {/* Outbound arrow (right, pointing right away from the node). */}
+      <path
+        fill="currentColor"
+        d="M12.3 6l2.1 2-2.1 2V6Zm2.1 1.15h1.3v1.7h-1.3V7.15Z"
       />
     </svg>
   )
