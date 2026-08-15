@@ -79,9 +79,10 @@ export function RemoteAction({ wide, actions }: RemoteActionProps) {
     holder.style.display = 'flex'
     holder.style.justifyContent = wide ? 'flex-start' : 'center'
     // The foot area pads its content by 12px, while the official Settings
-    // control bleeds 4px past it (x=8). Match that so our row left-aligns
-    // with the official control.
+    // control bleeds 4px past it on BOTH sides (x=8, width 264). Match that
+    // so our row spans the same full-width hit area as the official control.
     holder.style.margin = wide ? '0 -4px' : '0'
+    holder.style.width = wide ? 'calc(100% + 8px)' : '100%'
   }, [holder, wide])
 
   const button = (

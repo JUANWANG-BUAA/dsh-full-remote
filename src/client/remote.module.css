@@ -34,12 +34,12 @@
 }
 
 /* Match the official sidebar footer controls: 10px left padding (icon lands
-   at x=18 like the Settings trigger), 8px icon-text gap, 16px icon box. */
+   at x=18 like the Settings trigger), 8px icon-text gap, 16px icon box, and
+   a full-width hit/hover area spanning the whole sidebar row. */
 .sidebarAction {
   gap: 8px;
   justify-content: flex-start;
-  width: auto;
-  max-width: 100%;
+  width: 100%;
   padding: 0 10px;
 }
 
