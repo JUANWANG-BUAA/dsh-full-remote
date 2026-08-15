@@ -12,14 +12,18 @@ jobs:
       - uses: actions/checkout@v4
 
       # devDependencies pin the DSh type packages to a sibling checkout
-      # (`link:../deepseek-harness/...`); clone it at the exact commit this
-      # plugin is developed against.
+      # (`link:../deepseek-harness/...`). actions/checkout only writes inside
+      # the workspace, so clone into `.harness` and symlink it into place.
       - name: Fetch DeepSeek Harness checkout
         uses: actions/checkout@v4
         with:
           repository: deepseek-ai/deepseek-harness
-          ref: 47f943859b
-          path: ../deepseek-harness
+          ref: 47f943859bef60e4160492346772ded9b24f765a
+          path: .harness
+          filter: blob:none
+
+      - name: Link harness as the sibling checkout devDependencies expect
+        run: ln -s "$GITHUB_WORKSPACE/.harness" "$(dirname "$GITHUB_WORKSPACE")/deepseek-harness"
 
       - uses: pnpm/action-setup@v4
 
