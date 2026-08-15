@@ -1,3 +1,11 @@
+/**
+ * Client entry — sidebar action + control panel for the Web UI.
+ *
+ * Registers exactly two official slots (sidebar.footer.action and
+ * shell.overlay) and wires the loopback control API. The locale service is
+ * OPTIONAL: present, the panel follows the active DSh locale; absent, it
+ * falls back to zh.
+ */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'

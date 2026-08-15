@@ -1,8 +1,22 @@
+/**
+ * dsh-reverse-proxy host entry.
+ *
+ * Composes three jobs behind one plugin row:
+ *  - Config schema (Schemastery): every tunable, validated loudly at load.
+ *  - Runtime orchestration: state file, token/session lifecycle, and the
+ *    proxy server instance with rollback-safe listen changes.
+ *  - Loopback-only control surface: HTTP routes under /dsh-reverse-proxy
+ *    that the sidebar panel drives.
+ *
+ * Side effects are confined to ctx.effect(): routes, index taps and the
+ * proxy all unwind when the plugin fiber disposes.
+ */
 import Schema from '@deepseek-ai/schemastery'
 import { listenProxy } from './proxy.js'
 import { defaultStateFile, readState, writeState } from './persist.js'
 import { generateAccessToken } from './security.js'
 import { createSessionStore } from './sessions.js'
+import { pathnameOf, readJson, sendJson } from './http-util.js'
 
 export const name = 'reverse-proxy'
 export const inject = ['webServer']
@@ -31,23 +45,6 @@ export const Config = Schema.object({
 
 const CONTROL_PREFIX = '/dsh-reverse-proxy'
 const VIEWPORT = 'width=device-width, initial-scale=1, viewport-fit=cover'
-
-function json(res, status, body) {
-  res.writeHead(status, {
-    'content-type': 'application/json; charset=utf-8',
-    'cache-control': 'no-store',
-    'x-content-type-options': 'nosniff',
-  })
-  res.end(JSON.stringify(body))
-}
-
-function pathnameOf(url) {
-  try {
-    return new URL(url ?? '/', 'http://x').pathname
-  } catch {
-    return '/'
-  }
-}
 
 export function injectViewport(html) {
   return html.replace(
@@ -101,30 +98,6 @@ function isLoopbackOrigin(origin) {
 function isValidListenHost(value) {
   if (value.length === 0 || value.length > 253) return false
   return !/[\s/\\]/.test(value)
-}
-
-function readJson(req, limit = 1024) {
-  return new Promise((resolve, reject) => {
-    const chunks = []
-    let size = 0
-    req.on('data', (chunk) => {
-      size += chunk.length
-      if (size > limit) {
-        reject(new Error('body-too-large'))
-        req.destroy()
-        return
-      }
-      chunks.push(chunk)
-    })
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')))
-      } catch (error) {
-        reject(error instanceof Error ? error : new Error(String(error)))
-      }
-    })
-    req.on('error', reject)
-  })
 }
 
 export function createRuntime(ctx, config) {
@@ -321,15 +294,15 @@ export function createRuntime(ctx, config) {
   const handle = async (req, res) => {
     const path = pathnameOf(req.url)
     if (!isLoopbackAddress(req.socket.remoteAddress)) {
-      json(res, 403, { error: 'loopback-required' })
+      sendJson(res, 403, { error: 'loopback-required' })
       return
     }
     if (path === `${CONTROL_PREFIX}/status` && req.method === 'GET') {
-      json(res, 200, await serial(() => snapshot()))
+      sendJson(res, 200, await serial(() => snapshot()))
       return
     }
     if (path === `${CONTROL_PREFIX}/token` && req.method === 'GET') {
-      json(res, 200, { accessToken: await serial(async () => {
+      sendJson(res, 200, { accessToken: await serial(async () => {
         await load()
         return state.accessToken
       }) })
@@ -342,7 +315,7 @@ export function createRuntime(ctx, config) {
       [`${CONTROL_PREFIX}/rotate-token`, () => rotateToken],
     ])
     if (path === `${CONTROL_PREFIX}/sessions` && req.method === 'GET') {
-      json(res, 200, { sessions: await serial(async () => {
+      sendJson(res, 200, { sessions: await serial(async () => {
         await load()
         return sessionStore.list()
       }) })
@@ -351,7 +324,7 @@ export function createRuntime(ctx, config) {
     const sessionAction = path.match(/^\/dsh-reverse-proxy\/sessions\/(approve|revoke)$/)
     if (sessionAction !== null && req.method === 'POST') {
       if (!allowed) {
-        json(res, 403, { error: 'forbidden' })
+        sendJson(res, 403, { error: 'forbidden' })
         return
       }
       try {
@@ -361,35 +334,35 @@ export function createRuntime(ctx, config) {
           await load()
           return sessionAction[1] === 'approve' ? sessionStore.approve(id) : sessionStore.revoke(id)
         })
-        json(res, 200, { ok: result })
+        sendJson(res, 200, { ok: result })
       } catch {
-        json(res, 400, { error: 'invalid-request' })
+        sendJson(res, 400, { error: 'invalid-request' })
       }
       return
     }
     const action = actions.get(path)
     if (action !== undefined && req.method === 'POST') {
       if (!allowed) {
-        json(res, 403, { error: 'forbidden' })
+        sendJson(res, 403, { error: 'forbidden' })
         return
       }
-      json(res, 200, await serial(action()))
+      sendJson(res, 200, await serial(action()))
       return
     }
     if (path === `${CONTROL_PREFIX}/listen` && req.method === 'POST') {
       if (!allowed) {
-        json(res, 403, { error: 'forbidden' })
+        sendJson(res, 403, { error: 'forbidden' })
         return
       }
       try {
         const body = await readJson(req)
-        json(res, 200, await setListen(body?.host, body?.port))
+        sendJson(res, 200, await setListen(body?.host, body?.port))
       } catch {
-        json(res, 400, { error: 'invalid-request' })
+        sendJson(res, 400, { error: 'invalid-request' })
       }
       return
     }
-    json(res, 404, { error: 'not-found' })
+    sendJson(res, 404, { error: 'not-found' })
   }
 
   return {

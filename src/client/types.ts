@@ -1,3 +1,7 @@
+/**
+ * types — the control-surface data contracts shared by the API client and
+ * the panel components.
+ */
 export type ProxyStatus = {
   enabled: boolean
   running: boolean

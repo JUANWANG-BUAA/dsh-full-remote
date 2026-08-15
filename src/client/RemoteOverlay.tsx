@@ -1,9 +1,15 @@
+/**
+ * RemoteOverlay — the reverse-proxy control panel dialog (shell.overlay
+ * slot): status, runtime listen address, tunnel target, access token, and
+ * connected-device management. All text flows through the i18n translator.
+ */
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { createRemotePanelStore } from './store.ts'
 import type { ProxyApi, ProxyStatus, SessionInfo } from './types.ts'
+import { DevicesSection } from './DevicesSection.tsx'
 import type { ReverseProxyTranslate } from './i18n.ts'
 import css from './remote.module.css'
 
@@ -301,39 +307,14 @@ export function RemoteOverlay({ useStore, actions, api, t }: RemoteOverlayProps)
           )}
         </div>
 
-        <div className={css.section}>
-          <span className={css.label}>DEVICES</span>
-          {status?.approvalMode === true && <p>{t('devices.approvalHint')}</p>}
-          {sessions.length === 0 ? (
-            <p className={css.emptyText}>{t('devices.empty')}</p>
-          ) : (
-            <ul className={css.deviceList}>
-              {sessions.map(session => (
-                <li key={session.id} className={css.deviceItem}>
-                  <div className={css.deviceInfo}>
-                    <strong>{session.label}</strong>
-                    <span className={session.status === 'pending' ? css.pendingBadge : css.onlineBadge}>
-                      {session.status === 'pending' ? t('devices.pending') : t('devices.active')}
-                    </span>
-                    <span className={css.deviceMeta}>
-                      {t('devices.lastSeen', { time: new Date(session.lastSeenAt).toLocaleString() })}
-                    </span>
-                  </div>
-                  <div className={css.deviceActions}>
-                    {session.status === 'pending' ? (
-                      <>
-                        <button className={css.textButton} type="button" disabled={busy} onClick={() => { void decide(session.id, true) }}>{t('devices.approve')}</button>
-                        <button className={css.textButton} type="button" disabled={busy} onClick={() => { void decide(session.id, false) }}>{t('devices.reject')}</button>
-                      </>
-                    ) : (
-                      <button className={css.textButton} type="button" disabled={busy} onClick={() => { void kick(session.id) }}>{t('devices.kick')}</button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <DevicesSection
+          sessions={sessions}
+          approvalMode={status?.approvalMode === true}
+          busy={busy}
+          t={t}
+          onKick={id => { void kick(id) }}
+          onDecide={(id, approve) => { void decide(id, approve) }}
+        />
 
         {error !== '' && <p className={css.notice} role="status">{error}</p>}
 

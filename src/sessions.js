@@ -1,4 +1,13 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+/**
+ * sessions — per-device session store.
+ *
+ * Owns the device credential lifecycle (login/validate/approve/revoke,
+ * expiry, cap eviction, persistence shapes) plus the User-Agent label
+ * derivation. Pure in-memory and synchronous: the host persists via
+ * serialize()/hydrate() and the onChange callback.
+ */
+import { createHash, randomBytes } from 'node:crypto'
+import { safeEqual } from './security.js'
 
 /**
  * Per-device session store for the reverse proxy.
@@ -40,16 +49,6 @@ export function decodeSessionCookie(value) {
   const at = text.indexOf('.')
   if (at < 1 || at === text.length - 1) return undefined
   return { id: text.slice(0, at), secret: text.slice(at + 1) }
-}
-
-function safeEqual(actual, expected) {
-  const left = Buffer.from(String(actual))
-  const right = Buffer.from(String(expected))
-  if (left.length !== right.length) {
-    timingSafeEqual(createHash('sha256').update(left).digest(), createHash('sha256').update(right).digest())
-    return false
-  }
-  return timingSafeEqual(left, right)
 }
 
 const BROWSERS = [

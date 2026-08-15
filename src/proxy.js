@@ -1,6 +1,19 @@
+/**
+ * proxy — the authenticated local reverse-proxy server.
+ *
+ * One Node http.Server in front of the DeepSeek Harness Web backend:
+ * login gate (token + per-device session), optional approval wait pages,
+ * header sanitization, stream-level body limits, and full WebSocket/SSE
+ * upgrade forwarding with both-end teardown on close.
+ *
+ * All user-facing copy is delegated to pages.js; session state lives in the
+ * caller-supplied session store (defaults to an in-memory one).
+ */
 import { createServer, request as httpRequest } from 'node:http'
-import { escapeHtml, parseCookies, safeEqual } from './security.js'
+import { parseCookies, safeEqual } from './security.js'
 import { createSessionStore, encodeSessionCookie } from './sessions.js'
+import { readBody, sendHtml, pathnameOf } from './http-util.js'
+import { LOGIN_COPY, LOGIN_PATH, loginLocale, loginPage, waitPage } from './pages.js'
 
 const HOP_BY_HOP = new Set([
   'connection',
@@ -28,7 +41,6 @@ const SPOOFABLE_FORWARDING = new Set([
  * is stripped), so forwarding it only risks credential confusion.
  */
 const INTERNAL_HEADERS = new Set(['cookie'])
-const LOGIN_PATH = '/_dsh_reverse_proxy/login'
 const LOGIN_FAILURE_DELAY_MS = 250
 const MAX_TRACKED_LOGIN_IPS = 4096
 
@@ -86,14 +98,6 @@ function createLoginTracker(spec) {
   }
 }
 
-export function pathnameOf(url) {
-  try {
-    return new URL(url ?? '/', 'http://proxy.invalid').pathname
-  } catch {
-    return '/'
-  }
-}
-
 export function forwardHeaders(req, backendHost) {
   const headers = {}
   for (const [key, value] of Object.entries(req.headers)) {
@@ -112,98 +116,9 @@ export function forwardHeaders(req, backendHost) {
   return headers
 }
 
-function html(res, status, body, extra = {}) {
-  res.writeHead(status, {
-    'content-type': 'text/html; charset=utf-8',
-    'cache-control': 'no-store',
-    'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
-    'x-content-type-options': 'nosniff',
-    ...extra,
-  })
-  res.end(body)
-}
-
-const LOGIN_COPY = {
-  zh: {
-    title: 'DeepSeek Harness 远程访问',
-    intro: '此入口由通用反向代理保护。请输入本机控制面显示的访问令牌。',
-    label: '访问令牌',
-    submit: '进入 DeepSeek Harness',
-    invalidToken: '令牌无效，请重试。',
-    invalidRequest: '请求无效，请重试。',
-  },
-  en: {
-    title: 'DeepSeek Harness remote access',
-    intro: 'This entry is protected by a reverse proxy. Enter the access token shown in the local control panel.',
-    label: 'Access token',
-    submit: 'Enter DeepSeek Harness',
-    invalidToken: 'Invalid token, please retry.',
-    invalidRequest: 'Invalid request, please retry.',
-  },
-}
-
-/** zh stays the default (matching the harness fallback locale); explicit
- *  English Accept-Language heads get the English gate. */
-function loginLocale(req) {
-  const header = String(req.headers['accept-language'] ?? '').toLowerCase()
-  if (header !== '' && !header.startsWith('zh')) return 'en'
-  return 'zh'
-}
-
-const WAIT_COPY = {
-  zh: {
-    title: '等待审批',
-    intro: '此设备已提交访问请求，请在本机控制面板中批准。',
-    pending: '等待批准中…',
-    rejected: '访问请求被拒绝。',
-  },
-  en: {
-    title: 'Waiting for approval',
-    intro: 'This device has requested access. Approve it from the local control panel.',
-    pending: 'Waiting for approval…',
-    rejected: 'Access request was rejected.',
-  },
-}
-
-/** First-visit approval waiting page: polls its own session status. */
-function waitPage(locale, id, label) {
-  const copy = WAIT_COPY[locale] ?? WAIT_COPY.zh
-  const safeId = escapeHtml(id)
-  const safeLabel = escapeHtml(label)
-  const rejected = copy.rejected.replaceAll("'", "\\'")
-  const poll = `fetch('/_dsh_reverse_proxy/wait/${safeId}/status',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.json()}).then(function(d){if(d.status==='active'){location.href='/'}else if(d.status==='rejected'||d.status==='unknown'){clearInterval(t);document.getElementById('state').textContent='${rejected}'}},function(){})`
-  return `<!doctype html><html lang="${locale === 'en' ? 'en' : 'zh-CN'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${copy.title}</title><style>
-  :root{color-scheme:light dark;font-family:ui-sans-serif,system-ui,sans-serif}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#f4f6f8;color:#15171a}.card{box-sizing:border-box;width:min(92vw,420px);padding:28px;border:1px solid #d9dde3;border-radius:20px;background:#fff;box-shadow:0 16px 48px #0002}h1{font-size:22px;margin:0 0 8px}p{font-size:14px;line-height:1.6;color:#5b6470}.device{font-size:13px;color:#8a93a0;margin-top:14px}.spinner{width:18px;height:18px;border:2px solid #c8ced7;border-top-color:#111;border-radius:50%;margin-top:22px;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(prefers-color-scheme:dark){body{background:#111418;color:#f7f8fa}.card{background:#1b1f24;border-color:#343a43}p{color:#aeb6c2}.device{color:#7c8694}.spinner{border-color:#4b535e;border-top-color:#f7f8fa}}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.intro}</p><p class="device">${safeLabel}</p><div class="spinner" aria-hidden="true"></div><p id="state">${copy.pending}</p><script>var t=setInterval(function(){${poll}},2000)</script></main></body></html>`
-}
-
-function loginPage(locale, error = '') {
-  const copy = LOGIN_COPY[locale] ?? LOGIN_COPY.zh
-  const message = error === '' ? '' : `<p role="alert">${error}</p>`
-  return `<!doctype html><html lang="${locale === 'en' ? 'en' : 'zh-CN'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${copy.title}</title><style>
-  :root{color-scheme:light dark;font-family:ui-sans-serif,system-ui,sans-serif}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#f4f6f8;color:#15171a}.card{box-sizing:border-box;width:min(92vw,420px);padding:28px;border:1px solid #d9dde3;border-radius:20px;background:#fff;box-shadow:0 16px 48px #0002}h1{font-size:22px;margin:0 0 8px}p{font-size:14px;line-height:1.6;color:#5b6470}label{display:block;font-size:13px;font-weight:600;margin:22px 0 8px}input,button{box-sizing:border-box;width:100%;min-height:48px;border-radius:12px;font:inherit}input{padding:0 14px;border:1px solid #c8ced7;background:transparent;color:inherit}button{margin-top:14px;border:0;background:#111;color:#fff;font-weight:650;cursor:pointer}@media(prefers-color-scheme:dark){body{background:#111418;color:#f7f8fa}.card{background:#1b1f24;border-color:#343a43}p{color:#aeb6c2}input{border-color:#4b535e}button{background:#f7f8fa;color:#111}}@media(prefers-reduced-motion:no-preference){button{transition:transform .15s ease}button:active{transform:scale(.98)}}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.intro}</p>${message}<form method="post" action="${LOGIN_PATH}"><label for="token">${copy.label}</label><input id="token" name="token" type="password" autocomplete="current-password" required autofocus><button type="submit">${copy.submit}</button></form></main></body></html>`
-}
-
 function denySocket(socket, status = '403 Forbidden') {
   socket.write(`HTTP/1.1 ${status}\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\nforbidden\n`)
   socket.destroy()
-}
-
-function readForm(req, limit = 4096) {
-  return new Promise((resolve, reject) => {
-    const chunks = []
-    let size = 0
-    req.on('data', (chunk) => {
-      size += chunk.length
-      if (size > limit) {
-        reject(new Error('form-too-large'))
-        req.destroy()
-        return
-      }
-      chunks.push(chunk)
-    })
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
-    req.on('error', reject)
-  })
 }
 
 function proxyRequest(req, res, spec) {
@@ -264,8 +179,9 @@ function proxyRequest(req, res, spec) {
 }
 
 async function handleLogin(req, res, spec) {
+  const locale = loginLocale(req)
   if (req.method === 'GET') {
-    html(res, 200, loginPage(loginLocale(req)))
+    sendHtml(res, 200, loginPage(locale))
     return
   }
   if (req.method !== 'POST') {
@@ -285,14 +201,14 @@ async function handleLogin(req, res, spec) {
       res.end('too many attempts\n')
       return
     }
-    const form = new URLSearchParams(await readForm(req))
+    const form = new URLSearchParams((await readBody(req, 4096)).toString('utf8'))
     if (!safeEqual(form.get('token') ?? '', spec.accessToken)) {
       spec.loginTracker.fail(remote)
       spec.loginTracker.prune()
       // Fixed delay so a failed login costs the same as a successful one,
       // slowing token guessing without a measurable timing difference.
       await new Promise(resolve => setTimeout(resolve, spec.loginDelayMs ?? LOGIN_FAILURE_DELAY_MS))
-      html(res, 401, loginPage(loginLocale(req), LOGIN_COPY[loginLocale(req)].invalidToken))
+      sendHtml(res, 401, loginPage(locale, LOGIN_COPY[locale].invalidToken))
       return
     }
     spec.loginTracker.success(remote)
@@ -305,7 +221,7 @@ async function handleLogin(req, res, spec) {
     })
     res.end()
   } catch {
-    html(res, 400, loginPage(loginLocale(req), LOGIN_COPY[loginLocale(req)].invalidRequest))
+    sendHtml(res, 400, loginPage(locale, LOGIN_COPY[locale].invalidRequest))
   }
 }
 
@@ -386,7 +302,7 @@ export function listenProxy(spec) {
         res.end()
         return
       }
-      html(res, 200, waitPage(loginLocale(req), session.id, session.label), {
+      sendHtml(res, 200, waitPage(loginLocale(req), session.id, session.label), {
         'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
       })
       return

@@ -1,3 +1,6 @@
+/**
+ * store — the panel's open/closed UI state as an official engine store.
+ */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
 
 export type RemotePanelState = {

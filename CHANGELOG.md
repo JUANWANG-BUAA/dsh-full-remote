@@ -54,6 +54,15 @@ All notable changes to dsh-reverse-proxy are documented in this file.
 - Control routes restricted to loopback with a control header and loopback
   Origin check; control paths never forwarded through the public proxy.
 
+### Refactoring
+
+- Host modules split by responsibility: `http-util.js` (shared path/body/response
+  plumbing), `pages.js` (all user-facing copy as zh/en tokens + page templates),
+  `sessions.js` (device-session store). Removed duplicated `pathnameOf`,
+  bounded-body readers, `safeEqual`, and page CSS; every source file now
+  carries a module-level JSDoc contract. Client panel extracted
+  `DevicesSection` from the overlay.
+
 ### Tooling
 
 - ESLint flat config wired into `check` / `check:ci`.

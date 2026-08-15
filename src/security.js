@@ -1,3 +1,9 @@
+/**
+ * security — credential primitives.
+ *
+ * Token generation, constant-time comparison, and cookie parsing. HTML
+ * escaping lives in http-util.js (it is output plumbing, not a secret).
+ */
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 
 const TOKEN_BYTES = 24
@@ -30,12 +36,3 @@ export function parseCookies(header) {
   return cookies
 }
 
-/** Escape user-influenced text before it lands inside HTML. */
-export function escapeHtml(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}

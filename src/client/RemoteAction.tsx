@@ -1,3 +1,9 @@
+/**
+ * RemoteAction — the sidebar entry button, rendered in the official
+ * sidebar.footer.action slot. Promotes itself to a dedicated full-width row
+ * on the standard DeepSeek Harness sidebar layout, degrading to the slot's
+ * native inline button everywhere else.
+ */
 import { useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'

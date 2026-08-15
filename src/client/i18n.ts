@@ -1,3 +1,9 @@
+/**
+ * i18n — the panel's zh/en copy tokens.
+ *
+ * Registered into the OPTIONAL dsh-client-locale service; without it the
+ * panel uses the stable zh fallback (matching the harness fallback locale).
+ */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 
 /**

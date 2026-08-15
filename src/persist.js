@@ -1,3 +1,9 @@
+/**
+ * persist — the plugin's durable state file (0600, atomic writes).
+ *
+ * Read side is defensive: malformed input degrades to a clean disabled
+ * installation instead of crashing startup.
+ */
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
