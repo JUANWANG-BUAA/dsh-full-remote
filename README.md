@@ -1,5 +1,8 @@
 # dsh-reverse-proxy
 
+[![CI](https://github.com/JUANWANG-BUAA/dsh-remote/actions/workflows/ci.yml/badge.svg)](https://github.com/JUANWANG-BUAA/dsh-remote/actions)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 An installable DeepSeek Harness bundle that creates an authenticated local
 reverse-proxy endpoint for the DSh Web UI, plus a sidebar control panel to run
 it. It is intentionally independent of Tailscale, frp, ngrok, cloudflared,
@@ -7,6 +10,12 @@ WireGuard, SSH, or any other tunnel.
 
 The plugin does not launch or manage tunnel software. Point your tunnel at the
 local target shown in the DSh sidebar, for example `http://127.0.0.1:3081`.
+
+## Screenshots
+
+| Sidebar control panel | Remote login gate |
+|---|---|
+| ![Control panel](./docs/rp-demo-panel.png) | ![Remote login](./docs/rp-demo-login.png) |
 
 ## Features
 
@@ -136,6 +145,7 @@ isolation: the desktop bundle is never part of the `mobile` process.
     headersTimeoutMs: 15000
     keepAliveTimeoutMs: 5000
     loginDelayMs: 250
+    logRequests: false
     stateFile: ""
 ```
 
@@ -147,6 +157,9 @@ isolation: the desktop bundle is never part of the `mobile` process.
 - `maxHeaderSizeBytes`, `headersTimeoutMs`, `keepAliveTimeoutMs`, and
   `loginDelayMs` are server-hardening knobs; the defaults are safe and rarely
   need changing.
+- `logRequests: true` logs every proxied request at debug level; lifecycle
+  events (start, stop, token rotation, publish-address changes) are always
+  logged at info level.
 - Keep `listenHost` on loopback when the tunnel process runs locally. Binding a
   LAN address is an explicit expansion of the attack surface.
 - This plugin injects `webServer`, so install it into Web-serving profiles
@@ -164,16 +177,40 @@ development to that checkout).
 
 ## Development
 
+First-time contributors: the devDependencies pin the DSh type packages to a
+sibling `../deepseek-harness` checkout, so clone and build like this:
+
 ```sh
-pnpm install
+pnpm run bootstrap   # clones deepseek-harness at the pinned commit if missing, then installs
 pnpm run check
 pnpm run build
 pnpm pack --dry-run
 ```
 
+CI runs the same `check` pipeline on every push and pull request
+(`.github/workflows/ci.yml`).
+
 The package has a Host entry (`lib/index.js`) and an official DSh Client entry
 (`lib/client.js`). The browser UI registers only through
 `sidebar.footer.action` and `shell.overlay`; it does not patch private DSh DOM.
+
+## Control API
+
+All endpoints live under `/dsh-reverse-proxy` on the main DSh Web server, are
+loopback-only, and are **never** forwarded through the public proxy. Mutations
+require the `x-dsh-reverse-proxy-control: 1` header and a loopback `Origin`.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| `GET` | `/dsh-reverse-proxy/status` | — | snapshot (enabled, running, target, backend, listen) |
+| `GET` | `/dsh-reverse-proxy/token` | — | `{ accessToken }` |
+| `POST` | `/dsh-reverse-proxy/start` | — | snapshot |
+| `POST` | `/dsh-reverse-proxy/stop` | — | snapshot |
+| `POST` | `/dsh-reverse-proxy/rotate-token` | — | snapshot + new `accessToken` |
+| `POST` | `/dsh-reverse-proxy/listen` | `{ "host": "127.0.0.1", "port": 3081 }` | snapshot (port `0` = pick a free port) |
+
+On the proxy itself, `/dsh-reverse-proxy/healthz` answers `{"ok":true}` and the
+login page lives at `/_dsh_reverse_proxy/login`.
 
 ## Model Experience
 
@@ -193,5 +230,8 @@ effects are zero.
   feature that depends on browser cookies would need revisiting.
 - Login is not rate-limited beyond a fixed per-attempt delay; a 192-bit token
   makes brute force impractical, and rotating the token invalidates sessions.
+- Stopping the proxy does not tear down already-upgraded WebSocket sessions on
+  the backend: Node does not propagate a client-side socket destroy after
+  upgrade, so those sessions follow the backend's own idle policy.
 - HTTP/2 terminates at the tunnel or browser edge; the local proxy forwards
   HTTP/1.1, SSE, and WebSocket traffic.

@@ -1,6 +1,7 @@
 import { afterEach, describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer, request } from 'node:http'
+import { createConnection } from 'node:net'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -53,6 +54,65 @@ function chunked({ port, path = '/', headers = {}, chunks }) {
     req.on('error', reject)
     for (const chunk of chunks) req.write(chunk)
     req.end()
+  })
+}
+
+/** Raw WebSocket handshake over a plain TCP socket; resolves once the proxy
+ * has written its complete response head (101 relay or 401 deny). */
+function wsHandshake({ port, path = '/ws', cookie }) {
+  return new Promise((resolve, reject) => {
+    const socket = createConnection(port, '127.0.0.1')
+    const chunks = []
+    let settled = false
+    const settle = (error, result) => {
+      if (settled) return
+      settled = true
+      if (error) reject(error)
+      else resolve({ socket, ...result })
+    }
+    const parse = (chunk) => {
+      chunks.push(chunk)
+      const buffer = Buffer.concat(chunks)
+      const at = buffer.indexOf('\r\n\r\n')
+      if (at === -1) return
+      socket.removeListener('data', parse)
+      const lines = buffer.slice(0, at).toString('utf8').split('\r\n')
+      settle(undefined, { status: lines[0] ?? '', headers: lines.slice(1), head: buffer.slice(at + 4) })
+    }
+    socket.on('data', parse)
+    socket.on('error', error => settle(error))
+    socket.on('close', () => settle(new Error('socket closed before handshake completed')))
+    socket.on('connect', () => {
+      socket.write([
+        `GET ${path} HTTP/1.1`,
+        `Host: 127.0.0.1:${port}`,
+        ...(cookie === undefined ? [] : [`Cookie: ${cookie}`]),
+        'Connection: Upgrade',
+        'Upgrade: websocket',
+        'Sec-WebSocket-Version: 13',
+        'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==',
+        '',
+        '',
+      ].join('\r\n'))
+    })
+  })
+}
+
+/** Wait for data on an established raw socket; resolves 100ms after the last
+ * chunk so a split frame arrives whole. */
+function readSocket(socket, timeoutMs = 2000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('socket read timeout')), timeoutMs)
+    const parts = []
+    const onData = (chunk) => {
+      parts.push(chunk)
+      clearTimeout(timer)
+      setTimeout(() => {
+        socket.removeListener('data', onData)
+        resolve(Buffer.concat(parts))
+      }, 100)
+    }
+    socket.on('data', onData)
   })
 }
 
@@ -167,6 +227,7 @@ describe('authenticated reverse proxy', () => {
     cleanups.push(() => new Promise(resolve => backend.close(resolve)))
     const backendPort = backend.address().port
     const token = generateAccessToken()
+    const logged = []
     const proxy = await listenProxy({
       listenHost: '127.0.0.1',
       listenPort: 0,
@@ -182,6 +243,7 @@ describe('authenticated reverse proxy', () => {
       headersTimeoutMs: 2000,
       keepAliveTimeoutMs: 1000,
       loginDelayMs: 0,
+      log: entry => { logged.push(entry) },
     })
     cleanups.push(proxy.close)
 
@@ -228,6 +290,10 @@ describe('authenticated reverse proxy', () => {
       host: `127.0.0.1:${backendPort}`,
       marker: '1',
     })
+
+    assert.equal(logged.some(e => e.method === 'GET' && e.path === '/api/example' && e.status === 200), true)
+    assert.equal(logged.some(e => e.method === 'POST' && e.path === '/_dsh_reverse_proxy/login' && e.status === 401), true)
+    assert.equal(logged.some(e => e.method === 'GET' && e.path === '/dsh-reverse-proxy/status' && e.status === 403), true)
   })
 
   it('enforces the byte limit on chunked uploads that declare no content-length', async () => {
@@ -279,5 +345,88 @@ describe('authenticated reverse proxy', () => {
       chunks: ['a'.repeat(200), 'b'.repeat(200)],
     })
     assert.equal(under.status, 200)
+  })
+})
+
+describe('websocket upgrade', () => {
+  /** Backend that completes a raw 101 handshake and echoes every upgraded
+   * frame back to the sender (node's bare upgrade event does not answer 101
+   * by itself — real WebSocket servers do). Like the harness webServer, it
+   * tracks its own upgraded sockets so cleanup can tear them down reliably:
+   * destroying the client side of an upgrade does not propagate in Node. */
+  async function echoBackend() {
+    const upgraded = new Set()
+    const backend = createServer((req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      res.end('ok')
+    })
+    backend.on('upgrade', (req, socket) => {
+      upgraded.add(socket)
+      socket.once('close', () => upgraded.delete(socket))
+      socket.write([
+        'HTTP/1.1 101 Switching Protocols',
+        'Connection: Upgrade',
+        'Upgrade: websocket',
+        '',
+        '',
+      ].join('\r\n'))
+      socket.on('data', chunk => { socket.write(chunk) })
+    })
+    await new Promise((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise(resolve => {
+      for (const socket of upgraded) socket.destroy()
+      backend.close(resolve)
+    }))
+    return backend
+  }
+
+  async function proxyWithCookie() {
+    const backend = await echoBackend()
+    const token = generateAccessToken()
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: backend.address().port,
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 1024,
+      upstreamTimeoutMs: 2000,
+      loginDelayMs: 0,
+    })
+    cleanups.push(proxy.close)
+    const login = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    return { proxy, cookie: login.headers['set-cookie'][0].split(';', 1)[0] }
+  }
+
+  it('denies unauthenticated upgrade attempts with 401', async () => {
+    const { proxy } = await proxyWithCookie()
+    const attempt = await wsHandshake({ port: proxy.port, path: '/ws' })
+    attempt.socket.destroy()
+    assert.match(attempt.status, /^HTTP\/1\.1 401/)
+  })
+
+  it('relays an authenticated upgrade and forwards frames both ways', async () => {
+    const { proxy, cookie } = await proxyWithCookie()
+    const { socket, status, headers } = await wsHandshake({ port: proxy.port, path: '/ws', cookie })
+    cleanups.push(() => socket.destroy())
+    assert.match(status, /^HTTP\/1\.1 101/)
+    assert.equal(headers.some(line => /^upgrade: websocket$/i.test(line)), true)
+
+    // Masked text frame "hi" (FIN|text, len 2, 4-byte mask).
+    const frame = Buffer.from([0x81, 0x82, 0x00, 0x01, 0x02, 0x03, 0x68, 0x6a])
+    socket.write(frame)
+    const echoed = await readSocket(socket)
+    assert.deepEqual(echoed, frame)
   })
 })

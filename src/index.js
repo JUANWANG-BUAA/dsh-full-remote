@@ -21,6 +21,7 @@ export const Config = Schema.object({
   headersTimeoutMs: Schema.number().min(1000).default(15_000).description('Timeout for a client to send a complete request head.'),
   keepAliveTimeoutMs: Schema.number().min(1000).default(5_000).description('Keep-alive timeout for idle proxy connections.'),
   loginDelayMs: Schema.number().min(0).max(10_000).default(250).description('Fixed delay after a failed login, slowing token guessing.'),
+  logRequests: Schema.boolean().default(false).description('Log every proxied request at debug level.'),
 })
 
 const CONTROL_PREFIX = '/dsh-reverse-proxy'
@@ -159,7 +160,10 @@ export function createRuntime(ctx, config) {
   const closeBound = async () => {
     const current = bound
     bound = undefined
-    if (current !== undefined) await current.close()
+    if (current !== undefined) {
+      await current.close()
+      ctx.logger.info(`reverse-proxy: stopped listening on http://${current.host}:${current.port}`)
+    }
   }
 
   const stop = async () => {
@@ -191,6 +195,9 @@ export function createRuntime(ctx, config) {
         headersTimeoutMs: config.headersTimeoutMs,
         keepAliveTimeoutMs: config.keepAliveTimeoutMs,
         loginDelayMs: config.loginDelayMs,
+        log: config.logRequests
+          ? entry => { ctx.logger.debug(`reverse-proxy: ${entry.remote ?? '-'} ${entry.method} ${entry.path} -> ${entry.status}`) }
+          : undefined,
       })
     } catch (error) {
       ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
@@ -198,6 +205,7 @@ export function createRuntime(ctx, config) {
     }
     state.enabled = true
     await save()
+    ctx.logger.info(`reverse-proxy: listening on http://${bound.host}:${bound.port}`)
     return snapshot()
   }
 
@@ -207,6 +215,7 @@ export function createRuntime(ctx, config) {
     await closeBound()
     state.accessToken = generateAccessToken()
     await save()
+    ctx.logger.info('reverse-proxy: access token rotated')
     if (restart) await start()
     return { ...(await snapshot()), accessToken: state.accessToken }
   })
@@ -230,7 +239,10 @@ export function createRuntime(ctx, config) {
     state.listenPort = portNumber
     await save()
     await closeBound()
-    if (!wasRunning) return snapshot()
+    if (!wasRunning) {
+      ctx.logger.info(`reverse-proxy: publish address set to ${hostname}:${portNumber}`)
+      return snapshot()
+    }
     const status = await start()
     if (status.running) return status
     // Roll back: keep serving on the address that worked.
@@ -329,6 +341,7 @@ export function apply(ctx, config) {
       handler: (req, res) => runtime.handle(req, res),
     })
     const untap = ctx.webServer.tapIndex(injectViewport)
+    ctx.logger.info(`reverse-proxy: control surface mounted at ${CONTROL_PREFIX} (loopback only)`)
     void runtime.restore()
     return async () => {
       unroute()

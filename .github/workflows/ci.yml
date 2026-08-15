@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # devDependencies pin the DSh type packages to a sibling checkout
+      # (`link:../deepseek-harness/...`); clone it at the exact commit this
+      # plugin is developed against.
+      - name: Fetch DeepSeek Harness checkout
+        uses: actions/checkout@v4
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: 47f943859b
+          path: ../deepseek-harness
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Typecheck, test, and build
+        run: pnpm run check

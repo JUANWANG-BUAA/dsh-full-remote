@@ -116,6 +116,7 @@ function proxyRequest(req, res, spec) {
     res.writeHead(incoming.statusCode ?? 502, responseHeaders)
     incoming.pipe(res)
   })
+  spec.trackUpstream?.(up)
   const connectTimer = setTimeout(() => {
     up.destroy(new Error('upstream timeout'))
   }, spec.upstreamTimeoutMs)
@@ -191,18 +192,34 @@ async function handleLogin(req, res, spec) {
  *  maxRequestBytes: number, upstreamTimeoutMs: number, sessionMaxAgeSeconds: number,
  *  maxHeaderSizeBytes?: number, headersTimeoutMs?: number, keepAliveTimeoutMs?: number,
  *  loginDelayMs?: number,
+ *  log?: (entry: { method: string, path: string, status: number, remote: string }) => void,
  * }} spec
  * @returns {Promise<{ host: string, port: number, close: () => Promise<void> }>}
  */
 export function listenProxy(spec) {
   const backendAuthority = `${spec.backendHost}:${spec.backendPort}`
-  const runtimeSpec = { ...spec, backendAuthority }
+  // Node's closeAllConnections() does not cover upgraded sockets (neither our
+  // own client side nor our outbound upstream requests) — track both so
+  // close() fully tears down WebSocket sessions.
+  const upgradedSockets = new Set()
+  const upstreamSockets = new Set()
+  const trackUpstream = (up) => {
+    upstreamSockets.add(up)
+    up.once('close', () => upstreamSockets.delete(up))
+  }
+  const runtimeSpec = { ...spec, backendAuthority, trackUpstream }
+  const logRequest = spec.log === undefined ? undefined : (req, res) => {
+    res.once('finish', () => {
+      spec.log({ method: req.method, path: req.url ?? '/', status: res.statusCode, remote: req.socket.remoteAddress ?? '' })
+    })
+  }
   const server = createServer({
     maxHeaderSize: spec.maxHeaderSizeBytes ?? 16 * 1024,
     requestTimeout: 0,
     headersTimeout: spec.headersTimeoutMs ?? 15_000,
     keepAliveTimeout: spec.keepAliveTimeoutMs ?? 5_000,
   }, async (req, res) => {
+    logRequest?.(req, res)
     const path = pathnameOf(req.url)
     if (path === '/_dsh_reverse_proxy/healthz') {
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
@@ -232,9 +249,12 @@ export function listenProxy(spec) {
   })
 
   server.on('upgrade', (req, socket, head) => {
+    upgradedSockets.add(socket)
+    socket.once('close', () => upgradedSockets.delete(socket))
     const path = pathnameOf(req.url)
     if (path.startsWith(spec.controlPrefix) || !isAuthenticated(req, spec.accessToken, spec.cookieName)) {
       denySocket(socket, '401 Unauthorized')
+      spec.log?.({ method: req.method, path: req.url ?? '/', status: 401, remote: req.socket.remoteAddress ?? '' })
       return
     }
     const headers = forwardHeaders(req, backendAuthority)
@@ -247,8 +267,13 @@ export function listenProxy(spec) {
       method: 'GET',
       headers,
     })
+    trackUpstream(up)
     up.setTimeout(spec.upstreamTimeoutMs, () => { up.destroy() })
     up.on('upgrade', (upRes, upSocket, upHead) => {
+      // After a successful upgrade Node detaches the socket from the request,
+      // so req.destroy() would leave it open — track the socket itself too.
+      trackUpstream(upSocket)
+      spec.log?.({ method: req.method, path: req.url ?? '/', status: upRes.statusCode ?? 101, remote: req.socket.remoteAddress ?? '' })
       const lines = [`HTTP/1.1 ${upRes.statusCode ?? 101} ${upRes.statusMessage ?? 'Switching Protocols'}`]
       for (const [key, value] of Object.entries(upRes.headers)) {
         if (Array.isArray(value)) {
@@ -295,6 +320,10 @@ export function listenProxy(spec) {
         close: () => new Promise((done, closeReject) => {
           server.close((error) => error === undefined ? done() : closeReject(error))
           server.closeAllConnections?.()
+          // closeAllConnections() leaves upgraded sockets alone — destroy
+          // both sides of every live WebSocket session explicitly.
+          for (const socket of upgradedSockets) socket.destroy()
+          for (const up of upstreamSockets) up.destroy()
         }),
       })
     })

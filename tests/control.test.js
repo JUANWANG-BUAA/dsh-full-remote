@@ -27,7 +27,7 @@ function makeConfig(stateFile, extra = {}) {
 }
 
 function makeContext() {
-  return { webServer: { port: 3080 }, logger: { warn() {} } }
+  return { webServer: { port: 3080 }, logger: { warn() {}, info() {}, debug() {} } }
 }
 
 async function makeRuntime() {

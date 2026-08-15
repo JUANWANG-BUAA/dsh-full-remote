@@ -1,8 +1,17 @@
 # dsh-reverse-proxy
 
+[![CI](https://github.com/JUANWANG-BUAA/dsh-remote/actions/workflows/ci.yml/badge.svg)](https://github.com/JUANWANG-BUAA/dsh-remote/actions)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+
 这是一个可安装的 DeepSeek Harness bundle，为 DSh Web UI 提供带认证的本地反向代理端点与侧边栏控制面板。它不特化于 Tailscale、frp、ngrok、cloudflared、WireGuard 或 SSH。
 
 插件不会启动、停止或管理任何穿透软件。你只需把所选 tunnel 的本地目标指向 DSh 侧栏中显示的地址，例如 `http://127.0.0.1:3081`。
+
+## 截图
+
+| 侧边栏控制面板 | 远程登录门 |
+|---|---|
+| ![控制面板](./docs/rp-demo-panel.png) | ![远程登录](./docs/rp-demo-login.png) |
 
 ## 功能
 
@@ -102,6 +111,7 @@ dsh --profile mobile --port 3082
     headersTimeoutMs: 15000
     keepAliveTimeoutMs: 5000
     loginDelayMs: 250
+    logRequests: false
     stateFile: ""
 ```
 
@@ -110,6 +120,7 @@ dsh --profile mobile --port 3082
 - `listenPort: 0` 自动选择空闲端口，实际值会显示在 UI。
 - `stateFile: ""` 使用 `$DSH_HOME/reverse-proxy.json`。
 - `maxHeaderSizeBytes`、`headersTimeoutMs`、`keepAliveTimeoutMs`、`loginDelayMs` 是服务器加固旋钮，默认值已安全，一般无需修改。
+- `logRequests: true` 以 debug 级别记录每个代理请求；生命周期事件（启动、停止、令牌轮换、发布地址变更）始终以 info 级别记录。
 - tunnel 进程在本机时应保持 `listenHost: 127.0.0.1`。绑定局域网地址会主动扩大攻击面。
 - 本插件依赖 `webServer` 服务，请只安装进提供 Web 服务的 profile；装进 headless profile 时该行会一直处于 PENDING。
 
@@ -119,14 +130,33 @@ dsh --profile mobile --port 3082
 
 ## 开发
 
+首次贡献者请用 bootstrap（devDependencies 把 DSh 类型包固定到同级 `../deepseek-harness` checkout）：
+
 ```sh
-pnpm install
+pnpm run bootstrap   # 缺失时自动克隆 deepseek-harness 到固定 commit，然后安装依赖
 pnpm run check
 pnpm run build
 pnpm pack --dry-run
 ```
 
+CI 在每次 push 与 PR 上跑同样的 `check` 流水线（`.github/workflows/ci.yml`）。
+
 包同时提供 Host 入口 `lib/index.js` 与官方 DSh Client 入口 `lib/client.js`。浏览器 UI 只注册到 `sidebar.footer.action` 和 `shell.overlay`，不再修改 DSh 私有 DOM。
+
+## 控制面 API
+
+全部端点位于主 DSh Web 服务器的 `/dsh-reverse-proxy` 下，仅限 loopback，且**永不**经公共代理转发。写操作要求 `x-dsh-reverse-proxy-control: 1` 请求头与 loopback `Origin`。
+
+| 方法 | 路径 | 请求体 | 返回 |
+|---|---|---|---|
+| `GET` | `/dsh-reverse-proxy/status` | — | 快照（enabled、running、target、backend、listen） |
+| `GET` | `/dsh-reverse-proxy/token` | — | `{ accessToken }` |
+| `POST` | `/dsh-reverse-proxy/start` | — | 快照 |
+| `POST` | `/dsh-reverse-proxy/stop` | — | 快照 |
+| `POST` | `/dsh-reverse-proxy/rotate-token` | — | 快照 + 新 `accessToken` |
+| `POST` | `/dsh-reverse-proxy/listen` | `{ "host": "127.0.0.1", "port": 3081 }` | 快照（port 填 `0` = 自动选空闲端口） |
+
+代理自身的 `/dsh-reverse-proxy/healthz` 返回 `{"ok":true}`，登录页位于 `/_dsh_reverse_proxy/login`。
 
 ## Model Experience
 
@@ -138,4 +168,5 @@ pnpm pack --dry-run
 - TLS 通常终止在 tunnel 侧，因此本地 HTTP 场景无法始终设置 Secure Cookie；公网侧必须使用 HTTPS，并保护本机访问。
 - 代理剥离上游 `set-cookie` 与自身会话 Cookie：对当前 DSh Web（loopback 信任、无 Cookie）是正确的；若未来 DSh Web 出现依赖浏览器 Cookie 的能力，需要重新审视。
 - 登录端除固定失败延时外无频率限制；192-bit 令牌使暴力猜测不现实，轮换令牌即可使全部会话失效。
+- 停止代理不会拆除后端已升级的 WebSocket 会话：Node 在 upgrade 后不会把客户端侧 socket 销毁传播到服务端，这些会话按后端自身的空闲策略回收。
 - HTTP/2 在 tunnel 或浏览器边缘终止；本地代理转发 HTTP/1.1、SSE 与 WebSocket。

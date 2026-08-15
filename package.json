@@ -10,6 +10,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
+    "bootstrap": "node scripts/bootstrap.mjs",
     "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\"",
     "build": "pnpm run clean && tsdown",
     "typecheck": "tsc --noEmit",
@@ -25,17 +26,25 @@
     "lib/client.js",
     "lib/client.js.map",
     "cordis.patch.yml",
+    "CHANGELOG.md",
     "LICENSE",
     "README.md",
-    "README.zh.md"
+    "README.zh.md",
+    "docs/rp-demo-panel.png",
+    "docs/rp-demo-login.png"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
   },
+  "packageManager": "pnpm@11.21.0",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/JUANWANG-BUAA/dsh-remote.git"
+  },
+  "homepage": "https://github.com/JUANWANG-BUAA/dsh-remote#readme",
+  "bugs": {
+    "url": "https://github.com/JUANWANG-BUAA/dsh-remote/issues"
   },
   "keywords": [
     "dsh",
