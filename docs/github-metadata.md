@@ -1,22 +1,23 @@
 # GitHub metadata checklist
 
-Apply these in the repository Settings (they cannot be changed from a commit).
-Values are ready to paste.
+These live in the repo's **About panel**, not under Settings. Values are
+ready to paste.
 
-## Description
+## Where to edit
+
+Repository homepage → right sidebar → **About** → **⚙ gear icon**. One dialog
+holds the Description, Topics, and Website fields.
+
+## Description (paste in one line, ~190 chars — well under the 350 limit)
 
 ```
-Authenticated reverse-proxy bundle for remote & mobile access to DeepSeek
-Harness Web. Point any tunnel (frp / ngrok / cloudflared / Tailscale / SSH)
-at the token-gated local endpoint; full HTTP, SSE and WebSocket forwarding;
-sidebar control panel with runtime listen-address switching.
+Authenticated reverse-proxy bundle for remote & mobile access to DeepSeek Harness Web: token gate, per-device sessions, first-visit approval, WebSocket/SSE forwarding, sidebar control panel.
 ```
 
 ## Topics
 
 ```
-dsh-plugin deepseek-harness dsh reverse-proxy remote-access tunnel
-mobile websocket security
+dsh-plugin deepseek-harness dsh reverse-proxy remote-access tunnel mobile websocket security
 ```
 
 Keep `dsh-plugin` first — GitHub topic pages and awesome-list scanners match
@@ -24,9 +25,11 @@ on it.
 
 ## Social preview
 
-Settings → General → Social preview: use `docs/rp-demo-panel.png`.
+Repository homepage → right sidebar → **About → ⚙** does not hold this one.
+Instead: **Settings → General → Social preview → Edit** → upload
+`docs/rp-demo-panel.png`.
 
-## About sidebar
+## About sidebar extras
 
 - Website: leave empty (or point at the npm page after first publish).
-- Releases: keep enabled; tag the first release `v0.1.0`.
+- Releases: keep enabled; the first release was tagged `v0.1.0`.
