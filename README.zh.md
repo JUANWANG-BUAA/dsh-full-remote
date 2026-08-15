@@ -217,7 +217,7 @@ profile。
 
 - 禁用 `directory-picker` 行（`directory-picker-auto` 会在宿主机显示器
   上弹出系统选目录框）；
-- 插入 `directory-picker-browse` 与 `directory-picker-browse-ui`。
+- 插入 `directory-picker-browse` 与 `ui-directory-picker-browse`。
 
 不要在同一个 profile 里重新启用 `directory-picker`——它会抢走
 `directoryPicker`，「增加新工作区」又会弹到宿主机上。

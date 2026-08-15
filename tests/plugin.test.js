@@ -258,7 +258,7 @@ describe('bundle patch', () => {
     const yaml = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
     assert.match(yaml, /id: directory-picker\n {2}disabled: true/)
     assert.match(yaml, /id: directory-picker-browse\n {6}name: '@deepseek-ai\/dsh-host-directory-picker-browse'/)
-    assert.match(yaml, /id: directory-picker-browse-ui\n {6}name: '@deepseek-ai\/dsh-client-ui-directory-picker-browse'/)
+    assert.match(yaml, /id: ui-directory-picker-browse\n {6}name: '@deepseek-ai\/dsh-client-ui-directory-picker-browse'/)
     assert.match(yaml, /id: reverse-proxy\n {6}name: dsh-full-remote/)
   })
 })

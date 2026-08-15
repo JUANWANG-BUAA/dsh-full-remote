@@ -91,9 +91,14 @@ async function main() {
   // 1. Build the plugin so `dsh plugin add` picks up current source.
   await run('pnpm', ['run', 'build'], { cwd: PLUGIN_DIR })
 
-  // 2. Community-standard install: `dsh plugin add` for both bundles.
-  await dsh(['plugin', '--profile', 'smoke', 'add', PLUGIN_DIR])
+  // 2. Community-standard install: web-app first, then this plugin.
+  // `dsh plugin add` appends to `dsh.profile.bundles`. Our patch disables
+  // `directory-picker-auto` and pins the browse pair; that only wins if
+  // web-app's insert of `-auto` is already in the layer stack. Adding this
+  // plugin first lets web-app re-insert `-auto` on top → duplicate
+  // `directoryPicker` → boot fails the activation gate.
   await dsh(['plugin', '--profile', 'smoke', 'add', join(HARNESS_DIR, 'packages/bundle/web-app')])
+  await dsh(['plugin', '--profile', 'smoke', 'add', PLUGIN_DIR])
 
   // 3. Boot the real composition.
   const server = spawn('pnpm', ['dsh', '--profile', 'smoke', '--port', PORT], {

@@ -251,7 +251,7 @@ can add a workspace:
 
 - disables the `directory-picker` row (`directory-picker-auto` would open
   a native chooser on the host display);
-- inserts `directory-picker-browse` and `directory-picker-browse-ui`.
+- inserts `directory-picker-browse` and `ui-directory-picker-browse`.
 
 Do not re-enable `directory-picker` in the same profile — it would steal
 `directoryPicker`, and "Add workspace" would pop on the host again.
