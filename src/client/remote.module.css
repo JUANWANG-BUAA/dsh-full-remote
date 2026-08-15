@@ -18,8 +18,6 @@
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  min-width: 44px;
-  min-height: 44px;
   border: 0;
   border-radius: 12px;
   color: var(--dsw-alias-label-secondary);
@@ -33,18 +31,22 @@
   width: 100%;
 }
 
-/* Match the official sidebar footer controls: 10px left padding (icon lands
-   at x=18 like the Settings trigger), 8px icon-text gap, 16px icon box, and
-   a full-width hit/hover area spanning the whole sidebar row. */
+/* Match the official sidebar footer controls: 34px row height (6px vertical
+   padding + 22px line height, like the Settings trigger), 10px left padding
+   (icon lands at x=18), 8px icon-text gap, 16px icon box, and a full-width
+   hit/hover area spanning the whole sidebar row. */
 .sidebarAction {
   gap: 8px;
   justify-content: flex-start;
   width: 100%;
-  padding: 0 10px;
+  min-height: 34px;
+  padding: 6px 10px;
 }
 
+/* Rail (collapsed) mode: 36×36 like the official collapsed controls. */
 .sidebarActionRail {
-  width: 44px;
+  width: 36px;
+  height: 36px;
 }
 
 .sidebarAction:hover,

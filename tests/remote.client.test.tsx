@@ -36,7 +36,7 @@ function api(overrides: Partial<ProxyApi> = {}): ProxyApi {
 }
 
 describe('remote client UI', () => {
-  it('opens from the sidebar action with a 44px-accessible control', () => {
+  it('opens from the sidebar action with official-control geometry', () => {
     const open = vi.fn()
     render(<RemoteAction wide={true} actions={{ open, close: vi.fn() }} useStore={vi.fn()} />)
     fireEvent.click(screen.getByRole('button', { name: '打开反向代理' }))
