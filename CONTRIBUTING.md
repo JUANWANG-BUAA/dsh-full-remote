@@ -55,4 +55,4 @@ or English describing the change, e.g. `修复 …` / `Add …`.
 ## Release notes
 
 Unreleased changes go under an Unreleased heading of `CHANGELOG.md`
-until the next version is cut. The current release is `0.2.1`.
+until the next version is cut. The current release is `0.2.2`.

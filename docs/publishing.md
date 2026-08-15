@@ -52,7 +52,8 @@ package is a different product.
 ## Post-publish checklist
 
 - [x] Tag `v0.2.0` (rename); `dsh-full-remote@0.2.0` is on npm.
-- [ ] Tag `v0.2.1`, let CI publish, verify `npm view dsh-full-remote version`.
+- [x] Tag `v0.2.1`, let CI publish, verify `npm view dsh-full-remote version`.
+- [ ] Tag `v0.2.2` (README screenshots for Settings → Reverse proxy), let CI publish, verify `npm view dsh-full-remote version`.
 - [ ] `npm deprecate dsh-reverse-proxy "Package renamed to dsh-full-remote."`
 - [ ] Apply GitHub topics from `docs/github-metadata.md` (30 seconds).
 - [ ] PR the plugin into `awesome-dsh-plugin` as `dsh-full-remote`.

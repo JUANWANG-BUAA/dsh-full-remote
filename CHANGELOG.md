@@ -5,6 +5,15 @@ documented in this file.
 
 ## Unreleased
 
+## 0.2.2 (2026-08-16)
+
+### Documentation
+
+- README screenshot gallery recaptured against Settings → Reverse proxy
+  (status, listen-address warning, token reveal) plus a phone shot of the
+  in-app workspace directory browser. Login-gate shots retaken on 390×844
+  and a desktop viewport.
+
 ## 0.2.1 (2026-08-15)
 
 ### Added

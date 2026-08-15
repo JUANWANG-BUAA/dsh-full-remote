@@ -49,4 +49,4 @@ Instead: **Settings → General → Social preview → Edit** → upload
 
 - Website: leave empty (or point at the npm page after first publish of
   `dsh-full-remote`).
-- Releases: keep enabled; current tag `v0.2.1` (`v0.2.0` was the rename).
+- Releases: keep enabled; current tag `v0.2.2` (`v0.2.0` was the rename).

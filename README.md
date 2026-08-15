@@ -41,18 +41,18 @@ in **Settings → Reverse proxy**.
 
 ## Screenshots
 
-Each feature is shown against a clean harness profile (no personal data).
-Login-gate shots are current. The three control-page shots show the same
-fields after they moved to **Settings → Reverse proxy**; the window chrome
-in those PNGs is the previous overlay dialog.
+Control-page shots are from a clean harness profile (no extra plugins).
+The phone workspace shot is a real device capture of the in-app directory
+browser this plugin pins.
 
 | Feature | Screenshot |
 |---|---|
-| Control page — status, tunnel target, one-click copy | ![Control panel](./docs/rp-demo-panel.png) |
-| Runtime publish address — non-loopback warning before applying | ![Listen address](./docs/rp-demo-listen-address.png) |
+| Settings → Reverse proxy — status, tunnel target, copy | ![Control panel](./docs/rp-demo-panel.png) |
+| Listen address — non-loopback warning before applying | ![Listen address](./docs/rp-demo-listen-address.png) |
 | Access token — reveal and rotate | ![Access token](./docs/rp-demo-token.png) |
 | Remote login gate — desktop | ![Login gate](./docs/rp-demo-login.png) |
 | Remote login gate — mobile (390×844) | ![Mobile login](./docs/rp-demo-mobile-login.png) |
+| Add workspace on a phone — in-app directory browser | ![Mobile workspace](./docs/rp-demo-mobile-workspace.png) |
 
 ## What you get
 
@@ -109,7 +109,7 @@ From this repo, before the package is on npm:
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.2.1.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.2.2.tgz
 ```
 
 Git installs (`dsh plugin add github:JUANWANG-BUAA/dsh-full-remote#<sha>`)

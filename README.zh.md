@@ -33,17 +33,17 @@ SSH 或其他隧道指向 **设置 → 反向代理** 里显示的本地目标�
 
 ## 截图
 
-每项功能各配一张截图，均在干净的 harness profile 上拍摄（不含个人数据）。
-登录门截图是现行 UI。三张控制页截图展示的字段已迁到 **设置 → 反向代理**；
-PNG 里的窗口边框仍是上一版 overlay 对话框。
+控制页在干净的 harness profile 上拍摄（未装其他第三方插件）。
+手机加工作区是实机截图，展示本插件钉住的应用内目录浏览器。
 
 | 功能 | 截图 |
 |---|---|
-| 控制页——状态、tunnel 目标、一键复制 | ![控制面板](./docs/rp-demo-panel.png) |
+| 设置 → 反向代理——状态、tunnel 目标、一键复制 | ![控制面板](./docs/rp-demo-panel.png) |
 | 运行时发布地址——应用前的非回环警告 | ![发布地址](./docs/rp-demo-listen-address.png) |
 | 访问令牌——显示与轮换 | ![访问令牌](./docs/rp-demo-token.png) |
 | 远程登录门——桌面端 | ![登录门](./docs/rp-demo-login.png) |
 | 远程登录门——移动端（390×844） | ![移动端登录](./docs/rp-demo-mobile-login.png) |
+| 手机增加工作区——应用内目录浏览器 | ![手机工作区](./docs/rp-demo-mobile-workspace.png) |
 
 ## 你得到什么
 
@@ -92,7 +92,7 @@ dsh --profile web
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.2.1.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.2.2.tgz
 ```
 
 git 安装（`dsh plugin add github:JUANWANG-BUAA/dsh-full-remote#<sha>`）经自包含

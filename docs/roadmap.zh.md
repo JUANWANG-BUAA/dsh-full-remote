@@ -1,6 +1,6 @@
 # dsh-full-remote · 分析与改进计划
 
-内部工作文档，不随 npm tarball 分发（`package.json` 的 `files` 逐个具名列出 5 张 `docs/rp-demo-*.png`，不是 glob，因此本文不进包）。
+内部工作文档，不随 npm tarball 分发（`package.json` 的 `files` 逐个具名列出 `docs/rp-demo-*.png`，不是 glob，因此本文不进包）。
 
 > 状态（2026-08-15 夜间）：0.2.1 已把「设置落盘」「手机加工作区」「控制面迁入设置页」做成产品行为。下文是当日上午的分析原文，未逐条改写成完成记录。
 >
