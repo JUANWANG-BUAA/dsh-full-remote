@@ -33,6 +33,22 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JUANWANG-BUAA/dsh-remote.git"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "reverse-proxy",
+    "remote-access",
+    "tunnel",
+    "mobile"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
@@ -51,10 +67,10 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.1 <5",
-    "@deepseek-ai/dsh-client-runtime": ">=0.1.0-rc.5 <0.2",
-    "@deepseek-ai/dsh-client-ui-layout": ">=0.1.0-rc.5 <0.2",
-    "@deepseek-ai/dsh-client-ui-sidebar": ">=0.1.0-rc.5 <0.2",
-    "@deepseek-ai/dsh-client-ui-slots": ">=0.1.0-rc.5 <0.2",
+    "@deepseek-ai/dsh-client-runtime": ">=0.0.1-rc.1 <0.2",
+    "@deepseek-ai/dsh-client-ui-layout": ">=0.0.1-rc.1 <0.2",
+    "@deepseek-ai/dsh-client-ui-sidebar": ">=0.0.1-rc.1 <0.2",
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.0.1-rc.1 <0.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

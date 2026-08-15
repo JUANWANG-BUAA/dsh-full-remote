@@ -3,6 +3,7 @@ export type ProxyStatus = {
   running: boolean
   target: string
   backend: string
+  listen?: { host: string, port: number }
   reason?: string
 }
 
@@ -12,4 +13,5 @@ export type ProxyApi = {
   stop: () => Promise<ProxyStatus>
   token: () => Promise<string>
   rotateToken: () => Promise<ProxyStatus & { accessToken: string }>
+  setListen: (host: string, port: number) => Promise<ProxyStatus>
 }

@@ -14,8 +14,10 @@
 .sidebarAction,
 .sidebarActionRail {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
   min-width: 44px;
   min-height: 44px;
   border: 0;
@@ -44,11 +46,19 @@
 
 .actionIcon {
   display: grid;
+  flex: none;
   place-items: center;
   width: 20px;
   height: 20px;
-  font-size: 18px;
-  line-height: 1;
+}
+
+.actionLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
 }
 
 .overlay {
@@ -178,6 +188,55 @@
 
 .section {
   padding: 19px 22px 0;
+}
+
+.listenRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field > span {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 14px;
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 2px;
+}
+
+.warn {
+  margin: 10px 0 0;
+  padding: 9px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .copyField {

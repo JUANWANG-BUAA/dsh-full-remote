@@ -9,8 +9,15 @@ export function defaultStateFile() {
 
 /**
  * Missing or malformed state is treated as a clean disabled installation.
+ * Runtime listen overrides are kept only when they are well-formed, so a
+ * hand-edited state file can never crash the proxy at startup.
  * @param {string} path
- * @returns {Promise<{ enabled: boolean, accessToken?: string }>}
+ * @returns {Promise<{
+ *   enabled: boolean,
+ *   accessToken?: string,
+ *   listenHost?: string,
+ *   listenPort?: number,
+ * }>}
  */
 export async function readState(path = defaultStateFile()) {
   try {
@@ -19,6 +26,15 @@ export async function readState(path = defaultStateFile()) {
       enabled: parsed?.enabled === true,
       ...(typeof parsed?.accessToken === 'string' && parsed.accessToken.length >= 24
         ? { accessToken: parsed.accessToken }
+        : {}),
+      ...(typeof parsed?.listenHost === 'string'
+        && parsed.listenHost.length > 0
+        && parsed.listenHost.length <= 253
+        && !/[\s/\\]/.test(parsed.listenHost)
+        ? { listenHost: parsed.listenHost }
+        : {}),
+      ...(Number.isInteger(parsed?.listenPort) && parsed.listenPort >= 0 && parsed.listenPort <= 65535
+        ? { listenPort: parsed.listenPort }
         : {}),
     }
   } catch {
@@ -29,7 +45,7 @@ export async function readState(path = defaultStateFile()) {
 /**
  * Write atomically so a terminated process cannot leave truncated JSON.
  * @param {string} path
- * @param {{ enabled: boolean, accessToken: string }} state
+ * @param {{ enabled: boolean, accessToken: string, listenHost?: string, listenPort?: number }} state
  * @returns {Promise<void>}
  */
 export async function writeState(path, state) {

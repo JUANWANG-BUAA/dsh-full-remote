@@ -39,13 +39,13 @@ export function isAuthenticated(req, token, cookieName) {
   return safeEqual(parseCookies(req.headers.cookie)[cookieName] ?? '', sessionValue(token))
 }
 
-export function sessionCookie(token, cookieName, secure = false) {
+export function sessionCookie(token, cookieName, secure = false, maxAgeSeconds = 2592000) {
   return [
     `${cookieName}=${sessionValue(token)}`,
     'Path=/',
     'HttpOnly',
     'SameSite=Strict',
-    'Max-Age=2592000',
+    `Max-Age=${maxAgeSeconds}`,
     secure ? 'Secure' : '',
   ].filter(Boolean).join('; ')
 }

@@ -21,6 +21,8 @@ export function RemoteOverlay({ useStore, actions, api }: RemoteOverlayProps) {
   const [accessToken, setAccessToken] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [listenHost, setListenHost] = useState('')
+  const [listenPort, setListenPort] = useState('')
   const dialog = useRef<HTMLDialogElement | null>(null)
   const closeButton = useRef<HTMLButtonElement | null>(null)
 
@@ -29,7 +31,15 @@ export function RemoteOverlay({ useStore, actions, api }: RemoteOverlayProps) {
     let active = true
     setError('')
     void api.status().then(
-      value => { if (active) setStatus(value) },
+      value => {
+        if (!active) return
+        setStatus(value)
+        // Seed the editable drafts from the effective listen address once.
+        if (value.listen) {
+          setListenHost(prev => (prev === '' ? value.listen!.host : prev))
+          setListenPort(prev => (prev === '' ? String(value.listen!.port) : prev))
+        }
+      },
       reason => { if (active) setError(messageOf(reason)) },
     )
     const node = dialog.current
@@ -95,6 +105,39 @@ export function RemoteOverlay({ useStore, actions, api }: RemoteOverlayProps) {
     }
   }
 
+  const applyListen = async () => {
+    const host = listenHost.trim()
+    const port = Number(listenPort)
+    if (host === '' || !Number.isInteger(port) || port < 0 || port > 65535) {
+      setError('请输入有效的发布地址和端口（0–65535）。')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      const next = await api.setListen(host, port)
+      setStatus(next)
+      if (next.listen) {
+        setListenHost(next.listen.host)
+        setListenPort(String(next.listen.port))
+      }
+      if (next.reason === 'invalid-listen') {
+        setError('发布地址或端口无效。')
+      } else if (next.reason === 'listen-failed-restored') {
+        setError('新地址无法监听，已恢复到原来的发布地址。')
+      } else if (next.reason !== undefined && next.reason !== '') {
+        setError(`更新发布地址失败：${next.reason}`)
+      }
+    } catch (reason) {
+      setError(messageOf(reason))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const nonLoopback = listenHost.trim() !== ''
+    && !['127.0.0.1', 'localhost', '::1', '[::1]', '::ffff:127.0.0.1'].includes(listenHost.trim())
+
   return createPortal((
     <dialog
       ref={dialog}
@@ -121,6 +164,43 @@ export function RemoteOverlay({ useStore, actions, api }: RemoteOverlayProps) {
             <strong>{status?.running ? '代理正在运行' : '代理尚未运行'}</strong>
             <p>{status?.running ? '现在可以让任意 tunnel 指向下方本地端点。' : '启动后会创建受令牌保护的本地入口。'}</p>
           </div>
+        </div>
+
+        <div className={css.section}>
+          <span className={css.label}>LISTEN ADDRESS</span>
+          <p>指定反向代理发布的 IP 与端口。端口填 0 表示自动选择空闲端口；修改后正在运行的代理会自动重启并生效。</p>
+          <div className={css.listenRow}>
+            <label className={css.field}>
+              <span>IP / 主机</span>
+              <input
+                className={css.input}
+                value={listenHost}
+                onChange={event => { setListenHost(event.target.value) }}
+                placeholder="127.0.0.1"
+                inputMode="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+            </label>
+            <label className={css.field}>
+              <span>端口</span>
+              <input
+                className={css.input}
+                value={listenPort}
+                onChange={event => { setListenPort(event.target.value.replace(/[^0-9]/g, '')) }}
+                placeholder="3081"
+                inputMode="numeric"
+              />
+            </label>
+          </div>
+          {nonLoopback && <p className={css.warn}>绑定非回环地址会直接暴露端口，请确保防火墙与 tunnel 配置正确。</p>}
+          <button
+            className={css.secondaryButton}
+            type="button"
+            disabled={busy}
+            onClick={() => { void applyListen() }}
+          >应用发布地址</button>
         </div>
 
         <div className={css.section}>

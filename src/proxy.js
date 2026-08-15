@@ -21,7 +21,14 @@ const SPOOFABLE_FORWARDING = new Set([
   'x-real-ip',
   'x-dsh-reverse-proxy',
 ])
+/**
+ * The proxy's own session cookie never reaches the backend: the backend
+ * cannot set cookies for the remote browser anyway (upstream `set-cookie`
+ * is stripped), so forwarding it only risks credential confusion.
+ */
+const INTERNAL_HEADERS = new Set(['cookie'])
 const LOGIN_PATH = '/_dsh_reverse_proxy/login'
+const LOGIN_FAILURE_DELAY_MS = 250
 
 export function pathnameOf(url) {
   try {
@@ -35,7 +42,7 @@ export function forwardHeaders(req, backendHost) {
   const headers = {}
   for (const [key, value] of Object.entries(req.headers)) {
     const lower = key.toLowerCase()
-    if (value === undefined || lower === 'host' || HOP_BY_HOP.has(lower) || SPOOFABLE_FORWARDING.has(lower)) continue
+    if (value === undefined || lower === 'host' || HOP_BY_HOP.has(lower) || SPOOFABLE_FORWARDING.has(lower) || INTERNAL_HEADERS.has(lower)) continue
     headers[lower] = value
   }
   const sourceHost = req.headers.host ?? ''
@@ -122,6 +129,26 @@ function proxyRequest(req, res, spec) {
       res.destroy()
     }
   })
+  // Enforce the byte limit on the stream itself: a chunked upload declares no
+  // content-length, so the header check above cannot see its real size.
+  let received = 0
+  let overflow = false
+  req.on('data', (chunk) => {
+    received += chunk.length
+    if (!overflow && received > spec.maxRequestBytes) {
+      overflow = true
+      req.unpipe(up)
+      up.destroy()
+      if (!res.headersSent) {
+        res.writeHead(413, { 'content-type': 'text/plain; charset=utf-8', connection: 'close' })
+        res.end('request too large\n')
+      } else {
+        res.destroy()
+      }
+    }
+  })
+  // A client abort must not leave the upstream request hanging.
+  req.once('error', () => { up.destroy() })
   req.pipe(up)
 }
 
@@ -138,13 +165,16 @@ async function handleLogin(req, res, spec) {
   try {
     const form = new URLSearchParams(await readForm(req))
     if (!safeEqual(form.get('token') ?? '', spec.accessToken)) {
+      // Fixed delay so a failed login costs the same as a successful one,
+      // slowing token guessing without a measurable timing difference.
+      await new Promise(resolve => setTimeout(resolve, LOGIN_FAILURE_DELAY_MS))
       html(res, 401, loginPage('令牌无效，请重试。'))
       return
     }
     const secure = req.headers['x-forwarded-proto'] === 'https'
     res.writeHead(303, {
       location: '/',
-      'set-cookie': sessionCookie(spec.accessToken, spec.cookieName, secure),
+      'set-cookie': sessionCookie(spec.accessToken, spec.cookieName, secure, spec.sessionMaxAgeSeconds),
       'cache-control': 'no-store',
     })
     res.end()
@@ -158,7 +188,7 @@ async function handleLogin(req, res, spec) {
  * @param {{
  *  listenHost: string, listenPort: number, backendHost: string, backendPort: number,
  *  accessToken: string, cookieName: string, controlPrefix: string,
- *  maxRequestBytes: number, upstreamTimeoutMs: number,
+ *  maxRequestBytes: number, upstreamTimeoutMs: number, sessionMaxAgeSeconds: number,
  * }} spec
  * @returns {Promise<{ host: string, port: number, close: () => Promise<void> }>}
  */
@@ -215,6 +245,7 @@ export function listenProxy(spec) {
       method: 'GET',
       headers,
     })
+    up.setTimeout(spec.upstreamTimeoutMs, () => { up.destroy() })
     up.on('upgrade', (upRes, upSocket, upHead) => {
       const lines = [`HTTP/1.1 ${upRes.statusCode ?? 101} ${upRes.statusMessage ?? 'Switching Protocols'}`]
       for (const [key, value] of Object.entries(upRes.headers)) {
@@ -229,6 +260,21 @@ export function listenProxy(spec) {
       if (head.length > 0) upSocket.write(head)
       upSocket.pipe(socket)
       socket.pipe(upSocket)
+    })
+    // Upstream answered without upgrading (non-101): relay the status line
+    // and close instead of leaving the client socket hanging.
+    up.on('response', (upRes) => {
+      const lines = [`HTTP/1.1 ${upRes.statusCode ?? 502} ${upRes.statusMessage ?? 'Bad Gateway'}`, 'Connection: close']
+      for (const [key, value] of Object.entries(upRes.headers)) {
+        if (key.toLowerCase() === 'connection' || key.toLowerCase() === 'transfer-encoding') continue
+        if (Array.isArray(value)) {
+          for (const item of value) lines.push(`${key}: ${item}`)
+        } else if (value !== undefined) {
+          lines.push(`${key}: ${value}`)
+        }
+      }
+      socket.write(`${lines.join('\r\n')}\r\n\r\n`)
+      socket.destroy()
     })
     up.on('error', () => { socket.destroy() })
     socket.on('error', () => { up.destroy() })

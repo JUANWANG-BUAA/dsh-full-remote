@@ -26,7 +26,7 @@ export default defineConfig([
     fixedExtension: false,
     clean: false,
     sourcemap: true,
-    external: ['@deepseek-ai/schemastery'],
+    deps: { neverBundle: ['@deepseek-ai/schemastery'] },
   },
   {
     name: `${ID}/client`,
@@ -37,8 +37,10 @@ export default defineConfig([
     target: 'es2022',
     clean: false,
     sourcemap: true,
-    external: EXTERNALS,
-    noExternal: id => EXTERNALS.includes(id) ? undefined : true,
+    deps: {
+      neverBundle: EXTERNALS,
+      alwaysBundle: id => (EXTERNALS.includes(id) ? undefined : true),
+    },
     define: {
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
     },

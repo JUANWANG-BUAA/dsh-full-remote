@@ -20,6 +20,7 @@ const stopped: ProxyStatus = {
   running: false,
   target: 'http://127.0.0.1:3081',
   backend: 'http://127.0.0.1:3080',
+  listen: { host: '127.0.0.1', port: 3081 },
 }
 
 function api(overrides: Partial<ProxyApi> = {}): ProxyApi {
@@ -29,6 +30,7 @@ function api(overrides: Partial<ProxyApi> = {}): ProxyApi {
     stop: vi.fn().mockResolvedValue(stopped),
     token: vi.fn().mockResolvedValue('secret-token'),
     rotateToken: vi.fn().mockResolvedValue({ ...stopped, accessToken: 'next-token' }),
+    setListen: vi.fn().mockResolvedValue(stopped),
     ...overrides,
   }
 }
@@ -75,5 +77,40 @@ describe('remote client UI', () => {
     expect(screen.queryByText('secret-token')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '显示访问令牌' }))
     expect(await screen.findByText('secret-token')).toBeTruthy()
+  })
+
+  it('applies a custom listen address and warns about non-loopback binds', async () => {
+    const service = api({
+      setListen: vi.fn().mockResolvedValue({ ...stopped, listen: { host: '0.0.0.0', port: 9081 } }),
+    })
+    render(
+      <RemoteOverlay
+        api={service}
+        actions={{ open: vi.fn(), close: vi.fn() }}
+        useStore={selector => selector({ open: true })}
+      />,
+    )
+    await waitFor(() => expect(service.status).toHaveBeenCalledOnce())
+    fireEvent.change(screen.getByPlaceholderText('127.0.0.1'), { target: { value: '0.0.0.0' } })
+    fireEvent.change(screen.getByPlaceholderText('3081'), { target: { value: '9081' } })
+    expect(screen.getByText(/非回环/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '应用发布地址' }))
+    await waitFor(() => expect(service.setListen).toHaveBeenCalledWith('0.0.0.0', 9081))
+  })
+
+  it('rejects an empty listen host without calling the API', async () => {
+    const service = api()
+    render(
+      <RemoteOverlay
+        api={service}
+        actions={{ open: vi.fn(), close: vi.fn() }}
+        useStore={selector => selector({ open: true })}
+      />,
+    )
+    await waitFor(() => expect(service.status).toHaveBeenCalledOnce())
+    fireEvent.change(screen.getByPlaceholderText('127.0.0.1'), { target: { value: '  ' } })
+    fireEvent.click(screen.getByRole('button', { name: '应用发布地址' }))
+    expect(service.setListen).not.toHaveBeenCalled()
+    expect(await screen.findByText(/请输入有效的发布地址/)).toBeTruthy()
   })
 })

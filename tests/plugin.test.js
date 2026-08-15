@@ -37,6 +37,25 @@ function http({ port, path = '/', method = 'GET', headers = {}, body }) {
   })
 }
 
+function chunked({ port, path = '/', headers = {}, chunks }) {
+  return new Promise((resolve, reject) => {
+    const req = request({
+      hostname: '127.0.0.1',
+      port,
+      path,
+      method: 'POST',
+      headers: { ...headers, 'transfer-encoding': 'chunked' },
+    }, (res) => {
+      const parts = []
+      res.on('data', chunk => parts.push(chunk))
+      res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(parts).toString('utf8') }))
+    })
+    req.on('error', reject)
+    for (const chunk of chunks) req.write(chunk)
+    req.end()
+  })
+}
+
 describe('security', () => {
   it('generates strong URL-safe tokens and compares them safely', () => {
     const token = generateAccessToken()
@@ -68,6 +87,31 @@ describe('persistence', () => {
     assert.deepEqual(await readState(path), { enabled: true, accessToken: 'x'.repeat(32) })
     assert.equal((await readFile(path, 'utf8')).endsWith('\n'), true)
   })
+
+  it('keeps well-formed listen overrides and drops malformed ones', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const path = join(dir, 'state.json')
+    await writeState(path, {
+      enabled: true,
+      accessToken: 'x'.repeat(32),
+      listenHost: '0.0.0.0',
+      listenPort: 9081,
+    })
+    assert.deepEqual(await readState(path), {
+      enabled: true,
+      accessToken: 'x'.repeat(32),
+      listenHost: '0.0.0.0',
+      listenPort: 9081,
+    })
+    await writeState(path, {
+      enabled: true,
+      accessToken: 'x'.repeat(32),
+      listenHost: 'bad host',
+      listenPort: 99999,
+    })
+    assert.deepEqual(await readState(path), { enabled: true, accessToken: 'x'.repeat(32) })
+  })
 })
 
 describe('viewport injection', () => {
@@ -80,7 +124,7 @@ describe('viewport injection', () => {
 })
 
 describe('header forwarding', () => {
-  it('drops spoofable and hop-by-hop fields', () => {
+  it('drops spoofable, hop-by-hop, and internal credential fields', () => {
     const headers = forwardHeaders({
       headers: {
         host: 'public.example',
@@ -88,6 +132,7 @@ describe('header forwarding', () => {
         forwarded: 'for=attacker',
         'x-forwarded-for': 'attacker',
         'x-real-ip': 'attacker',
+        cookie: 'dsh_reverse_proxy_session=secret',
         authorization: 'Bearer ok',
       },
       socket: { remoteAddress: '127.0.0.1' },
@@ -97,6 +142,7 @@ describe('header forwarding', () => {
     assert.equal(headers['x-forwarded-for'], '127.0.0.1')
     assert.equal(headers.forwarded, undefined)
     assert.equal(headers.connection, undefined)
+    assert.equal(headers.cookie, undefined)
     assert.equal(headers['x-dsh-reverse-proxy'], '1')
   })
 })
@@ -104,7 +150,10 @@ describe('header forwarding', () => {
 describe('authenticated reverse proxy', () => {
   it('gates access, blocks control paths, and forwards authenticated traffic', async () => {
     const backend = createServer((req, res) => {
-      res.writeHead(200, { 'content-type': 'application/json' })
+      res.writeHead(200, {
+        'content-type': 'application/json',
+        'set-cookie': 'backend_session=should-not-leak; Path=/',
+      })
       res.end(JSON.stringify({
         path: req.url,
         host: req.headers.host,
@@ -128,6 +177,7 @@ describe('authenticated reverse proxy', () => {
       controlPrefix: '/dsh-reverse-proxy',
       maxRequestBytes: 1024,
       upstreamTimeoutMs: 2000,
+      sessionMaxAgeSeconds: 3600,
     })
     cleanups.push(proxy.close)
 
@@ -152,6 +202,7 @@ describe('authenticated reverse proxy', () => {
       body: `token=${encodeURIComponent(token)}`,
     })
     assert.equal(login.status, 303)
+    assert.match(login.headers['set-cookie'][0], /Max-Age=3600/)
     const cookie = login.headers['set-cookie'][0].split(';', 1)[0]
 
     const blocked = await http({
@@ -167,10 +218,62 @@ describe('authenticated reverse proxy', () => {
       headers: { cookie },
     })
     assert.equal(proxied.status, 200)
+    assert.equal(proxied.headers['set-cookie'], undefined)
     assert.deepEqual(JSON.parse(proxied.body), {
       path: '/api/example',
       host: `127.0.0.1:${backendPort}`,
       marker: '1',
     })
+  })
+
+  it('enforces the byte limit on chunked uploads that declare no content-length', async () => {
+    const backend = createServer((req, res) => {
+      req.resume()
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      res.end('ok')
+    })
+    await new Promise((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise(resolve => backend.close(resolve)))
+    const token = generateAccessToken()
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: backend.address().port,
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 1024,
+      upstreamTimeoutMs: 2000,
+    })
+    cleanups.push(proxy.close)
+
+    const login = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    const cookie = login.headers['set-cookie'][0].split(';', 1)[0]
+
+    const over = await chunked({
+      port: proxy.port,
+      path: '/api/upload',
+      headers: { cookie },
+      chunks: ['a'.repeat(800), 'b'.repeat(800)],
+    })
+    assert.equal(over.status, 413)
+
+    const under = await chunked({
+      port: proxy.port,
+      path: '/api/upload',
+      headers: { cookie },
+      chunks: ['a'.repeat(200), 'b'.repeat(200)],
+    })
+    assert.equal(under.status, 200)
   })
 })
