@@ -21,6 +21,8 @@ export const Config = Schema.object({
   headersTimeoutMs: Schema.number().min(1000).default(15_000).description('Timeout for a client to send a complete request head.'),
   keepAliveTimeoutMs: Schema.number().min(1000).default(5_000).description('Keep-alive timeout for idle proxy connections.'),
   loginDelayMs: Schema.number().min(0).max(10_000).default(250).description('Fixed delay after a failed login, slowing token guessing.'),
+  loginMaxAttempts: Schema.number().min(1).default(5).description('Failed login attempts per remote IP before that IP is locked out.'),
+  loginLockoutSeconds: Schema.number().min(10).default(300).description('Lockout duration for a remote IP that exceeded loginMaxAttempts.'),
   logRequests: Schema.boolean().default(false).description('Log every proxied request at debug level.'),
 })
 
@@ -49,6 +51,33 @@ export function injectViewport(html) {
     /content="width=device-width, initial-scale=1(?:, viewport-fit=cover)?"/,
     `content="${VIEWPORT}"`,
   )
+}
+
+/**
+ * Remote browsers reach this app over plain HTTP at a non-loopback host,
+ * which the browser treats as an insecure context. `crypto.randomUUID` is
+ * secure-context-only, and the DeepSeek Harness Web composer calls it when attaching
+ * files — on a proxied page that call throws and breaks attachments. This
+ * guarded shim restores it from `crypto.getRandomValues`, which remains
+ * available in insecure contexts. No-op on loopback and HTTPS origins.
+ */
+const RANDOM_UUID_POLYFILL = '<script data-plugin="dsh-reverse-proxy">'
+  + '(function(){var c=globalThis.crypto;'
+  + 'if(c&&typeof c.randomUUID!=="function"&&typeof c.getRandomValues==="function"){'
+  + 'function u(){var b=c.getRandomValues(new Uint8Array(16));'
+  + 'b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;var h=[];'
+  + 'for(var i=0;i<16;i++){var s=b[i].toString(16);h[i]=s.length===1?"0"+s:s}'
+  + 'return h[0]+h[1]+h[2]+h[3]+"-"+h[4]+h[5]+"-"+h[6]+h[7]+"-"+h[8]+h[9]+"-"+h[10]+h[11]+h[12]+h[13]+h[14]+h[15]}'
+  + 'try{Object.defineProperty(c,"randomUUID",{value:u,configurable:true})}'
+  + 'catch(e){try{c.randomUUID=u}catch(e2){}}}})();'
+  + '</script>'
+
+export function injectIndexEnhancements(html) {
+  const withViewport = injectViewport(html)
+  if (!withViewport.includes('<head>')) return withViewport
+  // Idempotent: multiple taps (or a retried transform) must not stack copies.
+  if (withViewport.includes('data-plugin="dsh-reverse-proxy"')) return withViewport
+  return withViewport.replace('<head>', `<head>${RANDOM_UUID_POLYFILL}`)
 }
 
 function isLoopbackAddress(address) {
@@ -179,12 +208,19 @@ export function createRuntime(ctx, config) {
     if (disposed) return snapshot({ reason: 'disposed' })
     if (bound !== undefined) return snapshot()
     const { host, port } = effectiveListen()
+    const backendPort = config.backendPort || ctx.webServer.port
+    // A backend pointing at the proxy's own listen address would loop every
+    // request back into itself. Refuse loudly instead of spinning.
+    if (host === config.backendHost && port === backendPort) {
+      ctx.logger.warn(`reverse-proxy: refusing to start — backend (${config.backendHost}:${backendPort}) equals the listen address`)
+      return snapshot({ reason: 'self-loop' })
+    }
     try {
       bound = await listenProxy({
         listenHost: host,
         listenPort: port,
         backendHost: config.backendHost,
-        backendPort: config.backendPort || ctx.webServer.port,
+        backendPort,
         accessToken: state.accessToken,
         cookieName: config.cookieName,
         controlPrefix: CONTROL_PREFIX,
@@ -195,6 +231,8 @@ export function createRuntime(ctx, config) {
         headersTimeoutMs: config.headersTimeoutMs,
         keepAliveTimeoutMs: config.keepAliveTimeoutMs,
         loginDelayMs: config.loginDelayMs,
+        loginMaxAttempts: config.loginMaxAttempts,
+        loginLockoutMs: config.loginLockoutSeconds * 1000,
         log: config.logRequests
           ? entry => { ctx.logger.debug(`reverse-proxy: ${entry.remote ?? '-'} ${entry.method} ${entry.path} -> ${entry.status}`) }
           : undefined,
@@ -340,7 +378,7 @@ export function apply(ctx, config) {
       path: CONTROL_PREFIX,
       handler: (req, res) => runtime.handle(req, res),
     })
-    const untap = ctx.webServer.tapIndex(injectViewport)
+    const untap = ctx.webServer.tapIndex(injectIndexEnhancements)
     ctx.logger.info(`reverse-proxy: control surface mounted at ${CONTROL_PREFIX} (loopback only)`)
     void runtime.restore()
     return async () => {

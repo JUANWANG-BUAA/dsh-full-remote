@@ -6,22 +6,26 @@ bundle, so most changes are small and self-contained.
 
 ## Getting started
 
-The DeepSeek Harness client type packages are pinned as `link:` devDependencies
-to a sibling checkout (their npm releases predate the slot API this plugin
-mounts on). One command sets everything up:
+Dependencies install from npm — no special layout is required.
 
-```sh
-pnpm run bootstrap   # clones deepseek-harness at the pinned commit if missing, then installs
-```
+- `pnpm install` (frozen lockfile) + `pnpm run check:ci` works anywhere:
+  the CI fallback declarations in `types/ci.d.ts` stand in for the harness
+  client types.
+- `pnpm run bootstrap` (optional) clones a pinned DeepSeek Harness checkout
+  next to this repo and builds its client types, so `pnpm run check` runs
+  against the real type contracts. `tsconfig.json` maps the client
+  specifiers to that sibling checkout when present.
 
 ## Checks
 
 ```sh
-pnpm run check       # typecheck (real harness types) + unit/client tests + build
-pnpm run check:ci    # typecheck with the CI fallback declarations + tests + build
+pnpm run check       # lint + typecheck (real harness types) + tests + build
+pnpm run check:ci    # lint + typecheck with the CI fallback declarations + tests + build
 ```
 
-CI runs `pnpm run check:ci` on every push and pull request.
+CI runs `pnpm run check:ci` on every push and pull request, plus a real-boot
+smoke job (`scripts/smoke.mjs`) that installs the bundle through
+`dsh plugin add` and exercises it against a live harness composition.
 
 ## Tests
 

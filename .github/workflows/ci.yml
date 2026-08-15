@@ -11,20 +11,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # devDependencies pin the DSh type packages to a sibling checkout
-      # (`link:../deepseek-harness/...`). actions/checkout only writes inside
-      # the workspace, so clone into `.harness` and symlink it into place.
-      - name: Fetch DeepSeek Harness checkout
-        uses: actions/checkout@v4
-        with:
-          repository: deepseek-ai/deepseek-harness
-          ref: 47f943859bef60e4160492346772ded9b24f765a
-          path: .harness
-          filter: blob:none
-
-      - name: Link harness as the sibling checkout devDependencies expect
-        run: ln -s "$GITHUB_WORKSPACE/.harness" "$(dirname "$GITHUB_WORKSPACE")/deepseek-harness"
-
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
@@ -33,10 +19,48 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
-      # typecheck:ci uses the ambient fallback declarations (types.ci.d.ts):
-      # the harness client packages' types are gitignored build outputs, so a
-      # fresh clone cannot resolve them until the monorepo is built.
-      - name: Typecheck, test, and build
+      # check:ci typechecks against the ambient fallback declarations in
+      # types/ci.d.ts, so no sibling harness checkout is required here.
+      - name: Lint, typecheck (CI declarations), test, build
         run: pnpm run check:ci
+
+  smoke:
+    # Real-boot seam-drift alarm: installs this bundle through the
+    # community-standard `dsh plugin add` flow into a temp profile, boots a
+    # real DeepSeek Harness web composition, and exercises the control
+    # surface, login gate, rate limiter, and index polyfill over HTTP.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install plugin dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The harness has no published CLI: boot from a pinned source checkout.
+      - name: Fetch DeepSeek Harness checkout
+        uses: actions/checkout@v4
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: 47f943859bef60e4160492346772ded9b24f765a
+          path: .harness
+          filter: blob:none
+
+      - name: Install harness (its own pnpm via corepack)
+        run: |
+          corepack enable
+          corepack pnpm install --frozen-lockfile
+        working-directory: .harness
+
+      - name: Real-boot smoke test
+        run: node scripts/smoke.mjs
+        env:
+          HARNESS_DIR: ${{ github.workspace }}/.harness

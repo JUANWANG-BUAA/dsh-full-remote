@@ -4,6 +4,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import { RemoteAction } from './RemoteAction.tsx'
 import { RemoteOverlay } from './RemoteOverlay.tsx'
 import { createRemotePanelStore } from './store.ts'
+import { bindTranslate } from './i18n.ts'
 import type { ProxyApi, ProxyStatus } from './types.ts'
 
 export const inject = ['slots']
@@ -43,6 +44,8 @@ function createApi(): ProxyApi {
 export function apply(ctx: ClientContext): void {
   const store = createRemotePanelStore()
   const api = createApi()
+  const { t, dispose } = bindTranslate(ctx)
+  if (dispose !== undefined) ctx.effect(() => dispose)
   // `sidebar.footer.action` is an ascending-order list slot; -1 pins this
   // entry above every other bottom control (Settings, third-party actions),
   // i.e. the very first row of the sidebar foot block.
@@ -51,12 +54,13 @@ export function apply(ctx: ClientContext): void {
     id: 'reverse-proxy',
     order: -1,
     store,
+    inject: () => ({ t }),
   }, RemoteAction))
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay',
     id: 'reverse-proxy',
     order: 40,
     store,
-    inject: () => ({ api }),
+    inject: () => ({ api, t }),
   }, RemoteOverlay))
 }

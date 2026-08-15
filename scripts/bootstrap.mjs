@@ -1,11 +1,14 @@
 /**
- * One-shot contributor bootstrap.
+ * One-shot contributor bootstrap (optional).
  *
- * The devDependencies intentionally pin the DSh type packages to a sibling
- * `../deepseek-harness` checkout (the npm registry only carries client
- * packages older than the slot API this plugin mounts on). This script clones
- * that checkout at the exact commit the plugin is developed against when it
- * is missing, then installs dependencies.
+ * Dependencies now install straight from npm — no sibling checkout is
+ * required. The ONLY reason to clone DeepSeek Harness locally is to give
+ * `pnpm run check` the real built client types: tsconfig.json maps the
+ * client specifiers to a sibling checkout's `lib/types` outputs, and
+ * `types/ci.d.ts` provides the CI fallback when the sibling is absent.
+ *
+ * Without the checkout, use `pnpm run check:ci` (identical gates, ambient
+ * declarations instead of real types).
  *
  * Usage: pnpm run bootstrap
  */
@@ -31,13 +34,16 @@ const run = (command, args, options = {}) => {
 }
 
 if (!existsSync(join(sibling, 'package.json'))) {
-  console.log(`[bootstrap] cloning DeepSeek Harness into ${sibling} …`)
+  console.log(`[bootstrap] cloning DeepSeek Harness into ${sibling} (for real client types) …`)
   run('git', ['clone', '--filter=blob:none', HARNESS_REPO, sibling])
   run('git', ['checkout', HARNESS_COMMIT], { cwd: sibling })
+  console.log('[bootstrap] building the harness client packages (real types) …')
+  run('pnpm', ['install', '--frozen-lockfile'], { cwd: sibling })
+  run('pnpm', ['run', 'build:lib:client'], { cwd: sibling })
 } else {
   console.log(`[bootstrap] using existing checkout: ${sibling}`)
 }
 
 console.log('[bootstrap] installing dependencies …')
 run('pnpm', ['install', '--no-frozen-lockfile'], { cwd: root })
-console.log('[bootstrap] done. Run `pnpm run check` to verify.')
+console.log('[bootstrap] done. Run `pnpm run check` (with real types) or `pnpm run check:ci` (self-contained).')

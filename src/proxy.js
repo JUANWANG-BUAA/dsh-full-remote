@@ -29,6 +29,61 @@ const SPOOFABLE_FORWARDING = new Set([
 const INTERNAL_HEADERS = new Set(['cookie'])
 const LOGIN_PATH = '/_dsh_reverse_proxy/login'
 const LOGIN_FAILURE_DELAY_MS = 250
+const MAX_TRACKED_LOGIN_IPS = 4096
+
+/**
+ * Per-IP failed-login tracker with a lockout window. The fixed per-attempt
+ * delay alone is parallelizable; this bounds total guessing capacity per
+ * source address. Memory is bounded: past the cap, expired entries are
+ * swept, and under an active spoofed-source attack the oldest entry is
+ * evicted so the proxy can never be driven to unbounded memory.
+ * @param {{ loginMaxAttempts?: number, loginLockoutMs?: number }} spec
+ */
+function createLoginTracker(spec) {
+  const maxAttempts = spec.loginMaxAttempts ?? 5
+  const lockoutMs = spec.loginLockoutMs ?? 300_000
+  /** @type {Map<string, { failures: number, firstFailure: number, lockedUntil?: number }>} */
+  const buckets = new Map()
+  const sweepExpired = (now) => {
+    for (const [ip, bucket] of buckets) {
+      if (bucket.lockedUntil !== undefined && bucket.lockedUntil <= now) buckets.delete(ip)
+      else if (now - bucket.firstFailure > lockoutMs) buckets.delete(ip)
+    }
+  }
+  return {
+    /** @returns {number} seconds the client must wait; 0 means allowed. */
+    check(ip, now = Date.now()) {
+      const bucket = buckets.get(ip)
+      if (bucket?.lockedUntil !== undefined) {
+        if (bucket.lockedUntil > now) return Math.ceil((bucket.lockedUntil - now) / 1000)
+        buckets.delete(ip)
+      }
+      return 0
+    },
+    fail(ip, now = Date.now()) {
+      const bucket = buckets.get(ip)
+      if (bucket === undefined || now - bucket.firstFailure > lockoutMs) {
+        buckets.set(ip, { failures: 1, firstFailure: now })
+        return
+      }
+      bucket.failures += 1
+      if (bucket.failures >= maxAttempts) bucket.lockedUntil = now + lockoutMs
+    },
+    success(ip) {
+      buckets.delete(ip)
+    },
+    prune(now = Date.now()) {
+      if (buckets.size <= MAX_TRACKED_LOGIN_IPS) return
+      sweepExpired(now)
+      if (buckets.size <= MAX_TRACKED_LOGIN_IPS) return
+      let oldest
+      for (const entry of buckets) {
+        if (oldest === undefined || entry[1].firstFailure < oldest[1].firstFailure) oldest = entry
+      }
+      if (oldest !== undefined) buckets.delete(oldest[0])
+    },
+  }
+}
 
 export function pathnameOf(url) {
   try {
@@ -67,10 +122,38 @@ function html(res, status, body, extra = {}) {
   res.end(body)
 }
 
-function loginPage(error = '') {
+const LOGIN_COPY = {
+  zh: {
+    title: 'DeepSeek Harness 远程访问',
+    intro: '此入口由通用反向代理保护。请输入本机控制面显示的访问令牌。',
+    label: '访问令牌',
+    submit: '进入 DeepSeek Harness',
+    invalidToken: '令牌无效，请重试。',
+    invalidRequest: '请求无效，请重试。',
+  },
+  en: {
+    title: 'DeepSeek Harness remote access',
+    intro: 'This entry is protected by a reverse proxy. Enter the access token shown in the local control panel.',
+    label: 'Access token',
+    submit: 'Enter DeepSeek Harness',
+    invalidToken: 'Invalid token, please retry.',
+    invalidRequest: 'Invalid request, please retry.',
+  },
+}
+
+/** zh stays the default (matching the harness fallback locale); explicit
+ *  English Accept-Language heads get the English gate. */
+function loginLocale(req) {
+  const header = String(req.headers['accept-language'] ?? '').toLowerCase()
+  if (header !== '' && !header.startsWith('zh')) return 'en'
+  return 'zh'
+}
+
+function loginPage(locale, error = '') {
+  const copy = LOGIN_COPY[locale] ?? LOGIN_COPY.zh
   const message = error === '' ? '' : `<p role="alert">${error}</p>`
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>DeepSeek Harness 远程访问</title><style>
-  :root{color-scheme:light dark;font-family:ui-sans-serif,system-ui,sans-serif}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#f4f6f8;color:#15171a}.card{box-sizing:border-box;width:min(92vw,420px);padding:28px;border:1px solid #d9dde3;border-radius:20px;background:#fff;box-shadow:0 16px 48px #0002}h1{font-size:22px;margin:0 0 8px}p{font-size:14px;line-height:1.6;color:#5b6470}label{display:block;font-size:13px;font-weight:600;margin:22px 0 8px}input,button{box-sizing:border-box;width:100%;min-height:48px;border-radius:12px;font:inherit}input{padding:0 14px;border:1px solid #c8ced7;background:transparent;color:inherit}button{margin-top:14px;border:0;background:#111;color:#fff;font-weight:650;cursor:pointer}@media(prefers-color-scheme:dark){body{background:#111418;color:#f7f8fa}.card{background:#1b1f24;border-color:#343a43}p{color:#aeb6c2}input{border-color:#4b535e}button{background:#f7f8fa;color:#111}}@media(prefers-reduced-motion:no-preference){button{transition:transform .15s ease}button:active{transform:scale(.98)}}</style></head><body><main class="card"><h1>DeepSeek Harness 远程访问</h1><p>此入口由通用反向代理保护。请输入本机控制面显示的访问令牌。</p>${message}<form method="post" action="${LOGIN_PATH}"><label for="token">访问令牌</label><input id="token" name="token" type="password" autocomplete="current-password" required autofocus><button type="submit">进入 DeepSeek Harness</button></form></main></body></html>`
+  return `<!doctype html><html lang="${locale === 'en' ? 'en' : 'zh-CN'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${copy.title}</title><style>
+  :root{color-scheme:light dark;font-family:ui-sans-serif,system-ui,sans-serif}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#f4f6f8;color:#15171a}.card{box-sizing:border-box;width:min(92vw,420px);padding:28px;border:1px solid #d9dde3;border-radius:20px;background:#fff;box-shadow:0 16px 48px #0002}h1{font-size:22px;margin:0 0 8px}p{font-size:14px;line-height:1.6;color:#5b6470}label{display:block;font-size:13px;font-weight:600;margin:22px 0 8px}input,button{box-sizing:border-box;width:100%;min-height:48px;border-radius:12px;font:inherit}input{padding:0 14px;border:1px solid #c8ced7;background:transparent;color:inherit}button{margin-top:14px;border:0;background:#111;color:#fff;font-weight:650;cursor:pointer}@media(prefers-color-scheme:dark){body{background:#111418;color:#f7f8fa}.card{background:#1b1f24;border-color:#343a43}p{color:#aeb6c2}input{border-color:#4b535e}button{background:#f7f8fa;color:#111}}@media(prefers-reduced-motion:no-preference){button{transition:transform .15s ease}button:active{transform:scale(.98)}}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.intro}</p>${message}<form method="post" action="${LOGIN_PATH}"><label for="token">${copy.label}</label><input id="token" name="token" type="password" autocomplete="current-password" required autofocus><button type="submit">${copy.submit}</button></form></main></body></html>`
 }
 
 function denySocket(socket, status = '403 Forbidden') {
@@ -155,7 +238,7 @@ function proxyRequest(req, res, spec) {
 
 async function handleLogin(req, res, spec) {
   if (req.method === 'GET') {
-    html(res, 200, loginPage())
+    html(res, 200, loginPage(loginLocale(req)))
     return
   }
   if (req.method !== 'POST') {
@@ -164,14 +247,28 @@ async function handleLogin(req, res, spec) {
     return
   }
   try {
+    const remote = req.socket.remoteAddress ?? ''
+    const retryAfter = spec.loginTracker.check(remote)
+    if (retryAfter > 0) {
+      res.writeHead(429, {
+        'content-type': 'text/plain; charset=utf-8',
+        'cache-control': 'no-store',
+        'retry-after': String(retryAfter),
+      })
+      res.end('too many attempts\n')
+      return
+    }
     const form = new URLSearchParams(await readForm(req))
     if (!safeEqual(form.get('token') ?? '', spec.accessToken)) {
+      spec.loginTracker.fail(remote)
+      spec.loginTracker.prune()
       // Fixed delay so a failed login costs the same as a successful one,
       // slowing token guessing without a measurable timing difference.
       await new Promise(resolve => setTimeout(resolve, spec.loginDelayMs ?? LOGIN_FAILURE_DELAY_MS))
-      html(res, 401, loginPage('令牌无效，请重试。'))
+      html(res, 401, loginPage(loginLocale(req), LOGIN_COPY[loginLocale(req)].invalidToken))
       return
     }
+    spec.loginTracker.success(remote)
     const secure = req.headers['x-forwarded-proto'] === 'https'
     res.writeHead(303, {
       location: '/',
@@ -180,7 +277,7 @@ async function handleLogin(req, res, spec) {
     })
     res.end()
   } catch {
-    html(res, 400, loginPage('请求无效，请重试。'))
+    html(res, 400, loginPage(loginLocale(req), LOGIN_COPY[loginLocale(req)].invalidRequest))
   }
 }
 
@@ -191,7 +288,7 @@ async function handleLogin(req, res, spec) {
  *  accessToken: string, cookieName: string, controlPrefix: string,
  *  maxRequestBytes: number, upstreamTimeoutMs: number, sessionMaxAgeSeconds: number,
  *  maxHeaderSizeBytes?: number, headersTimeoutMs?: number, keepAliveTimeoutMs?: number,
- *  loginDelayMs?: number,
+ *  loginDelayMs?: number, loginMaxAttempts?: number, loginLockoutMs?: number,
  *  log?: (entry: { method: string, path: string, status: number, remote: string }) => void,
  * }} spec
  * @returns {Promise<{ host: string, port: number, close: () => Promise<void> }>}
@@ -207,7 +304,7 @@ export function listenProxy(spec) {
     upstreamSockets.add(up)
     up.once('close', () => upstreamSockets.delete(up))
   }
-  const runtimeSpec = { ...spec, backendAuthority, trackUpstream }
+  const runtimeSpec = { ...spec, backendAuthority, trackUpstream, loginTracker: createLoginTracker(spec) }
   const logRequest = spec.log === undefined ? undefined : (req, res) => {
     res.once('finish', () => {
       spec.log({ method: req.method, path: req.url ?? '/', status: res.statusCode, remote: req.socket.remoteAddress ?? '' })
@@ -314,10 +411,17 @@ export function listenProxy(spec) {
       server.off('error', reject)
       const address = server.address()
       const port = typeof address === 'object' && address !== null ? address.port : spec.listenPort
+      let closed = false
       resolve({
         host: spec.listenHost,
         port,
         close: () => new Promise((done, closeReject) => {
+          // Idempotent: runtime rollback paths may race a second close.
+          if (closed) {
+            done()
+            return
+          }
+          closed = true
           server.close((error) => error === undefined ? done() : closeReject(error))
           server.closeAllConnections?.()
           // closeAllConnections() leaves upgraded sockets alone — destroy

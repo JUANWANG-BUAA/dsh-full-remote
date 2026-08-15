@@ -112,6 +112,21 @@ describe('runtime control surface', () => {
     assert.deepEqual((await fresh.status()).listen, { host: '0.0.0.0', port: 0 })
   })
 
+  it('refuses to start when the backend equals the listen address (self-loop)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-loop-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const ctx = makeContext()
+    ctx.webServer.port = 3081
+    const runtime = createRuntime(ctx, makeConfig(join(dir, 'state.json'), {
+      listenPort: 3081,
+      backendPort: 0,
+    }))
+    cleanups.push(() => runtime.dispose())
+    const started = await runtime.start()
+    assert.equal(started.running, false)
+    assert.equal(started.reason, 'self-loop')
+  })
+
   it('rejects malformed listen overrides without changing state', async () => {
     const { runtime } = await makeRuntime()
     const bad = await runtime.setListen('bad host', 70000)

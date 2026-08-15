@@ -5,7 +5,7 @@ import { createConnection } from 'node:net'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { injectViewport } from '../src/index.js'
+import { injectIndexEnhancements, injectViewport } from '../src/index.js'
 import { readState, writeState } from '../src/persist.js'
 import { forwardHeaders, listenProxy } from '../src/proxy.js'
 import {
@@ -183,6 +183,58 @@ describe('viewport injection', () => {
   })
 })
 
+describe('index enhancements', () => {
+  const INDEX = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>DeepSeek Harness</title></head><body><div id="root"></div></body></html>'
+
+  it('injects the viewport upgrade and the guarded randomUUID polyfill', () => {
+    const out = injectIndexEnhancements(INDEX)
+    assert.match(out, /viewport-fit=cover/)
+    assert.match(out, /<script data-plugin="dsh-reverse-proxy">/)
+    assert.match(out, /globalThis\.crypto/)
+    assert.match(out, /getRandomValues/)
+  })
+
+  it('places the polyfill exactly once, directly after <head>', () => {
+    const out = injectIndexEnhancements(INDEX)
+    const matches = out.match(/data-plugin="dsh-reverse-proxy"/g) ?? []
+    assert.strictEqual(matches.length, 1)
+    assert.match(out, /<head><script data-plugin="dsh-reverse-proxy">/)
+  })
+
+  it('is idempotent: a second pass does not inject another script', () => {
+    const twice = injectIndexEnhancements(injectIndexEnhancements(INDEX))
+    const matches = twice.match(/data-plugin="dsh-reverse-proxy"/g) ?? []
+    assert.strictEqual(matches.length, 1)
+  })
+
+  it('degrades on HTML without <head>', () => {
+    const out = injectIndexEnhancements('<html><body>bare</body></html>')
+    assert.doesNotMatch(out, /<script/)
+    assert.match(out, /<html>/)
+  })
+
+  it('polyfill guard never assumes a secure context', () => {
+    // The shim must check typeof randomUUID — the guard text itself is the
+    // contract for insecure-context browsers.
+    const out = injectIndexEnhancements(INDEX)
+    assert.match(out, /typeof c\.randomUUID!=="function"/)
+  })
+})
+
+describe('real index fixture', () => {
+  it('upgrades the viewport and injects the polyfill into the harness dist index without touching assets', async () => {
+    const html = await import('node:fs/promises').then(fs => fs.readFile(new URL('./fixtures/dsh-dist-index.html', import.meta.url), 'utf8'))
+    const out = injectIndexEnhancements(html)
+    assert.match(out, /viewport-fit=cover/)
+    assert.match(out, /<head><script data-plugin="dsh-reverse-proxy">/)
+    // Every original asset link and the module entry survive verbatim.
+    for (const line of ['index-Dqw48FrP.js', 'vendor-Cjbwl5VI.js', 'index-CSGf6Qzd.css', 'manifest.webmanifest']) {
+      assert.equal(out.includes(line), true, `missing ${line}`)
+    }
+    assert.equal((out.match(/data-plugin="dsh-reverse-proxy"/g) ?? []).length, 1)
+  })
+})
+
 describe('header forwarding', () => {
   it('drops spoofable, hop-by-hop, and internal credential fields', () => {
     const headers = forwardHeaders({
@@ -348,12 +400,103 @@ describe('authenticated reverse proxy', () => {
   })
 })
 
+describe('login rate limiting', () => {
+  const badLogin = (port, token = 'wrong') => http({
+    port,
+    path: '/_dsh_reverse_proxy/login',
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: `token=${encodeURIComponent(token)}`,
+  })
+
+  async function proxyWith(overrides = {}) {
+    const backend = createServer((req, res) => {
+      req.resume()
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      res.end('ok')
+    })
+    await new Promise((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise(resolve => backend.close(resolve)))
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: backend.address().port,
+      accessToken: 'correct-token',
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 4096,
+      upstreamTimeoutMs: 2000,
+      loginDelayMs: 0,
+      loginMaxAttempts: 3,
+      loginLockoutMs: 60_000,
+      ...overrides,
+    })
+    cleanups.push(proxy.close)
+    return proxy
+  }
+
+  it('locks an IP out after repeated failures and answers 429 with Retry-After', async () => {
+    const proxy = await proxyWith()
+    for (let i = 0; i < 3; i++) {
+      const attempt = await badLogin(proxy.port)
+      assert.equal(attempt.status, 401)
+    }
+    const locked = await badLogin(proxy.port)
+    assert.equal(locked.status, 429)
+    assert.equal(Number(locked.headers['retry-after']) > 0, true)
+    assert.equal(locked.headers['cache-control'], 'no-store')
+  })
+
+  it('keeps the lockout even for the correct token while the window is active', async () => {
+    const proxy = await proxyWith()
+    for (let i = 0; i < 3; i++) await badLogin(proxy.port)
+    const correct = await badLogin(proxy.port, 'correct-token')
+    assert.equal(correct.status, 429)
+  })
+
+  it('clears the bucket on a successful login, so a later single failure is not locked', async () => {
+    const proxy = await proxyWith({ loginMaxAttempts: 2 })
+    assert.equal((await badLogin(proxy.port)).status, 401)
+    const success = await badLogin(proxy.port, 'correct-token')
+    assert.equal(success.status, 303)
+    // Bucket reset: one more failure is attempt #1, not the locking #2.
+    assert.equal((await badLogin(proxy.port)).status, 401)
+    assert.equal((await badLogin(proxy.port, 'correct-token')).status, 303)
+  })
+
+  it('expires the lockout after the configured window', async () => {
+    const proxy = await proxyWith({ loginLockoutMs: 40 })
+    for (let i = 0; i < 3; i++) await badLogin(proxy.port)
+    assert.equal((await badLogin(proxy.port)).status, 429)
+    await new Promise(resolve => setTimeout(resolve, 80))
+    const next = await badLogin(proxy.port)
+    assert.notEqual(next.status, 429)
+  })
+
+  it('serves the login gate in English for English Accept-Language headers', async () => {
+    const proxy = await proxyWith()
+    const en = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      headers: { 'accept-language': 'en-US,en;q=0.9' },
+    })
+    assert.equal(en.status, 200)
+    assert.match(en.body, /Enter DeepSeek Harness/)
+    assert.doesNotMatch(en.body, /远程访问/)
+    const zh = await http({ port: proxy.port, path: '/_dsh_reverse_proxy/login' })
+    assert.match(zh.body, /远程访问/)
+  })
+})
+
 describe('websocket upgrade', () => {
   /** Backend that completes a raw 101 handshake and echoes every upgraded
    * frame back to the sender (node's bare upgrade event does not answer 101
    * by itself — real WebSocket servers do). Like the harness webServer, it
-   * tracks its own upgraded sockets so cleanup can tear them down reliably:
-   * destroying the client side of an upgrade does not propagate in Node. */
+   * tracks its own upgraded sockets so cleanup can tear them down reliably. */
   async function echoBackend() {
     const upgraded = new Set()
     const backend = createServer((req, res) => {
@@ -428,5 +571,44 @@ describe('websocket upgrade', () => {
     socket.write(frame)
     const echoed = await readSocket(socket)
     assert.deepEqual(echoed, frame)
+  })
+
+  it('propagates FIN to the backend socket when the proxy closes an upgraded session', async () => {
+    const backend = await echoBackend()
+    let backendEnded = false
+    const realUpgrade = backend.listeners('upgrade')[0]
+    backend.removeAllListeners('upgrade')
+    backend.on('upgrade', (req, socket) => {
+      realUpgrade(req, socket)
+      socket.once('end', () => { backendEnded = true })
+    })
+    const token = generateAccessToken()
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: backend.address().port,
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 1024,
+      upstreamTimeoutMs: 2000,
+      loginDelayMs: 0,
+    })
+    cleanups.push(proxy.close)
+    const login = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    const cookie = login.headers['set-cookie'][0].split(';', 1)[0]
+    const { socket } = await wsHandshake({ port: proxy.port, path: '/ws', cookie })
+    cleanups.push(() => socket.destroy())
+
+    await proxy.close()
+    await new Promise(resolve => setTimeout(resolve, 300))
+    assert.equal(backendEnded, true)
   })
 })

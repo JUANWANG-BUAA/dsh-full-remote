@@ -4,18 +4,19 @@ import type { PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { createRemotePanelStore } from './store.ts'
 import type { ProxyApi, ProxyStatus } from './types.ts'
+import type { ReverseProxyTranslate } from './i18n.ts'
 import css from './remote.module.css'
 
 export type RemoteOverlayProps =
   & PropsRuntime<'shell.overlay'>
   & PropsStore<ReturnType<typeof createRemotePanelStore>>
-  & { api: ProxyApi }
+  & { api: ProxyApi, t: ReverseProxyTranslate }
 
 function messageOf(error: unknown) {
-  return error instanceof Error ? error.message : '操作失败，请稍后重试。'
+  return error instanceof Error ? error.message : ''
 }
 
-export function RemoteOverlay({ useStore, actions, api }: RemoteOverlayProps) {
+export function RemoteOverlay({ useStore, actions, api, t }: RemoteOverlayProps) {
   const open = useStore(state => state.open)
   const [status, setStatus] = useState<ProxyStatus>()
   const [accessToken, setAccessToken] = useState<string>()
@@ -40,7 +41,7 @@ export function RemoteOverlay({ useStore, actions, api }: RemoteOverlayProps) {
           setListenPort(prev => (prev === '' ? String(value.listen!.port) : prev))
         }
       },
-      reason => { if (active) setError(messageOf(reason)) },
+      reason => { if (active) setError(messageOf(reason) || t('error.generic')) },
     )
     const node = dialog.current
     if (node && typeof node.showModal === 'function' && !node.open) node.showModal()
@@ -64,18 +65,48 @@ export function RemoteOverlay({ useStore, actions, api }: RemoteOverlayProps) {
     try {
       setStatus(await operation())
     } catch (reason) {
-      setError(messageOf(reason))
+      setError(messageOf(reason) || t('error.generic'))
     } finally {
       setBusy(false)
     }
   }
 
-  const copy = async (value: string, label: string) => {
+  // Remote browsers run on plain HTTP, an insecure context where the async
+  // Clipboard API is unavailable. Fall back to the legacy execCommand path
+  // so copying the tunnel target and access token keeps working on phones.
+  const copyViaExecCommand = (value: string) => {
+    const textarea = document.createElement('textarea')
+    textarea.value = value
+    textarea.setAttribute('readonly', '')
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    let ok = false
     try {
-      await navigator.clipboard.writeText(value)
-      setError(`${label}已复制。`)
+      ok = document.execCommand('copy')
     } catch {
-      setError(`无法复制${label}。`)
+      // execCommand removed by the browser: ok stays false and we report it.
+    }
+    textarea.remove()
+    return ok
+  }
+
+  const copy = async (value: string, label: string, doneKey: 'copied.target' | 'copied.token') => {
+    try {
+      if (navigator.clipboard?.writeText !== undefined) {
+        await navigator.clipboard.writeText(value)
+      } else if (!copyViaExecCommand(value)) {
+        setError(t('copy.failed', { label }))
+        return
+      }
+      setError(t(doneKey))
+    } catch {
+      if (!copyViaExecCommand(value)) {
+        setError(t('copy.failed', { label }))
+        return
+      }
+      setError(t(doneKey))
     }
   }
 
@@ -85,7 +116,7 @@ export function RemoteOverlay({ useStore, actions, api }: RemoteOverlayProps) {
     try {
       setAccessToken(await api.token())
     } catch (reason) {
-      setError(messageOf(reason))
+      setError(messageOf(reason) || t('error.generic'))
     } finally {
       setBusy(false)
     }
@@ -99,7 +130,7 @@ export function RemoteOverlay({ useStore, actions, api }: RemoteOverlayProps) {
       setStatus(next)
       setAccessToken(next.accessToken)
     } catch (reason) {
-      setError(messageOf(reason))
+      setError(messageOf(reason) || t('error.generic'))
     } finally {
       setBusy(false)
     }
@@ -109,7 +140,7 @@ export function RemoteOverlay({ useStore, actions, api }: RemoteOverlayProps) {
     const host = listenHost.trim()
     const port = Number(listenPort)
     if (host === '' || !Number.isInteger(port) || port < 0 || port > 65535) {
-      setError('请输入有效的发布地址和端口（0–65535）。')
+      setError(t('error.invalidListen'))
       return
     }
     setBusy(true)
@@ -122,14 +153,14 @@ export function RemoteOverlay({ useStore, actions, api }: RemoteOverlayProps) {
         setListenPort(String(next.listen.port))
       }
       if (next.reason === 'invalid-listen') {
-        setError('发布地址或端口无效。')
+        setError(t('error.invalidListenServer'))
       } else if (next.reason === 'listen-failed-restored') {
-        setError('新地址无法监听，已恢复到原来的发布地址。')
+        setError(t('error.listenRestored'))
       } else if (next.reason !== undefined && next.reason !== '') {
-        setError(`更新发布地址失败：${next.reason}`)
+        setError(t('error.listenFailed', { reason: next.reason }))
       }
     } catch (reason) {
-      setError(messageOf(reason))
+      setError(messageOf(reason) || t('error.generic'))
     } finally {
       setBusy(false)
     }
@@ -153,25 +184,25 @@ export function RemoteOverlay({ useStore, actions, api }: RemoteOverlayProps) {
         <header className={css.header}>
           <div>
             <p className={css.eyebrow}>REMOTE GATEWAY</p>
-            <h2 id="dsh-rp-title">反向代理</h2>
+            <h2 id="dsh-rp-title">{t('overlay.title')}</h2>
           </div>
-          <button ref={closeButton} className={css.iconButton} type="button" aria-label="关闭" onClick={() => { actions.close() }}>×</button>
+          <button ref={closeButton} className={css.iconButton} type="button" aria-label={t('overlay.close')} onClick={() => { actions.close() }}>×</button>
         </header>
 
         <div className={css.statusCard}>
           <span className={status?.running ? css.onlineDot : css.offlineDot} aria-hidden="true" />
           <div>
-            <strong>{status?.running ? '代理正在运行' : '代理尚未运行'}</strong>
-            <p>{status?.running ? '现在可以让任意 tunnel 指向下方本地端点。' : '启动后会创建受令牌保护的本地入口。'}</p>
+            <strong>{status?.running ? t('status.running') : t('status.stopped')}</strong>
+            <p>{status?.running ? t('status.runningHint') : t('status.stoppedHint')}</p>
           </div>
         </div>
 
         <div className={css.section}>
           <span className={css.label}>LISTEN ADDRESS</span>
-          <p>指定反向代理发布的 IP 与端口。端口填 0 表示自动选择空闲端口；修改后正在运行的代理会自动重启并生效。</p>
+          <p>{t('listen.description')}</p>
           <div className={css.listenRow}>
             <label className={css.field}>
-              <span>IP / 主机</span>
+              <span>{t('listen.host')}</span>
               <input
                 className={css.input}
                 value={listenHost}
@@ -184,7 +215,7 @@ export function RemoteOverlay({ useStore, actions, api }: RemoteOverlayProps) {
               />
             </label>
             <label className={css.field}>
-              <span>端口</span>
+              <span>{t('listen.port')}</span>
               <input
                 className={css.input}
                 value={listenPort}
@@ -194,44 +225,44 @@ export function RemoteOverlay({ useStore, actions, api }: RemoteOverlayProps) {
               />
             </label>
           </div>
-          {nonLoopback && <p className={css.warn}>绑定非回环地址会直接暴露端口，请确保防火墙与 tunnel 配置正确。</p>}
+          {nonLoopback && <p className={css.warn}>{t('listen.warn')}</p>}
           <button
             className={css.secondaryButton}
             type="button"
             disabled={busy}
             onClick={() => { void applyListen() }}
-          >应用发布地址</button>
+          >{t('listen.apply')}</button>
         </div>
 
         <div className={css.section}>
           <div className={css.sectionHeading}>
             <div>
               <span className={css.label}>TUNNEL TARGET</span>
-              <p>将 frp、ngrok、cloudflared 或 SSH 隧道的本地目标设为：</p>
+              <p>{t('tunnel.description')}</p>
             </div>
           </div>
           <button
             className={css.copyField}
             type="button"
             disabled={status === undefined}
-            onClick={() => { if (status !== undefined) void copy(status.target, '端点') }}
+            onClick={() => { if (status !== undefined) void copy(status.target, t('tunnel.copy'), 'copied.target') }}
           >
-            <code>{status?.target ?? '正在读取…'}</code>
-            <span>复制</span>
+            <code>{status?.target ?? t('tunnel.loading')}</code>
+            <span>{t('tunnel.copy')}</span>
           </button>
         </div>
 
         <div className={css.section}>
           <span className={css.label}>ACCESS TOKEN</span>
-          <p>远程浏览器首次访问时必须输入此令牌。轮换后，现有远程会话会失效。</p>
+          <p>{t('token.description')}</p>
           {accessToken === undefined ? (
-            <button className={css.secondaryButton} type="button" disabled={busy} onClick={() => { void revealToken() }}>显示访问令牌</button>
+            <button className={css.secondaryButton} type="button" disabled={busy} onClick={() => { void revealToken() }}>{t('token.reveal')}</button>
           ) : (
             <div className={css.tokenBlock}>
-              <button className={css.copyField} type="button" onClick={() => { void copy(accessToken, '令牌') }}>
-                <code>{accessToken}</code><span>复制</span>
+              <button className={css.copyField} type="button" onClick={() => { void copy(accessToken, t('tunnel.copy'), 'copied.token') }}>
+                <code>{accessToken}</code><span>{t('tunnel.copy')}</span>
               </button>
-              <button className={css.textButton} type="button" disabled={busy} onClick={() => { void rotate() }}>轮换令牌</button>
+              <button className={css.textButton} type="button" disabled={busy} onClick={() => { void rotate() }}>{t('token.rotate')}</button>
             </div>
           )}
         </div>
@@ -245,7 +276,7 @@ export function RemoteOverlay({ useStore, actions, api }: RemoteOverlayProps) {
             disabled={busy || status === undefined}
             onClick={() => { void run(status?.running ? api.stop : api.start) }}
           >
-            {busy ? '处理中…' : status?.running ? '停止代理' : '启动代理'}
+            {busy ? t('busy') : status?.running ? t('stop') : t('start')}
           </button>
         </footer>
       </section>

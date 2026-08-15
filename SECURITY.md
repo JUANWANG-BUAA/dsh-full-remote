@@ -26,7 +26,7 @@ Web UI. Please take security issues seriously.
 - Authentication or authorization bypasses (token check, cookie handling,
   control-surface access).
 - Request smuggling or header-injection vectors through the proxy.
-- Anything that lets a remote client reach DSh control routes or the loopback
+- Anything that lets a remote client reach DeepSeek Harness control routes or the loopback
   backend without the access token.
 
 ## Security model at a glance
@@ -36,6 +36,9 @@ Web UI. Please take security issues seriously.
   derived from the token.
 - Control routes (`/dsh-reverse-proxy/*`) are loopback-only and never
   forwarded through the public proxy.
+- Failed logins are rate-limited per remote IP (configurable
+  `loginMaxAttempts` / `loginLockoutSeconds`) on top of a fixed per-attempt
+  delay.
 - Spoofable forwarding and hop-by-hop headers are stripped; the proxy's own
   session cookie never reaches the backend; request bodies are size-limited
   on the stream.

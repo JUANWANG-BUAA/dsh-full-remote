@@ -1,0 +1,30 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    groups:
+      build-tooling:
+        patterns:
+          - 'tsdown'
+          - 'typescript'
+          - 'eslint'
+          - 'typescript-eslint'
+          - '@eslint/js'
+          - 'vitest'
+          - 'jsdom'
+          - 'lightningcss'
+          - 'globals'
+      react:
+        patterns:
+          - 'react'
+          - 'react-dom'
+          - '@types/react'
+          - '@types/react-dom'
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

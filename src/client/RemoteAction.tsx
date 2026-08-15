@@ -3,16 +3,19 @@ import { createPortal } from 'react-dom'
 import type { PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { createRemotePanelStore } from './store.ts'
+import { findSidebarFootArea, insertSidebarActionRow } from './sidebarFoot.ts'
+import type { ReverseProxyTranslate } from './i18n.ts'
 import css from './remote.module.css'
 
 export type RemoteActionProps =
   & PropsRuntime<'sidebar.footer.action'>
   & PropsStore<ReturnType<typeof createRemotePanelStore>>
+  & { t: ReverseProxyTranslate }
 
 /**
  * "Relay ring" glyph: a hollow hexagonal gateway node with an inbound arrow
  * on the left and an outbound arrow on the right — traffic enters, is relayed
- * by the proxy, and exits. Pure 16×16 fill paths in the official DSh icon
+ * by the proxy, and exits. Pure 16×16 fill paths in the official DeepSeek Harness icon
  * language (fill-based, currentColor); no emoji, no stroke outlines.
  */
 function ReverseProxyIcon({ size = 16 }: { size?: number }) {
@@ -39,35 +42,24 @@ function ReverseProxyIcon({ size = 16 }: { size?: number }) {
   )
 }
 
-export function RemoteAction({ wide, actions }: RemoteActionProps) {
+export function RemoteAction({ wide, actions, t }: RemoteActionProps) {
   // `sidebar.footer.action` is a nowrap flex row shared with other plugins'
-  // footer buttons. To sit on its own line above them, portal our button into
-  // a holder inserted at the top of the foot area. Only our own subtree moves;
-  // the host DOM structure is left untouched. Unknown host layouts degrade to
-  // the inline (in-row) button.
+  // footer buttons. On the standard DeepSeek Harness sidebar layout we promote our button
+  // to a dedicated full-width row above the other actions by portaling it
+  // into a holder inserted at the top of the foot area. Only our own subtree
+  // moves; the host DOM structure is left untouched otherwise, and unknown
+  // host layouts degrade to the inline (in-row) button.
   const anchorRef = useRef<HTMLDivElement | null>(null)
   const [holder, setHolder] = useState<HTMLDivElement | null>(null)
 
   useLayoutEffect(() => {
-    const anchor = anchorRef.current
-    // Walk up from the anchor (slot entry wrapper, display: contents) until we
-    // find the footer area: a column flex container whose child is the actions
-    // row. Unknown host layouts degrade to the inline (in-row) button.
-    let footArea: HTMLElement | null = null
-    let cursor: HTMLElement | null = anchor
-    for (let i = 0; i < 6 && cursor !== null && footArea === null; i++) {
-      const parent = cursor.parentElement
-      const grandparent = parent?.parentElement ?? null
-      if (parent !== null && grandparent !== null && getComputedStyle(grandparent).flexDirection === 'column') {
-        footArea = grandparent
-      }
-      cursor = parent
-    }
-    if (footArea === null) return
-    const node = document.createElement('div')
+    const foot = findSidebarFootArea(anchorRef.current)
+    if (foot === null) return
+    const node = insertSidebarActionRow(foot)
     node.className = css.actionRow
-    footArea.insertBefore(node, footArea.firstElementChild)
-    setHolder(node)
+    // The holder must still be attached (StrictMode double-invoke can run a
+    // stale cleanup after a re-run; only the live node gets the state).
+    if (node.isConnected) setHolder(node)
     return () => {
       setHolder(null)
       node.remove()
@@ -90,14 +82,14 @@ export function RemoteAction({ wide, actions }: RemoteActionProps) {
       type="button"
       className={wide ? css.sidebarAction : css.sidebarActionRail}
       aria-haspopup="dialog"
-      aria-label="打开反向代理"
-      title="反向代理"
+      aria-label={t('action.open')}
+      title={t('action.label')}
       onClick={() => { actions.open() }}
     >
       <span className={css.actionIcon}>
         <ReverseProxyIcon size={wide ? 16 : 18} />
       </span>
-      {wide && <span className={css.actionLabel}>反向代理</span>}
+      {wide && <span className={css.actionLabel}>{t('action.label')}</span>}
     </button>
   )
 
