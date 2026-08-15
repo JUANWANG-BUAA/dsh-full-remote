@@ -1,4 +1,4 @@
-# dsh-reverse-proxy
+# dsh-full-remote
 
 [![CI](https://github.com/JUANWANG-BUAA/dsh-remote/actions/workflows/ci.yml/badge.svg)](https://github.com/JUANWANG-BUAA/dsh-remote/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](./LICENSE)
@@ -10,9 +10,24 @@
 
 [English](./README.md) | **中文**
 
-这是一个可安装的 DeepSeek Harness bundle，为 DeepSeek Harness Web UI 提供带认证的本地反向代理端点与侧边栏控制面板。它不特化于 Tailscale、frp、ngrok、cloudflared、WireGuard 或 SSH。
+远程访问 DeepSeek Harness Web，并且是**服务端 API 层面的完整访问**。
 
-插件不会启动、停止或管理任何穿透软件。你只需把所选 tunnel 的本地目标指向 DeepSeek Harness 侧栏中显示的地址，例如 `http://127.0.0.1:3081`。
+经普通隧道连上 Harness 时，`settings.*`、`credentials.*`、`host.listDirectory`
+这批接口会返回 403。根因不在隧道：Harness 的浏览器信任栅栏只读 HTTP 头，
+公网 Host / Origin 过不了。本插件在转发时把 Host 与 Origin 规范化为
+`127.0.0.1:<backendPort>`，于是这批特权方法全部放行 —— 其他远程方案
+都会 403 的那一批。
+
+栅栏对远端因此失效，所以本插件必须自己建一道更强的门：192-bit 访问令牌、
+逐设备凭据（只存哈希）、失败登录限流、可选的首访审批。
+
+**主张停在「服务端 API 完整」，不是「完整的 UI 体验」。** Harness 官方设置
+面板另有一套客户端判定（`connection.isLoopback`），按页面 URL 推断信任。
+隧道域名下该面板仍以内存作用域运行，改动不落盘。接口本身返回 200。
+见 [Known Limitations](#known-limitations-and-deferred-work)。
+
+插件不会启动或管理任何穿透软件。把 frp、ngrok、cloudflared、Tailscale、
+SSH 或其他隧道指向侧栏里显示的本地目标即可。
 
 ## 截图
 
@@ -27,91 +42,60 @@
 | 远程登录门——桌面端 | ![登录门](./docs/rp-demo-login.png) |
 | 远程登录门——移动端（390×844） | ![移动端登录](./docs/rp-demo-mobile-login.png) |
 
-## 功能
+## 你得到什么
 
-- 带认证的反向代理，支持 HTTP、SSE 与 WebSocket 流量。
-- **按设备会话**：每个登录设备拥有独立凭据；面板列出已连接设备，可随时单独踢出。
-- **首访审批模式**（可选）：新设备先停留在等待页轮询，直到你在本机面板批准或拒绝。
-- 侧边栏面板：启停、状态、一键复制目标地址、显示/轮换令牌、设备管理。
-- **运行时发布地址**：无需改 `cordis.yml`，直接在 UI 中指定代理发布的 IP 与端口；选择会持久化并在重启后生效。运行中的代理会自动重启到新地址，绑定失败则自动回滚到原地址。
-- 状态持久化（`0600` 权限、原子写入）；`autoRestore` 使 DeepSeek Harness 重启后自动恢复代理。
-- 移动端友好的登录页与 viewport 注入；登录页按浏览器语言显示中文或英文。
-- 向 Web index 注入带保护的 `crypto.randomUUID` polyfill：远程浏览器经
-  plain-HTTP（非安全上下文）访问时附件功能依然可用；剪贴板 API 缺失时
-  面板回退到传统复制路径。
+- 带认证的反向代理，支持 HTTP、SSE 与 WebSocket。
+- 其他远程方案必定 403 的特权接口：
+  `settings.describe` / `update` / `replace` / `mutate`、
+  `credentials.describe` / `set` / `unset`、
+  `host.listDirectory` / `pickDirectory` / `openPath`、
+  `agentPreset.*`、`llm.discoverModels`。
+- 按设备会话：面板列出已连接设备，可随时单独踢出。
+- 可选首访审批：新设备先等待，直到你在本机批准。
+- 运行时发布地址，持久化，绑定失败自动回滚。
+- 带保护的 `crypto.randomUUID` 与 `AbortSignal.any` polyfill，远程
+  plain-HTTP 下附件功能仍然可用。
 
 ## 安全模型
 
-DeepSeek Harness 默认信任 loopback Web 端点。任意 tunnel 可能把它发布到公网，因此仅改写 `Host` 会直接暴露受信任 API。本插件在反代前增加认证门：
+Harness 默认信任 loopback Web 端点。改写 Host / Origin 既是恢复特权 API
+的做法，也是让原栅栏对远端失效的原因。替代的门：
 
 - 本机生成 192-bit 访问令牌，以 `0600` 权限持久化；
-- 远程浏览器用令牌换取 HttpOnly、SameSite 会话 Cookie，Cookie 携带每设备独立的随机会话秘密，状态文件只存其哈希——踢出某台设备立即生效，不影响其他设备；
-- 可选审批模式：新设备先停留在等待页，直到本机面板批准或拒绝；
-- 登录失败固定延时，拖慢令牌猜测；另按远程 IP 计数限流：窗口内失败超过
-  `loginMaxAttempts` 次即锁定（返回 `429` 与 `Retry-After`），锁定期满自动解除；
-- 代理的监听地址与后端地址相同时拒绝启动（防自环）；
-- DeepSeek Harness 的代理控制路由永远不会经远程代理转发；
-- 启停、显示/轮换令牌、修改发布地址只接受直接 loopback 请求，并检查控制头和 loopback Origin；
+- 远程浏览器用令牌换取 HttpOnly、SameSite 会话 Cookie，Cookie 携带每设备
+  独立秘密，状态文件只存其哈希；
+- 登录失败固定延时，并按远程 IP 计数限流（`429` 锁定）；
+- DeepSeek Harness 的控制路由永远不会经远程代理转发；
+- 启停、显示/轮换令牌、修改发布地址只接受直接 loopback 请求，并检查
+  控制头和 loopback Origin；
 - 转发前移除可伪造的 forwarding header 与 hop-by-hop header；
-- 代理自身会话 Cookie 不会到达后端，上游 `set-cookie` 被剥离（后端本就无法向远程浏览器种 Cookie）；
-- 请求体在流上实时限长，chunked 上传无法绕过声明的大小上限。
+- 代理自身会话 Cookie 不会到达后端，上游 `set-cookie` 被剥离；
+- 请求体在流上实时限长。
 
-访问令牌等同密码，请勿公开。公网 tunnel 应启用 HTTPS。
-
-## 与同类插件对比
-
-社区已有多个解决远程访问的方案（收录于
-[awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
-registry）；下表基于该 registry 的描述与各项目 README。
-
-| | **dsh-reverse-proxy**（本项目） | [dsh-web-lan-access](https://github.com/AcidGr/dsh-web-lan-access) | [dsh-mobile-gate](https://github.com/Bernardxu123/dsh-mobile-gate) |
-|---|---|---|---|
-| 模式 | 带认证的反向代理，可对接**任意** tunnel（frp/ngrok/cloudflared/SSH） | 局域网直连：注入 `crypto.randomUUID` polyfill，让官方前端在 plain-HTTP 下可用 | 子进程隔离的反向代理，LAN 移动网关 |
-| 认证 | 192-bit 令牌 → 每设备独立 HttpOnly 会话 Cookie（只存哈希） | 无（信任局域网） | 首访审批 + 按设备绑定令牌 |
-| 首访审批 | 可选审批模式 + 轮询等待页 | — | 内置首访审批 |
-| 设备管理 | 面板列出设备、可单独踢出 | — | 按设备绑定 |
-| 登录限流 | 按 IP `429` 锁定 + 固定延时 | — | 有速率限制 |
-| WebSocket / SSE | 完整转发，并主动拆除会话 | 不适用 | — |
-| 控制面 | 侧边栏面板：启停、运行时改发布地址（失败自动回滚）、令牌显示/轮换 | — | — |
-| 运行时重配置 | UI 中改 IP/端口即时生效并持久化 | — | — |
-
-选择本项目：你已经在用 tunnel 且希望 DeepSeek Harness 前有一道令牌门；需要完整远程体验
-（流式输出、工具卡片、终端等 WebSocket/SSE 流量与文件附件）；希望认证门与
-DeepSeek Harness 同进程，不额外安装网关软件。
-
-选择其他：**dsh-web-lan-access** —— 只走受信任局域网/Tailscale IP、无需公网
-暴露，仅让前端在 plain-HTTP 下可用；**dsh-mobile-gate** —— 偏好按设备绑定 +
-首访审批流程，并接受独立子进程网关。
-
-本项目同样注入 `crypto.randomUUID` polyfill（带保护，仅当浏览器缺失时），
-远程 plain-HTTP 下的文件附件不受影响。
+Origin 改写是**配置面**而非仅会话面：每一个被转发的请求（包括改设置、
+写凭据）在 Harness 看来 Origin 都是回环。这正是本插件的工作方式。
+访问令牌等同密码，请勿公开。公网隧道应启用 HTTPS。
 
 ## 安装
 
-本插件依赖 `webServer` 服务，它由官方 `@deepseek-ai/dsh-web-app` bundle 提供。
-该 bundle 的 npm 依赖尚未发布完整，因此 profile 中还没有它的需要先从
-harness 源码 checkout 安装：
-
 ```sh
-# 若你的 profile 还没有官方 Web bundle（只需一次）：
-dsh plugin --profile web add /path/to/deepseek-harness/packages/bundle/web-app
-
-# 1. 在本仓库构建 tarball（只需一次）
-pnpm pack
-
-# 2. 加入 profile（首次使用会自动创建该 profile）
-dsh plugin --profile web add ./dsh-reverse-proxy-0.1.0.tgz
-
-# 3. 启动 DeepSeek Harness
+dsh plugin --profile web add dsh-full-remote
 dsh --profile web
 ```
 
-发布到 npm 后，第 2 步可简化为一行：`dsh plugin --profile web add dsh-reverse-proxy`。
-git 安装（`dsh plugin add github:JUANWANG-BUAA/dsh-remote#<sha>`）经自包含的
-`prepare` 脚本构建；pnpm ≥10 用户需在 profile workspace 里允许构建：
-`allowBuilds: { dsh-reverse-proxy: true }`。
+在本仓库、尚未发布到 npm 时：
 
-打开 `http://127.0.0.1:3080`。**反向代理** 入口位于侧边栏底部、Settings 的正上方。启动后复制本地目标，再配置任意 tunnel：
+```sh
+pnpm pack
+dsh plugin --profile web add ./dsh-full-remote-0.2.0.tgz
+```
+
+git 安装（`dsh plugin add github:JUANWANG-BUAA/dsh-remote#<sha>`）经自包含
+的 `prepare` 脚本构建；pnpm ≥10 用户需在 profile workspace 里允许构建：
+`allowBuilds: { dsh-full-remote: true }`。
+
+打开 `http://127.0.0.1:3080`。**反向代理** 入口位于侧边栏底部、Settings
+的正上方。启动后复制本地目标，再配置任意隧道：
 
 ```sh
 # 仅为接入示例；插件不会执行这些命令。
@@ -122,33 +106,50 @@ ssh -R 8080:127.0.0.1:3081 user@example-host
 
 远程浏览器在看到任何 DeepSeek Harness 内容前必须输入访问令牌。
 
+## 绑定地址怎么选
+
+绑定任意 IP 今天就能用 —— `cordis.yml` 里的 `listenHost`，或面板里的
+**LISTEN ADDRESS**。运行时值优先于配置，写入状态文件，重启后保留。
+
+| 你填的 | 含义 | 什么时候用 |
+|---|---|---|
+| `127.0.0.1`（默认） | 只绑回环。隧道进程必须和 Harness 在同一台机器。 | 几乎总是：cloudflared / ngrok / frp / SSH 跑在本机时。 |
+| 具体局域网 IP（`192.168.x.x`） | 只绑那块网卡。面板直接给出可复制的地址。 | 手机同 WiFi 直连、不用隧道。换 WiFi / DHCP 续租后要重填。 |
+| `0.0.0.0` / `::` | 绑所有接口。**不是可连接的目的地址。** 面板复制一条可达地址（首个非内部 IPv4），同时显示真实绑定值。 | 你就是要所有网卡（含 VPN），并接受这一点。能填具体局域网 IP 时请填具体 IP。 |
+
+`0.0.0.0` 的意思是「绑定所有接口」，不是「手机该打开的地址」。把它填进去再
+复制给 cloudflared，在部分平台上是未定义行为。面板不会把
+`http://0.0.0.0:…` 当作可复制目标。
+
+`backendHost` 请保持 `127.0.0.1`。它是连 Harness 进程的 TCP 目标，不是
+监听地址。配成通配地址会在加载期被拒绝；Host / Origin 改写无论配置如何
+都使用 `127.0.0.1`。
+
 ## 手动指定发布 IP / 端口
 
-打开侧边栏面板，编辑 **LISTEN ADDRESS**：填写 IP/主机与端口（`0` 表示自动选择空闲端口），点击 **应用发布地址**。覆盖值写入状态文件、立即生效（运行中的代理会自动重启），并在 DeepSeek Harness 重启后继续使用。若新地址绑定失败，插件自动回滚到原地址并在面板中提示。
-
-绑定非回环地址时面板会显示警告：该端口将被直接暴露，必须自行配置防火墙规则。
+打开侧边栏面板，编辑 **LISTEN ADDRESS**：填写 IP/主机与端口（`0` 表示
+自动选择空闲端口），点击 **应用发布地址**。覆盖值写入状态文件、立即生效
+（运行中的代理会自动重启），并在 DeepSeek Harness 重启后继续使用。若新
+地址绑定失败，插件自动回滚到原地址并在面板中提示。
 
 ## 手机与桌面使用独立 profile
 
-DeepSeek Harness 的 Client 插件图按进程组合——同一进程无法做到"给手机拒绝加载某个 bundle（如桌面向的 `@linxin666/dsh-web-ui-all`）、给桌面照常加载"。CSS media query 只是加载后隐藏，代码仍然执行。给手机提供精简 UI 的正规做法是第二个 profile：
+DeepSeek Harness 的 Client 插件图按进程组合。给手机提供精简 UI 的正规
+做法是再开一个 Harness 进程，但那个进程仍然需要 Web UI。
 
-```sh
-# 桌面：127.0.0.1:3080，保留完整第三方 UI。
-dsh --profile web
+复制或复用一个已经能启动 Web 的 profile（通常就是正在用的 `web`），
+按 [安装](#安装) 同样的方式把本插件装进去，换一个端口启动。把隧道指向
+那个进程里本插件显示的代理端点。桌面浏览器继续打开完整的 `web`
+profile。
 
-# 手机：官方 Web bundle（其 npm 依赖尚未发布完整，需从源码 checkout 安装）+ 本插件，使用独立端口。
-dsh plugin --profile mobile add /path/to/deepseek-harness/packages/bundle/web-app
-dsh plugin --profile mobile add ./dsh-reverse-proxy-0.1.0.tgz
-dsh --profile mobile --port 3082
-```
-
-把 tunnel 指向 `mobile` profile 中本插件显示的代理端点（需要固定端口时在该 profile 的面板里设置发布地址）。桌面浏览器继续打开完整的 `web` profile。这是代码层面的隔离：桌面 bundle 根本不在 `mobile` 进程的组合里。
+不要把本插件加进一个全新的空 profile：它依赖 `webServer`，行若一直等
+不到该服务，整个启动会失败。
 
 ## 配置
 
 ```yaml
 - id: reverse-proxy
-  name: dsh-reverse-proxy
+  name: dsh-full-remote
   config:
     listenHost: 127.0.0.1
     listenPort: 3081
@@ -172,20 +173,19 @@ dsh --profile mobile --port 3082
 ```
 
 - `listenHost` / `listenPort` 是默认值；面板可在运行时覆盖，覆盖值持久化。
+  见 [绑定地址怎么选](#绑定地址怎么选)。
 - `backendPort: 0` 自动跟随 `webServer.port`。
 - `listenPort: 0` 自动选择空闲端口，实际值会显示在 UI。
 - `stateFile: ""` 使用 `$DSH_HOME/reverse-proxy.json`。
-- `maxHeaderSizeBytes`、`headersTimeoutMs`、`keepAliveTimeoutMs`、`loginDelayMs` 是服务器加固旋钮，默认值已安全，一般无需修改。
-- `loginMaxAttempts` / `loginLockoutSeconds` 按远程 IP 限流登录失败：窗口内失败
-  超过 `loginMaxAttempts` 次后返回 `429`（带 `Retry-After`），锁定期满自动解除。
-  共享 NAT 出口的用户共用同一个计数桶，受影响时调高阈值。
-- `approvalMode: true` 让每个新设备停留在等待页，直到在面板批准（被拒绝的设备永远无法到达 DeepSeek Harness）。
-- `maxSessions` 限制并发设备数，超过上限时逐出最久未活动的会话；会话超过 `sessionMaxAgeSeconds` 无活动自动过期。
-- `logRequests: true` 以 debug 级别记录每个代理请求；生命周期事件（启动、停止、令牌轮换、发布地址变更）始终以 info 级别记录。
-- tunnel 进程在本机时应保持 `listenHost: 127.0.0.1`。绑定局域网地址会主动扩大攻击面。
-- 本插件依赖 `webServer` 服务，只能装进包含 `@deepseek-ai/dsh-web-app` 的
-  Web profile。**不要**装进 headless profile：harness 对未激活的行有启动强校验，
-  行处于 PENDING 会让整个启动失败——不存在"无害地闲置"的状态。
+- `backendHost` 必须是回环地址。通配地址（`0.0.0.0`、`::`）会让插件加载
+  失败。TCP 仍连这个主机；Host / Origin 改写始终使用 `127.0.0.1`。
+- `approvalMode: true` 让每个新设备停留在等待页，直到在面板批准。
+- 只装进 Web profile。headless 没有可远程的 UI；行若一直等 `webServer`，
+  整个启动会失败。
+
+插件 id（`reverse-proxy`）、Cookie 名、控制前缀、状态文件名在从
+`dsh-reverse-proxy` 改名为 `dsh-full-remote` 后全部冻结。已有会话与
+状态文件继续有效。
 
 ## 兼容性
 
@@ -194,12 +194,7 @@ dsh --profile mobile --port 3082
 
 - 本插件 client peer 范围是 `>=0.1.0-rc.5 <0.2`，当前 npm 已可解析
   （runtime/layout/sidebar/slots 等包已发布 `0.1.0-rc.6`）。
-- `@deepseek-ai/dsh-web-app` bundle 尚不能从 npm 安装（其依赖
-  `@deepseek-ai/dsh-client-ui-model` 未发布），因此
-  `dsh plugin add @deepseek-ai/dsh-web-app` 目前会失败。在 DeepSeek 发布之前，
-  请从 harness 源码 checkout 安装 web-app，或使用已包含它的 profile。
-- harness 对未激活的行会令整个启动失败（严格激活门）——我们有意保持
-  peer 范围的响亮失败，而不是在旧版 client 包上静默挂载失败。
+- harness 对未激活的行会令整个启动失败（严格激活门）。
 
 ## 开发
 
@@ -207,31 +202,33 @@ dsh --profile mobile --port 3082
 
 ```sh
 pnpm install           # 使用冻结 lockfile
-pnpm run check:ci      # lint + 类型检查（CI 声明）+ 测试 + 构建，任意机器可跑
-pnpm run check         # 同上，但同级存在 deepseek-harness checkout 时用真实类型检查
+pnpm run check:ci      # lint + 类型检查（CI 声明）+ 测试 + 构建
+pnpm run check         # 同上，但同级存在 deepseek-harness checkout 时用真实类型
 pnpm run bootstrap     # 可选：克隆并构建 harness checkout，为 check 提供真实类型
 pnpm pack --dry-run    # 检查发布 tarball 内容
 ```
 
 CI 在每次 push 与 PR 上跑 `check:ci`，外加一个真实启动冒烟任务
-（`.github/workflows/ci.yml`）：通过社区标准的 `dsh plugin add` 安装本 bundle，
-并在真实 harness 组合上验证控制面、登录门、限流与 index polyfill
+（`.github/workflows/ci.yml`）：通过社区标准的 `dsh plugin add` 安装本
+bundle，并在真实 harness 组合上验证控制面、登录门、限流与 index polyfill
 （`scripts/smoke.mjs`）。
 
-包同时提供 Host 入口 `lib/index.js` 与官方 DeepSeek Harness Client 入口 `lib/client.js`。
-浏览器 UI 只注册到官方 `sidebar.footer.action` 与 `shell.overlay` slot。
-在标准 DeepSeek Harness 侧边栏布局下，入口会被提升为其他底部操作正上方的独立整行
-（按布局特征检测，不经过私有 API）；未知布局自动降级为 slot 原生行内按钮，
-不写入任何 DeepSeek Harness 私有 DOM。
+包同时提供 Host 入口 `lib/index.js` 与官方 DeepSeek Harness Client 入口
+`lib/client.js`。浏览器 UI 只注册到官方 `sidebar.footer.action` 与
+`shell.overlay` slot。在标准侧边栏布局下，入口会被提升为独立整行（按布局
+特征检测，不经过私有 API）；未知布局自动降级为 slot 原生行内按钮，并打
+console 警告，让降级可见。
 
 ## 控制面 API
 
-全部端点位于主 DeepSeek Harness Web 服务器的 `/dsh-reverse-proxy` 下，仅限 loopback，且**永不**经公共代理转发。写操作要求 `x-dsh-reverse-proxy-control: 1` 请求头与 loopback `Origin`。
+全部端点位于主 DeepSeek Harness Web 服务器的 `/dsh-reverse-proxy` 下，仅限
+loopback，且**永不**经公共代理转发。写操作**以及显示令牌**要求
+`x-dsh-reverse-proxy-control: 1` 请求头与 loopback `Origin`。
 
 | 方法 | 路径 | 请求体 | 返回 |
 |---|---|---|---|
-| `GET` | `/dsh-reverse-proxy/status` | — | 快照（enabled、running、target、backend、listen） |
-| `GET` | `/dsh-reverse-proxy/token` | — | `{ accessToken }` |
+| `GET` | `/dsh-reverse-proxy/status` | — | 快照（`enabled`、`running`、`target`、`backend`、`listen`、`reachables`、`wildcard`） |
+| `GET` | `/dsh-reverse-proxy/token` | — | `{ accessToken }`（需要控制头） |
 | `POST` | `/dsh-reverse-proxy/start` | — | 快照 |
 | `POST` | `/dsh-reverse-proxy/stop` | — | 快照 |
 | `POST` | `/dsh-reverse-proxy/rotate-token` | — | 快照 + 新 `accessToken` |
@@ -240,25 +237,33 @@ CI 在每次 push 与 PR 上跑 `check:ci`，外加一个真实启动冒烟任�
 | `POST` | `/dsh-reverse-proxy/sessions/approve` | `{ "id": "…" }` | `{ "ok": true }`（待审批 → 在线） |
 | `POST` | `/dsh-reverse-proxy/sessions/revoke` | `{ "id": "…" }` | `{ "ok": true }`（该设备立即失效） |
 
-代理自身的 `/dsh-reverse-proxy/healthz` 返回 `{"ok":true}`，登录页位于 `/_dsh_reverse_proxy/login`。
+代理自身的 `/_dsh_reverse_proxy/healthz` 无需令牌即返回 `{"ok":true}`
+（给负载均衡探活用）。登录页位于 `/_dsh_reverse_proxy/login`。
 
 ## Model Experience
 
-插件不会向模型添加 prompt、工具或 session 内容。令牌和代理状态只存在于人工 Web 控制面，token 与 KV cache 影响均为零。
+插件不会向模型添加 prompt、工具或 session 内容。令牌和代理状态只存在于
+人工 Web 控制面，token 与 KV cache 影响均为零。
 
 ## Known Limitations and Deferred Work
 
-- 公网 URL 由 tunnel 软件拥有，通用插件无法自动探测。
-- TLS 通常终止在 tunnel 侧，因此本地 HTTP 场景无法始终设置 Secure Cookie；公网侧必须使用 HTTPS，并保护本机访问。
-- 代理剥离上游 `set-cookie` 与自身会话 Cookie：对当前 DeepSeek Harness Web（loopback 信任、无 Cookie）是正确的；若未来 DeepSeek Harness Web 出现依赖浏览器 Cookie 的能力，需要重新审视。
-- 登录失败除固定延时外按远程 IP 限流（超过 `loginMaxAttempts` 次返回 `429`
-  锁定）；192-bit 令牌本就使暴力猜测不现实，轮换令牌即可使全部会话失效。
-  共享 NAT 用户共用计数桶，见 `loginLockoutSeconds`。
-- 停止代理会销毁每个已升级 WebSocket 会话的两端：远程浏览器立即断开，
-  代理的上游 socket 向后端发送 FIN（由 WebSocket 拆除测试验证）。后端自身的
-  升级 socket 可能要等其处理器观察到 FIN 后才清理，DeepSeek Harness 侧会话回收遵循后端
-  自身的空闲策略。
-- HTTP/2 在 tunnel 或浏览器边缘终止；本地代理转发 HTTP/1.1、SSE 与 WebSocket。
+- **隧道域名下官方设置面板仍是内存作用域。** 服务端 API（`settings.*`、
+  `credentials.*`、`host.listDirectory` 等）因 Host / Origin 被改写成回环
+  而返回 200。官方设置 UI 另用页面 URL 推断 `connection.isLoopback`，隧道
+  域名下恒为 false，面板改动不落盘。正确解法是让 Harness 经现成的
+  `__DSH_BOOT__` 通道由部署声明信任；本插件不会去篡改别人的服务实例。
+- **`GET /token` 是没有调用者身份的回环 HTTP。** 该端点现在与写操作一样
+  要求控制头和 loopback Origin，能挡住一条裸 `curl`。本机任意能发这个头
+  的进程仍可读走令牌。状态文件是 `0600`；本机就是信任边界。
+- Origin 改写是配置面：Harness 看到的每一个代理请求（包括改设置、写凭据）
+  Origin 都是回环。
+- 公网 URL 由隧道软件拥有，通用插件无法自动探测。
+- TLS 通常终止在隧道侧，因此本地 HTTP 场景无法始终设置 Secure Cookie。
+- 代理剥离上游 `set-cookie` 与自身会话 Cookie。
+- 停止代理会销毁每个已升级 WebSocket 会话的两端。后端自身的升级 socket
+  可能要等其处理器观察到 FIN 后才清理。
+- HTTP/2 在隧道或浏览器边缘终止；本地代理转发 HTTP/1.1、SSE 与 WebSocket。
+- 只装进 Web profile，不要装进 headless。
 
 ## 参与贡献
 

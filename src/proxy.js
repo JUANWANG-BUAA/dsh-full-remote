@@ -12,7 +12,7 @@
 import { createServer, request as httpRequest } from 'node:http'
 import { parseCookies, safeEqual } from './security.js'
 import { createSessionStore, encodeSessionCookie } from './sessions.js'
-import { readBody, sendHtml, pathnameOf } from './http-util.js'
+import { readBody, sendHtml, pathnameOf, rewriteLoopbackAuthority } from './http-util.js'
 import { LOGIN_COPY, LOGIN_PATH, loginLocale, loginPage, waitPage } from './pages.js'
 
 const HOP_BY_HOP = new Set([
@@ -133,7 +133,7 @@ function proxyRequest(req, res, spec) {
     port: spec.backendPort,
     path: req.url,
     method: req.method,
-    headers: forwardHeaders(req, spec.backendAuthority),
+    headers: forwardHeaders(req, spec.rewriteAuthority),
   }, (incoming) => {
     clearTimeout(connectTimer)
     const responseHeaders = { ...incoming.headers }
@@ -239,7 +239,11 @@ async function handleLogin(req, res, spec) {
  * @returns {Promise<{ host: string, port: number, close: () => Promise<void> }>}
  */
 export function listenProxy(spec) {
-  const backendAuthority = `${spec.backendHost}:${spec.backendPort}`
+  // TCP still targets backendHost (even 0.0.0.0, which most kernels treat as
+  // loopback). Host/Origin rewrite is a separate fact: harness's trust fence
+  // only reads those headers and requires a 127/8 literal. Coupling the two
+  // lets `backendHost: 0.0.0.0` silently 403 every /api call.
+  const rewriteAuthority = rewriteLoopbackAuthority(spec.backendPort)
   // Node's closeAllConnections() does not cover upgraded sockets (neither our
   // own client side nor our outbound upstream requests) — track both so
   // close() fully tears down WebSocket sessions.
@@ -251,7 +255,7 @@ export function listenProxy(spec) {
   }
   const runtimeSpec = {
     ...spec,
-    backendAuthority,
+    rewriteAuthority,
     trackUpstream,
     loginTracker: createLoginTracker(spec),
     sessionStore: spec.sessionStore ?? createSessionStore({ maxAgeSeconds: spec.sessionMaxAgeSeconds }),
@@ -335,7 +339,7 @@ export function listenProxy(spec) {
       spec.log?.({ method: req.method, path: req.url ?? '/', status: 401, remote: req.socket.remoteAddress ?? '' })
       return
     }
-    const headers = forwardHeaders(req, backendAuthority)
+    const headers = forwardHeaders(req, rewriteAuthority)
     headers.connection = 'Upgrade'
     headers.upgrade = req.headers.upgrade ?? 'websocket'
     const up = httpRequest({

@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { injectIndexEnhancements, injectViewport } from '../src/index.js'
 import { readState, writeState } from '../src/persist.js'
 import { forwardHeaders, listenProxy } from '../src/proxy.js'
+import { formatAuthority, formatHttpUrl, isSelfLoop, isWildcardHost, publishHost, rewriteLoopbackAuthority } from '../src/http-util.js'
 import { generateAccessToken, safeEqual } from '../src/security.js'
 import { createSessionStore, encodeSessionCookie, hashSessionSecret, newSessionId, newSessionSecret } from '../src/sessions.js'
 
@@ -230,6 +231,8 @@ describe('index enhancements', () => {
     // contract for insecure-context browsers.
     const out = injectIndexEnhancements(INDEX)
     assert.match(out, /typeof c\.randomUUID!=="function"/)
+    assert.match(out, /AbortSignal/)
+    assert.match(out, /AS\.any/)
   })
 })
 
@@ -244,6 +247,47 @@ describe('real index fixture', () => {
       assert.equal(out.includes(line), true, `missing ${line}`)
     }
     assert.equal((out.match(/data-plugin="dsh-reverse-proxy"/g) ?? []).length, 1)
+  })
+})
+
+describe('listen address formatting', () => {
+  it('brackets IPv6 so the result is a legal URL authority', () => {
+    assert.equal(formatAuthority('::', 62475), '[::]:62475')
+    assert.equal(formatAuthority('::1', 3081), '[::1]:3081')
+    assert.equal(formatAuthority('[::1]', 3081), '[::1]:3081')
+    assert.equal(formatAuthority('127.0.0.1', 3081), '127.0.0.1:3081')
+    assert.equal(formatHttpUrl('::', 80), 'http://[::]:80')
+    assert.doesNotMatch(formatHttpUrl('::', 62475), /http:\/\/:::/)
+    new URL(formatHttpUrl('::1', 3081))
+  })
+
+  it('treats 0.0.0.0 and :: as wildcards, not destinations', () => {
+    assert.equal(isWildcardHost('0.0.0.0'), true)
+    assert.equal(isWildcardHost('::'), true)
+    assert.equal(isWildcardHost('[::]'), true)
+    assert.equal(isWildcardHost('127.0.0.1'), false)
+    assert.equal(isWildcardHost('192.168.1.5'), false)
+    assert.notEqual(publishHost('0.0.0.0'), '0.0.0.0')
+    new URL(formatHttpUrl(publishHost('0.0.0.0'), 3081))
+  })
+
+  it('detects self-loop on wildcard listen at the backend port', () => {
+    assert.equal(isSelfLoop('127.0.0.1', 3080, '127.0.0.1', 3080), true)
+    assert.equal(isSelfLoop('0.0.0.0', 3080, '127.0.0.1', 3080), true)
+    assert.equal(isSelfLoop('::', 3080, '127.0.0.1', 3080), true)
+    assert.equal(isSelfLoop('localhost', 3080, '127.0.0.1', 3080), true)
+    assert.equal(isSelfLoop('127.0.0.1', 3081, '127.0.0.1', 3080), false)
+    assert.equal(isSelfLoop('192.168.1.5', 3080, '127.0.0.1', 3080), false)
+  })
+
+  it('rewrites Host/Origin to a loopback literal independent of backendHost', () => {
+    assert.equal(rewriteLoopbackAuthority(62468), '127.0.0.1:62468')
+    const headers = forwardHeaders({
+      headers: { host: 'public.example', origin: 'http://public.example' },
+      socket: { remoteAddress: '10.0.0.8' },
+    }, rewriteLoopbackAuthority(62468))
+    assert.equal(headers.host, '127.0.0.1:62468')
+    assert.equal(headers.origin, 'http://127.0.0.1:62468')
   })
 })
 
@@ -315,6 +359,10 @@ describe('authenticated reverse proxy', () => {
     assert.equal(anonymous.status, 303)
     assert.equal(anonymous.headers.location, '/_dsh_reverse_proxy/login')
 
+    const health = await http({ port: proxy.port, path: '/_dsh_reverse_proxy/healthz' })
+    assert.equal(health.status, 200)
+    assert.deepEqual(JSON.parse(health.body), { ok: true })
+
     const bad = await http({
       port: proxy.port,
       path: '/_dsh_reverse_proxy/login',
@@ -358,6 +406,47 @@ describe('authenticated reverse proxy', () => {
     assert.equal(logged.some(e => e.method === 'GET' && e.path === '/api/example' && e.status === 200), true)
     assert.equal(logged.some(e => e.method === 'POST' && e.path === '/_dsh_reverse_proxy/login' && e.status === 401), true)
     assert.equal(logged.some(e => e.method === 'GET' && e.path === '/dsh-reverse-proxy/status' && e.status === 403), true)
+  })
+
+  it('rewrites Host to loopback when backendHost is the 0.0.0.0 wildcard', async () => {
+    const seen = []
+    const backend = createServer((req, res) => {
+      seen.push({ host: req.headers.host, origin: req.headers.origin })
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      res.end('ok')
+    })
+    await new Promise((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise(resolve => backend.close(resolve)))
+    const backendPort = backend.address().port
+    const token = generateAccessToken()
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '0.0.0.0',
+      backendPort,
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 1024,
+      upstreamTimeoutMs: 2000,
+      loginDelayMs: 0,
+    })
+    cleanups.push(proxy.close)
+    const login = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    const cookie = login.headers['set-cookie'][0].split(';', 1)[0]
+    const proxied = await http({ port: proxy.port, path: '/api/example', headers: { cookie } })
+    assert.equal(proxied.status, 200)
+    assert.equal(seen[0].host, `127.0.0.1:${backendPort}`)
+    assert.equal(seen[0].origin, `http://127.0.0.1:${backendPort}`)
   })
 
   it('enforces the byte limit on chunked uploads that declare no content-length', async () => {

@@ -5,7 +5,7 @@ import { RemoteAction } from '../src/client/RemoteAction.tsx'
 import { RemoteOverlay } from '../src/client/RemoteOverlay.tsx'
 import { findSidebarFootArea, insertSidebarActionRow } from '../src/client/sidebarFoot.ts'
 import type { ProxyApi, ProxyStatus } from '../src/client/types.ts'
-import { translatorFor, zh, en } from '../src/client/i18n.ts'
+import { translatorFor, zh, en, type ReverseProxyTranslate } from '../src/client/i18n.ts'
 
 beforeAll(() => {
   HTMLDialogElement.prototype.showModal = function showModal() {
@@ -46,10 +46,14 @@ function api(overrides: Partial<ProxyApi> = {}): ProxyApi {
  * hooks the panel never reads. The one cast lives here so every render call
  * below stays fully typed and readable.
  */
-function overlayProps(service: ProxyApi, close = vi.fn()): ComponentProps<typeof RemoteOverlay> {
+function overlayProps(
+  service: ProxyApi,
+  close = vi.fn(),
+  t: ReverseProxyTranslate = translatorFor(zh),
+): ComponentProps<typeof RemoteOverlay> {
   return {
     api: service,
-    t: translatorFor(zh),
+    t,
     actions: { open: vi.fn(), close },
     useStore: (selector: (state: { open: boolean }) => boolean) => selector({ open: true }),
     useSessions: vi.fn(),
@@ -123,11 +127,25 @@ describe('sidebar foot promotion', () => {
 
 describe('remote client UI', () => {
   it('opens from the sidebar action with official-control geometry', () => {
-    const open = vi.fn()
-    render(<RemoteAction {...actionProps(open)} />)
-    fireEvent.click(screen.getByRole('button', { name: '打开反向代理' }))
-    expect(open).toHaveBeenCalledOnce()
-    expect(screen.getByText('反向代理')).toBeTruthy()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const open = vi.fn()
+      render(<RemoteAction {...actionProps(open)} />)
+      fireEvent.click(screen.getByRole('button', { name: '打开反向代理' }))
+      expect(open).toHaveBeenCalledOnce()
+      expect(screen.getByText('反向代理')).toBeTruthy()
+      expect(warn).toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('uses the locale for the overlay mask aria-label', async () => {
+    const close = vi.fn()
+    render(<RemoteOverlay {...overlayProps(api(), close, translatorFor(en))} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close reverse proxy panel' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Close reverse proxy panel' }))
+    expect(close).toHaveBeenCalledOnce()
   })
 
   it('loads status, starts the proxy, and closes with Escape', async () => {
@@ -153,17 +171,25 @@ describe('remote client UI', () => {
     expect(await screen.findByText('secret-token')).toBeTruthy()
   })
 
-  it('applies a custom listen address and warns about non-loopback binds', async () => {
+  it('applies a custom listen address and warns about wildcard binds', async () => {
     const service = api({
-      setListen: vi.fn().mockResolvedValue({ ...stopped, listen: { host: '0.0.0.0', port: 9081 } }),
+      setListen: vi.fn().mockResolvedValue({ ...stopped, listen: { host: '0.0.0.0', port: 9081 }, wildcard: true, target: 'http://127.0.0.1:9081' }),
     })
     render(<RemoteOverlay {...overlayProps(service)} />)
     await waitFor(() => expect(service.status).toHaveBeenCalledOnce())
     fireEvent.change(screen.getByPlaceholderText('127.0.0.1'), { target: { value: '0.0.0.0' } })
     fireEvent.change(screen.getByPlaceholderText('3081'), { target: { value: '9081' } })
-    expect(screen.getByText(/非回环/)).toBeTruthy()
+    expect(screen.getByText(/不是可连接的地址/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '应用发布地址' }))
     await waitFor(() => expect(service.setListen).toHaveBeenCalledWith('0.0.0.0', 9081))
+  })
+
+  it('warns when the listen host is a non-loopback unicast address', async () => {
+    const service = api()
+    render(<RemoteOverlay {...overlayProps(service)} />)
+    await waitFor(() => expect(service.status).toHaveBeenCalledOnce())
+    fireEvent.change(screen.getByPlaceholderText('127.0.0.1'), { target: { value: '192.168.1.5' } })
+    expect(screen.getByText(/非回环/)).toBeTruthy()
   })
 
   it('rejects an empty listen host without calling the API', async () => {

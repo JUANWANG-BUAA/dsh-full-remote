@@ -280,6 +280,13 @@
   font-weight: 650;
 }
 
+.meta {
+  margin: 8px 0 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .secondaryButton,
 .primaryButton,
 .dangerButton {

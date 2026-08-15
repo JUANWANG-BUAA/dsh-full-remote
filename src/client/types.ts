@@ -8,6 +8,9 @@ export type ProxyStatus = {
   target: string
   backend: string
   listen?: { host: string, port: number }
+  bound?: { host: string, port: number }
+  reachables?: string[]
+  wildcard?: boolean
   approvalMode?: boolean
   reason?: string
 }

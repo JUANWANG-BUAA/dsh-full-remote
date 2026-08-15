@@ -1,12 +1,13 @@
 # Security Policy
 
-dsh-reverse-proxy is an authentication gate in front of a loopback-trusted
+dsh-full-remote is an authentication gate in front of a loopback-trusted
 Web UI. Please take security issues seriously.
 
 ## Supported versions
 
 | Version | Supported |
 |---|---|
+| 0.2.x | ✅ |
 | 0.1.x | ✅ |
 | < 0.1.0 | ❌ |
 

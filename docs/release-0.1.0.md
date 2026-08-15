@@ -1,5 +1,8 @@
 # v0.1.0 发布资料（粘贴即用）
 
+本文是 v0.1.0 当时的粘贴稿，保留原包名 `dsh-reverse-proxy` 作为历史记录。
+0.2.0 改名为 `dsh-full-remote`，以 `CHANGELOG.md` 与当前 README 为准。
+
 两份草稿：GitHub Release 发布说明（中英）与 awesome-dsh-plugin 收录 PR。
 使用前把 `docs/rp-demo-panel.png` 的链接替换为发布后的 GitHub raw URL
 （Release 页面拖入图片即可）。
@@ -119,32 +122,32 @@ checkout 路径。详见 [README](README.md#compatibility)。
 
 **目标**：<https://github.com/awesome-dsh-plugin/awesome-dsh-plugin>
 
-**PR 标题**：`Add dsh-reverse-proxy`
+**PR 标题**：`Add dsh-full-remote`
 
 **PR 描述**：
 
 ```
-Installable via `dsh plugin add` (declares a `dsh.bundle` manifest).
+Installable via `dsh plugin add dsh-full-remote` (declares a `dsh.bundle` manifest).
 
-Authenticated reverse-proxy bundle for remote & mobile access to the
-DeepSeek Harness Web UI: 192-bit token gate, per-device sessions with
-one-click kick, optional first-visit approval mode, per-IP login rate
-limiting, full HTTP/SSE/WebSocket forwarding, and a sidebar control panel
-with runtime listen-address switching and automatic rollback.
+Remote access to DeepSeek Harness Web with full server-side API access:
+Host/Origin rewrite restores `settings.*` / `credentials.*` /
+`host.listDirectory` (403 on every other tunnel). Token gate, per-device
+sessions with kick, optional first-visit approval, rate limiting,
+HTTP/SSE/WebSocket forwarding, sidebar panel.
 
-58 tests + a real-boot smoke CI job (installs via `dsh plugin add` and
-exercises the control surface end to end), CodeQL + dependabot, bilingual
-docs, SECURITY.md.
+The claim is server-side API completeness — the official settings UI still
+infers `connection.isLoopback` from the page URL, so that panel stays
+memory-scoped under a tunnel hostname.
 
-中文：带认证的 DeepSeek Harness Web 反向代理 bundle——令牌门、按设备会话
-与单独踢出、可选首访审批、按 IP 登录限流、HTTP/SSE/WebSocket 完整转发、
-侧边栏控制面板支持运行时改发布地址并自动回滚。
+中文：远程访问 DeepSeek Harness 且服务端 API 完整——转发时把 Host/Origin
+改写成回环，恢复其他方案必定 403 的 settings.* / credentials.* /
+host.listDirectory。令牌门、按设备会话、可选首访审批。
 ```
 
-**README 列表条目（英文，插入 `UI Enhancements` 分类，按字母序）**：
+**README 列表条目（英文，插入 `Browser & Remote` 或 `UI Enhancements` 分类，按字母序）**：
 
 ```markdown
-- [JUANWANG-BUAA/dsh-remote](https://github.com/JUANWANG-BUAA/dsh-remote) - Authenticated reverse-proxy bundle for remote & mobile access to the DeepSeek Harness Web UI: token gate, per-device sessions with kick, first-visit approval mode, rate limiting, WebSocket/SSE forwarding, and a sidebar panel with runtime listen-address switching.
+- [JUANWANG-BUAA/dsh-remote](https://github.com/JUANWANG-BUAA/dsh-remote) - Remote DeepSeek Harness with full server-side API access (`settings.*` / `credentials.*` / `host.listDirectory`). Token-gated reverse proxy, per-device sessions, optional approval, WebSocket/SSE, sidebar panel.
 ```
 
 **README.zh 列表条目（如有中文列表，同样插入）**：

@@ -1,8 +1,8 @@
-# Insert the provider-neutral reverse proxy into the Web composition.
-# Install with: dsh plugin --profile web add ./dsh-remote
+# Insert the authenticated reverse proxy into the Web composition.
+# Install with: dsh plugin --profile web add dsh-full-remote
 - insert:
     - id: reverse-proxy
-      name: dsh-reverse-proxy
+      name: dsh-full-remote
       config:
         listenHost: 127.0.0.1
         listenPort: 3081

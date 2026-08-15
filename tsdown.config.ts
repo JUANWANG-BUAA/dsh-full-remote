@@ -3,8 +3,8 @@ import { basename, dirname, resolve } from 'node:path'
 import { transform } from 'lightningcss'
 import { defineConfig } from 'tsdown'
 
-const ID = 'dsh-reverse-proxy'
-const CSS_PREFIX = '\0dsh-reverse-proxy-css:'
+const ID = 'dsh-full-remote'
+const CSS_PREFIX = '\0dsh-full-remote-css:'
 const CSS_SUFFIX = '.mjs'
 const EXTERNALS = [
   'react',
@@ -46,7 +46,7 @@ export default defineConfig([
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
     },
     plugins: [{
-      name: 'dsh-reverse-proxy-css-modules',
+      name: 'dsh-full-remote-css-modules',
       resolveId(source, importer) {
         if (!source.endsWith('.module.css')) return null
         return CSS_PREFIX + resolve(dirname(importer ?? ''), source) + CSS_SUFFIX

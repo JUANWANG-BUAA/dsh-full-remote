@@ -213,6 +213,46 @@ describe('runtime control surface', () => {
     assert.equal(started.reason, 'self-loop')
   })
 
+  it('refuses to start when listen is a wildcard covering the backend port', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-wild-loop-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const ctx = makeContext()
+    ctx.webServer.port = 3080
+    const runtime = createRuntime(ctx, makeConfig(join(dir, 'state.json'), {
+      listenHost: '0.0.0.0',
+      listenPort: 3080,
+      backendPort: 0,
+    }))
+    cleanups.push(() => runtime.dispose())
+    const started = await runtime.start()
+    assert.equal(started.running, false)
+    assert.equal(started.reason, 'self-loop')
+  })
+
+  it('reports a connectable target when listen is 0.0.0.0 or ::', async () => {
+    const { runtime } = await makeRuntime()
+    const v4 = await runtime.setListen('0.0.0.0', 9081)
+    assert.equal(v4.listen.host, '0.0.0.0')
+    assert.equal(v4.wildcard, true)
+    assert.equal(v4.target.includes('0.0.0.0'), false)
+    new URL(v4.target)
+    assert.equal(v4.reachables.some(url => url.includes('127.0.0.1')), true)
+
+    const v6 = await runtime.setListen('::', 9082)
+    assert.equal(v6.listen.host, '::')
+    assert.doesNotMatch(v6.target, /http:\/\/:::/)
+    new URL(v6.target)
+  })
+
+  it('requires the control header to reveal the access token', async () => {
+    const { runtime } = await makeRuntime()
+    const bare = await call(runtime, { path: '/dsh-reverse-proxy/token' })
+    assert.equal(bare.status, 403)
+    const ok = await call(runtime, { path: '/dsh-reverse-proxy/token', headers: CONTROL })
+    assert.equal(ok.status, 200)
+    assert.match(ok.body.accessToken, /^[A-Za-z0-9_-]{32}$/)
+  })
+
   it('rejects malformed listen overrides without changing state', async () => {
     const { runtime } = await makeRuntime()
     const bad = await runtime.setListen('bad host', 70000)

@@ -1,6 +1,45 @@
 # Changelog
 
-All notable changes to dsh-reverse-proxy are documented in this file.
+All notable changes to dsh-full-remote (formerly dsh-reverse-proxy) are
+documented in this file.
+
+## 0.2.0 (2026-08-15)
+
+### Changed
+
+- npm package renamed to `dsh-full-remote`. Plugin id, cookie name, control
+  prefix, forwarding headers, polyfill marker, and state file name are
+  frozen so existing sessions keep working.
+- README lead is now the Host/Origin rewrite story, scoped to **server-side
+  API completeness**, with the client `isLoopback` boundary written down.
+- Install is a single command: `dsh plugin --profile web add dsh-full-remote`.
+- `GET /token` requires the same control header and loopback Origin as
+  mutations.
+
+### Fixed
+
+- Host/Origin rewrite always uses `127.0.0.1`, decoupled from `backendHost`.
+  A `backendHost: 0.0.0.0` can no longer 403 every `/api` call.
+- Wildcard listen (`0.0.0.0` / `::`) reports a reachable tunnel target
+  instead of an unconnectable bind address; IPv6 authorities are bracketed.
+- Self-loop detection treats wildcard listen as covering the backend.
+- Wildcard `backendHost` is rejected at plugin load.
+
+### Added
+
+- Panel copy for bind-vs-reachable, plus a "how to choose a listen address"
+  section in both READMEs.
+- `AbortSignal.any` polyfill next to the existing `randomUUID` shim.
+- Console warning when sidebar-foot layout detection falls back to the
+  native inline button.
+
+### Documentation
+
+- Proxy healthz path documented as `/_dsh_reverse_proxy/healthz` (the
+  public control prefix is never forwarded).
+- Overlay mask `aria-label` follows the active locale.
+- Mobile-profile docs no longer imply a blank profile is enough; the
+  second process still needs a Web UI.
 
 ## 0.1.0 (2026-08-15)
 

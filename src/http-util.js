@@ -2,10 +2,90 @@
  * http-util — shared HTTP plumbing for the host control surface and the
  * proxy server.
  *
- * Everything here is a pure, dependency-free helper: path parsing, bounded
- * body reads, JSON/HTML responses, and HTML escaping. Keeping one copy means
- * the host and the proxy cannot drift apart on response semantics.
+ * Path parsing, bounded body reads, JSON/HTML responses, HTML escaping, and
+ * listen-address formatting. Host and proxy share one copy so response
+ * semantics and authority formatting cannot drift apart.
  */
+import { networkInterfaces } from 'node:os'
+
+/** True for bind-all wildcards: not connectable destination hosts. */
+export function isWildcardHost(host) {
+  const value = String(host ?? '').replace(/^\[|\]$/g, '')
+  return value === '' || value === '0.0.0.0' || value === '::' || value === '::0'
+}
+
+/**
+ * Loopback classification aligned with harness `isLoopbackHostname`:
+ * localhost, [::1], and any IPv4 in 127/8. Also accepts the IPv4-mapped
+ * form Node reports on sockets (`::ffff:127.0.0.1`).
+ */
+export function isLoopbackHost(host) {
+  const hostname = String(host ?? '').replace(/^\[|\]$/g, '').toLowerCase()
+  if (hostname === 'localhost' || hostname === '::1' || hostname === '::ffff:127.0.0.1') return true
+  const parts = hostname.split('.')
+  return parts.length === 4
+    && parts[0] === '127'
+    && parts.every(part => /^\d{1,3}$/.test(part) && Number(part) <= 255)
+}
+
+/** Bracket IPv6 literals so `host:port` is a legal authority. */
+export function formatAuthority(host, port) {
+  const hostname = String(host ?? '')
+  const authorityHost = hostname.includes(':') && !hostname.startsWith('[') ? `[${hostname}]` : hostname
+  return `${authorityHost}:${port}`
+}
+
+export function formatHttpUrl(host, port) {
+  return `http://${formatAuthority(host, port)}`
+}
+
+/** Host/Origin rewrite target: always a loopback literal, never `backendHost`. */
+export function rewriteLoopbackAuthority(port) {
+  return formatAuthority('127.0.0.1', port)
+}
+
+/**
+ * Self-loop: same port, and the listen address would accept the backend.
+ * Wildcard listen includes every interface (including the backend);
+ * two loopback spellings of the same port also collide.
+ */
+export function isSelfLoop(listenHost, listenPort, backendHost, backendPort) {
+  if (Number(listenPort) !== Number(backendPort)) return false
+  if (listenHost === backendHost) return true
+  if (isWildcardHost(listenHost)) return true
+  if (isWildcardHost(backendHost) && isLoopbackHost(listenHost)) return true
+  return isLoopbackHost(listenHost) && isLoopbackHost(backendHost)
+}
+
+/** First non-internal IPv4, else loopback. Used as the copyable tunnel target. */
+export function firstReachableIPv4() {
+  try {
+    for (const addrs of Object.values(networkInterfaces() ?? {})) {
+      for (const addr of addrs ?? []) {
+        const ipv4 = addr.family === 'IPv4' || addr.family === 4
+        if (ipv4 && !addr.internal) return addr.address
+      }
+    }
+  } catch {
+    // Sandboxes and locked-down containers can refuse this syscall.
+  }
+  return '127.0.0.1'
+}
+
+/** Bind host → a host a client can actually connect to. */
+export function publishHost(boundHost) {
+  return isWildcardHost(boundHost) ? firstReachableIPv4() : boundHost
+}
+
+/** Bind host → every address worth listing on the panel. */
+export function reachableHosts(boundHost) {
+  if (!isWildcardHost(boundHost)) return [boundHost]
+  const hosts = ['127.0.0.1']
+  if (boundHost === '::' || boundHost === '::0' || boundHost === '[::]') hosts.push('::1')
+  const lan = firstReachableIPv4()
+  if (!hosts.includes(lan)) hosts.push(lan)
+  return hosts
+}
 
 /** Parse the pathname of a request URL; malformed input degrades to '/'. */
 export function pathnameOf(url) {

@@ -70,4 +70,30 @@ describe('Cordis lifecycle', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('rejects a wildcard backendHost at apply()', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-backend-'))
+    try {
+      const ctx = new Context()
+      await ctx.plugin(TestWebServer)
+      await assert.rejects(
+        async () => {
+          await ctx.plugin(plugin, {
+            listenHost: '127.0.0.1',
+            listenPort: 0,
+            backendHost: '0.0.0.0',
+            backendPort: 3080,
+            stateFile: join(dir, 'state.json'),
+            autoRestore: false,
+            maxRequestBytes: 1024,
+            upstreamTimeoutMs: 1000,
+            cookieName: 'test_session',
+          })
+        },
+        /wildcard/,
+      )
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })

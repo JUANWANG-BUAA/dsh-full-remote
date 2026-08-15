@@ -1,4 +1,4 @@
-# dsh-reverse-proxy
+# dsh-full-remote
 
 [![CI](https://github.com/JUANWANG-BUAA/dsh-remote/actions/workflows/ci.yml/badge.svg)](https://github.com/JUANWANG-BUAA/dsh-remote/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](./LICENSE)
@@ -10,13 +10,30 @@
 
 **English** | [中文](./README.zh.md)
 
-An installable DeepSeek Harness bundle that creates an authenticated local
-reverse-proxy endpoint for the DeepSeek Harness Web UI, plus a sidebar control panel to run
-it. It is intentionally independent of Tailscale, frp, ngrok, cloudflared,
-WireGuard, SSH, or any other tunnel.
+Remote access to DeepSeek Harness Web with **full server-side API access**.
 
-The plugin does not launch or manage tunnel software. Point your tunnel at the
-local target shown in the DeepSeek Harness sidebar, for example `http://127.0.0.1:3081`.
+When you reach Harness through a generic tunnel, methods such as
+`settings.*`, `credentials.*`, and `host.listDirectory` return 403. That is
+not a bug in the tunnel: Harness's browser trust fence only reads HTTP
+headers, and a public Host/Origin fails it. This plugin rewrites Host and
+Origin to `127.0.0.1:<backendPort>` on the way through, so the fence lets
+those privileged methods through — the same methods every other remote
+plugin leaves 403.
+
+The fence no longer protects the remote side, so this plugin puts a
+stronger door in front: a 192-bit access token, per-device credentials
+(hash at rest), failed-login rate limits, and optional first-visit
+approval.
+
+**The claim is server-side API completeness, not a complete UI.** Harness's
+official settings panel has a second, independent client check
+(`connection.isLoopback`) inferred from the page URL. Under a tunnel
+hostname the panel still runs in a memory scope and edits do not persist.
+The APIs themselves return 200. See [Known Limitations](#known-limitations-and-deferred-work).
+
+The plugin does not launch or manage tunnel software. Point frp, ngrok,
+cloudflared, Tailscale, SSH, or anything else at the local target shown in
+the sidebar.
 
 ## Screenshots
 
@@ -31,112 +48,69 @@ Each feature is shown against a clean harness profile (no personal data).
 | Remote login gate — desktop | ![Login gate](./docs/rp-demo-login.png) |
 | Remote login gate — mobile (390×844) | ![Mobile login](./docs/rp-demo-mobile-login.png) |
 
-## Features
+## What you get
 
-- Authenticated reverse proxy for HTTP, SSE, and WebSocket traffic.
-- **Per-device sessions**: every device that logs in gets its own credential;
-  the panel lists connected devices and can kick any one of them instantly.
-- **First-visit approval mode** (optional): new devices wait on a polling
-  page until you approve or reject them from the local panel.
-- Sidebar panel: start/stop, status, one-click target copy, token reveal and
-  rotation, device management.
-- **Runtime listen address**: republish the proxy on any IP/port from the UI
-  without editing `cordis.yml`; the choice persists and survives restarts.
-  A running proxy restarts on the new address, and a failed bind rolls back
-  to the previous working address automatically.
-- Persisted state (`0600`) with atomic writes; `autoRestore` re-enables the
-  proxy after a DeepSeek Harness restart.
-- Mobile-ready login page and viewport injection.
+- Authenticated reverse proxy for HTTP, SSE, and WebSocket.
+- Privileged Harness APIs that other remote setups 403:
+  `settings.describe` / `update` / `replace` / `mutate`,
+  `credentials.describe` / `set` / `unset`,
+  `host.listDirectory` / `pickDirectory` / `openPath`,
+  `agentPreset.*`, `llm.discoverModels`.
+- Per-device sessions: the panel lists connected devices and can kick any
+  one instantly.
+- Optional first-visit approval: new devices wait until you approve them
+  locally.
+- Runtime listen address with persistence and automatic rollback.
+- Guarded `crypto.randomUUID` + `AbortSignal.any` polyfills so remote
+  file attachments keep working on plain HTTP.
 
 ## Security model
 
-DeepSeek Harness normally trusts its loopback Web endpoint. A generic tunnel can be public,
-so merely rewriting `Host` would expose that trusted API. This plugin places an
-authentication gate before the proxy:
+Harness trusts its loopback Web endpoint. Rewriting Host/Origin is what
+restores the privileged APIs, and it is also what disables the original
+fence for remote clients. The substitute gate:
 
-- a 192-bit access token is generated locally and stored with mode `0600`;
-- remote browsers exchange the token for an HttpOnly, SameSite session cookie
-  carrying a per-device secret; only its hash is stored, so a kicked device
-  loses access immediately while every other device stays connected;
-- failed logins cost a fixed delay, slowing token guessing;
-- DeepSeek Harness control routes are never forwarded through the proxy;
-- start, stop, token reveal, rotation, and listen changes require a direct
-  loopback request with a CSRF-resistant control header and loopback Origin;
-- spoofable forwarding and hop-by-hop headers are removed before forwarding;
-- the proxy's own session cookie never reaches the backend, and upstream
-  `set-cookie` is stripped (the backend cannot establish cookies with remote
-  browsers anyway);
-- request bodies are size-limited on the stream itself, so chunked uploads
-  cannot bypass the declared limit.
+- a 192-bit access token, stored locally with mode `0600`;
+- remote browsers exchange the token for an HttpOnly, SameSite session
+  cookie carrying a per-device secret; only its hash is stored;
+- failed logins cost a fixed delay plus a per-IP `429` lockout;
+- Harness control routes are never forwarded through the proxy;
+- start, stop, token reveal, rotation, and listen changes require a
+  direct loopback request with a CSRF-resistant control header and
+  loopback Origin;
+- spoofable forwarding and hop-by-hop headers are stripped;
+- the proxy's own session cookie never reaches the backend; upstream
+  `set-cookie` is stripped;
+- request bodies are size-limited on the stream itself.
 
-Keep the token secret. Use HTTPS on the public side of your tunnel.
-
-## Comparison with related plugins
-
-Several community plugins solve parts of remote access. They are listed in the
-[awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
-registry; the table below is based on that registry's descriptions and each
-project's own README.
-
-| | **dsh-reverse-proxy** (this) | [dsh-web-lan-access](https://github.com/AcidGr/dsh-web-lan-access) | [dsh-mobile-gate](https://github.com/Bernardxu123/dsh-mobile-gate) |
-|---|---|---|---|
-| Model | Authenticated reverse proxy you point **any** tunnel at (frp/ngrok/cloudflared/SSH) | Direct LAN links: injects a `crypto.randomUUID` polyfill so the stock frontend survives plain-HTTP origins | Isolated child-process reverse proxy with a LAN mobile gateway |
-| Authentication | 192-bit token → per-device HttpOnly session cookie (hash at rest) | None (trusts the LAN) | First-visit approval + per-device token binding |
-| First-visit approval | Optional approval mode with polling wait page | — | Built-in first-visit approval |
-| Device management | Panel lists devices, kick any one instantly | — | Per-device binding |
-| Login throttling | Per-IP `429` lockout + fixed delay | — | Rate limiting |
-| WebSocket / SSE | Full forwarding with session teardown | n/a | — |
-| Control surface | Sidebar panel: start/stop, runtime listen address with rollback, token reveal/rotate | — | — |
-| Runtime reconfiguration | Republish on a new IP/port from the UI, persisted | — | — |
-
-Why pick this plugin:
-
-- you already run a tunnel (Tailscale, frp, ngrok, cloudflared, SSH) and want a
-  token-gated entry in front of DeepSeek Harness instead of trusting the loopback endpoint;
-- you need the full Web experience remotely, including WebSocket/SSE traffic
-  (streaming, tool cards, terminals) and file attachments;
-- you want the auth gate to live in the same process as DeepSeek Harness, without
-  installing or managing extra gateway software.
-
-Why pick one of the others:
-
-- **dsh-web-lan-access** — you only ever access DeepSeek Harness over a trusted LAN/Tailscale
-  IP (no public exposure) and just want the frontend to work on plain HTTP.
-- **dsh-mobile-gate** — you prefer a per-device binding plus a first-visit
-  approval flow, and accept running a separate child-process gateway.
-
-This plugin also injects the `crypto.randomUUID` polyfill (guarded, only when
-the browser lacks it), so remote file attachments keep working on plain HTTP.
+Origin rewrite is a **configuration-plane** change, not a session-plane
+one: every proxied request, including ones that mutate settings or
+credentials, presents a loopback Origin to Harness. That is the point of
+the plugin. Keep the token secret. Terminate TLS on the public side of
+your tunnel.
 
 ## Install
 
-The plugin needs the `webServer` service, which the official
-`@deepseek-ai/dsh-web-app` bundle provides. Its npm dependencies are not yet
-fully published, so a profile that does not already carry web-app must get it
-from a harness source checkout first:
-
 ```sh
-# Once, if your profile lacks the official web bundle:
-dsh plugin --profile web add /path/to/deepseek-harness/packages/bundle/web-app
-
-# 1. Build the package tarball (once, in this repo)
-pnpm pack
-
-# 2. Add this plugin to the profile (the profile is created on first use)
-dsh plugin --profile web add ./dsh-reverse-proxy-0.1.0.tgz
-
-# 3. Start DeepSeek Harness
+dsh plugin --profile web add dsh-full-remote
 dsh --profile web
 ```
 
-After the package is published to npm, step 2 becomes a one-liner:
-`dsh plugin --profile web add dsh-reverse-proxy`. Git installs
-(`dsh plugin add github:JUANWANG-BUAA/dsh-remote#<sha>`) work through the
-self-contained `prepare` script; pnpm ≥10 users must allow the build with
-`allowBuilds: { dsh-reverse-proxy: true }` in the profile workspace.
+From this repo, before the package is on npm:
 
-Open `http://127.0.0.1:3080`. The **反向代理** action sits at the bottom of the
-sidebar, directly above Settings. Start the endpoint, copy its local target,
+```sh
+pnpm pack
+dsh plugin --profile web add ./dsh-full-remote-0.2.0.tgz
+```
+
+Git installs (`dsh plugin add github:JUANWANG-BUAA/dsh-remote#<sha>`)
+run the self-contained `prepare` script; pnpm ≥10 users must allow the
+build with `allowBuilds: { dsh-full-remote: true }` in the profile
+workspace.
+
+Open `http://127.0.0.1:3080`. The sidebar action sits at the bottom,
+directly above Settings — **反向代理** in the default zh locale,
+**Reverse proxy** in English. Start the endpoint, copy its local target,
 and configure your tunnel:
 
 ```sh
@@ -146,48 +120,58 @@ ngrok http http://127.0.0.1:3081
 ssh -R 8080:127.0.0.1:3081 user@example-host
 ```
 
-The remote browser receives a token login page before any DeepSeek Harness content.
+The remote browser receives a token login page before any Harness content.
+
+## Choosing a listen address
+
+Binding any IP already works — via `listenHost` in `cordis.yml`, or the
+**LISTEN ADDRESS** fields in the panel. Runtime values win over config
+and persist across restarts.
+
+| What you type | What it means | When to use it |
+|---|---|---|
+| `127.0.0.1` (default) | Loopback only. The tunnel process must run on the same machine. | Almost always, if cloudflared/ngrok/frp/SSH runs locally. |
+| A concrete LAN IP (`192.168.x.x`) | Listen on that NIC only. The panel shows that address; copy-paste works. | Phone on the same Wi-Fi, no tunnel. Re-fill after DHCP/Wi-Fi changes. |
+| `0.0.0.0` / `::` | Bind every interface. **Not a connectable destination.** The panel copies a reachable address (first non-internal IPv4) and still shows the real bind. | You want every NIC, including VPN, and accept that. Prefer a concrete LAN IP when you can. |
+
+`0.0.0.0` is "bind all interfaces", not "the address my phone should
+open". Filling it and pasting the result into cloudflared is undefined
+on some platforms. The panel will not offer `http://0.0.0.0:…` as the
+copyable target.
+
+Leave `backendHost` at `127.0.0.1`. It is the TCP target for the
+Harness process, not a listen address. A wildcard there is rejected at
+load time; Host/Origin rewrite always uses `127.0.0.1` regardless.
 
 ## Publish on a different IP / port (runtime)
 
-Open the sidebar panel and edit **LISTEN ADDRESS**: set the IP/host and port
-(`0` picks a free port), then press **应用发布地址**. The override is written
-to the state file, applied immediately (restarting a running proxy), and used
-again after DeepSeek Harness restarts. If the new address cannot bind, the plugin rolls
+Open the sidebar panel and edit **LISTEN ADDRESS**: set the IP/host and
+port (`0` picks a free port), then press **应用发布地址** (English
+locale: **Apply listen address**). The override is written to the state
+file, applied immediately (restarting a running proxy), and used again
+after Harness restarts. If the new address cannot bind, the plugin rolls
 back to the previous working address and reports it in the panel.
-
-Binding a non-loopback address shows a warning in the panel: it exposes the
-port directly, so firewall rules must be explicit.
 
 ## Separate mobile and desktop profiles
 
-DeepSeek Harness composes Client plugins once per process, not once per browser viewport —
-the same process cannot refuse to load a bundle (such as a desktop-only
-`@linxin666/dsh-web-ui-all`) for phones while serving it to desktops. A CSS
-media query only hides the bundle after loading and running it. The supported
-way to give phones a lean UI is a second profile:
+Harness composes Client plugins once per process, not once per browser
+viewport. A second Harness process is the supported way to give phones a
+leaner UI, but that process still needs a Web UI.
 
-```sh
-# Desktop: keep the full third-party UI on 127.0.0.1:3080.
-dsh --profile web
+Copy or reuse a profile that already boots the Web app (typically your
+working `web` profile), install this plugin there the same way as
+[Install](#install), and start it on another port. Point the tunnel at
+that process's proxy target. Desktop browsers keep using the full `web`
+profile.
 
-# Mobile: official web bundle (its npm deps are still unpublished, so install
-# it from a source checkout) + this plugin, served separately.
-dsh plugin --profile mobile add /path/to/deepseek-harness/packages/bundle/web-app
-dsh plugin --profile mobile add ./dsh-reverse-proxy-0.1.0.tgz
-dsh --profile mobile --port 3082
-```
-
-Configure the tunnel to use the proxy target exposed by the `mobile` profile
-(and set that profile's listen port in the panel if you need a fixed value).
-Desktop browsers continue using the full `web` profile. This is true code-level
-isolation: the desktop bundle is never part of the `mobile` process.
+Do not add this plugin to a fresh empty profile: it injects `webServer`,
+and a row waiting on a missing service fails the whole boot.
 
 ## Configuration
 
 ```yaml
 - id: reverse-proxy
-  name: dsh-reverse-proxy
+  name: dsh-full-remote
   config:
     listenHost: 127.0.0.1
     listenPort: 3081
@@ -211,31 +195,21 @@ isolation: the desktop bundle is never part of the `mobile` process.
 ```
 
 - `listenHost` / `listenPort` are defaults; the panel can override them at
-  runtime and the override persists.
+  runtime and the override persists. See [Choosing a listen address](#choosing-a-listen-address).
 - `backendPort: 0` follows the active `webServer.port`.
 - `listenPort: 0` chooses a free port and displays it in the UI.
 - `stateFile: ""` uses `$DSH_HOME/reverse-proxy.json`.
-- `maxHeaderSizeBytes`, `headersTimeoutMs`, `keepAliveTimeoutMs`, and
-  `loginDelayMs` are server-hardening knobs; the defaults are safe and rarely
-  need changing.
-- `loginMaxAttempts` / `loginLockoutSeconds` rate-limit failed logins per
-  remote IP: after `loginMaxAttempts` failures within the window the IP is
-  rejected with `429` (and `Retry-After`) until the lockout expires. Users
-  behind a shared NAT IP share one bucket — raise the limits if that hurts.
-- `approvalMode: true` holds every new device on a waiting page until it is
-  approved from the panel (rejected devices never reach DeepSeek Harness).
-- `maxSessions` caps concurrent devices; the stalest session is evicted past
-  the cap and sessions expire after `sessionMaxAgeSeconds` without activity.
-- `logRequests: true` logs every proxied request at debug level; lifecycle
-  events (start, stop, token rotation, publish-address changes) are always
-  logged at info level.
-- Keep `listenHost` on loopback when the tunnel process runs locally. Binding a
-  LAN address is an explicit expansion of the attack surface.
-- This plugin injects `webServer`, so it only works in Web-serving profiles
-  that include the `@deepseek-ai/dsh-web-app` bundle. Do **not** install it
-  into a headless profile: the harness fails the whole boot when a row stays
-  PENDING, so there is no harmless "inactive" state — the row is either
-  active or the boot refuses to start.
+- `backendHost` must be a loopback address. Wildcards (`0.0.0.0`, `::`)
+  fail the plugin load. TCP still uses this host; Host/Origin rewrite
+  always uses `127.0.0.1`.
+- `approvalMode: true` holds every new device on a waiting page until it
+  is approved from the panel.
+- Web profile only. A headless profile has no UI to remote, and a row
+  waiting on `webServer` fails the whole boot.
+
+The plugin id (`reverse-proxy`), cookie name, control prefix, and state
+file name are frozen across the npm rename from `dsh-reverse-proxy`.
+Existing sessions and state files keep working.
 
 ## Compatibility
 
@@ -244,14 +218,8 @@ The sidebar entry and panel mount on the `sidebar.footer.action` and
 
 - Our client peer range is `>=0.1.0-rc.5 <0.2` and resolves on npm today
   (`0.1.0-rc.6` is published for the runtime/layout/sidebar/slots packages).
-- The `@deepseek-ai/dsh-web-app` bundle itself is still not installable from
-  npm (one of its dependencies, `@deepseek-ai/dsh-client-ui-model`, is
-  unpublished), so a fresh `dsh plugin add @deepseek-ai/dsh-web-app` fails.
-  Until DeepSeek publishes it, install web-app from the harness source
-  checkout, or use a profile that already carries it.
 - Rows that cannot activate fail the whole harness boot (strict activation
-  gate) — we deliberately keep the loud peer range instead of silently
-  mounting nothing on older client packages.
+  gate).
 
 ## Development
 
@@ -261,35 +229,36 @@ Dependencies install from npm; the repository is self-contained.
 pnpm install           # from the frozen lockfile
 pnpm run check:ci      # lint + typecheck (CI declarations) + tests + build
 pnpm run check         # same, but typecheck uses real harness types when a
-                       # sibling deepseek-harness checkout exists (tsconfig paths)
+                       # sibling deepseek-harness checkout exists
 pnpm run bootstrap     # optional: clone + build the harness checkout for real types
 pnpm pack --dry-run    # inspect the published tarball contents
 ```
 
 CI runs `check:ci` plus a real-boot smoke job on every push and pull request
-(`.github/workflows/ci.yml`). The smoke job installs the bundle through the
-community-standard `dsh plugin add` flow and exercises the control surface,
-login gate, rate limiter, and index polyfill against a live harness
-composition (`scripts/smoke.mjs`).
+(`.github/workflows/ci.yml`). The smoke job installs the bundle through
+`dsh plugin add` and exercises the control surface, login gate, rate
+limiter, and index polyfill against a live harness composition
+(`scripts/smoke.mjs`).
 
-The package has a Host entry (`lib/index.js`) and an official DeepSeek Harness Client entry
-(`lib/client.js`). The browser UI registers only through the official
-`sidebar.footer.action` and `shell.overlay` slots. On the standard DeepSeek Harness sidebar
-layout the action is promoted to its own full-width row above the other footer
-actions — detected by layout, never through private APIs — and any unknown
-layout falls back to the slot's native inline button. No private DeepSeek Harness DOM is
-written.
+The package has a Host entry (`lib/index.js`) and an official DeepSeek
+Harness Client entry (`lib/client.js`). The browser UI registers only
+through the official `sidebar.footer.action` and `shell.overlay` slots.
+On the standard sidebar layout the action is promoted to its own
+full-width row — detected by layout, never through private APIs. Unknown
+layouts fall back to the slot's native inline button and log a console
+warning so the fallback is visible.
 
 ## Control API
 
-All endpoints live under `/dsh-reverse-proxy` on the main DeepSeek Harness Web server, are
-loopback-only, and are **never** forwarded through the public proxy. Mutations
-require the `x-dsh-reverse-proxy-control: 1` header and a loopback `Origin`.
+All endpoints live under `/dsh-reverse-proxy` on the main DeepSeek Harness
+Web server, are loopback-only, and are **never** forwarded through the
+public proxy. Mutations **and token reveal** require the
+`x-dsh-reverse-proxy-control: 1` header and a loopback `Origin`.
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| `GET` | `/dsh-reverse-proxy/status` | — | snapshot (enabled, running, target, backend, listen) |
-| `GET` | `/dsh-reverse-proxy/token` | — | `{ accessToken }` |
+| `GET` | `/dsh-reverse-proxy/status` | — | snapshot (`enabled`, `running`, `target`, `backend`, `listen`, `reachables`, `wildcard`) |
+| `GET` | `/dsh-reverse-proxy/token` | — | `{ accessToken }` (control header required) |
 | `POST` | `/dsh-reverse-proxy/start` | — | snapshot |
 | `POST` | `/dsh-reverse-proxy/stop` | — | snapshot |
 | `POST` | `/dsh-reverse-proxy/rotate-token` | — | snapshot + new `accessToken` |
@@ -298,36 +267,45 @@ require the `x-dsh-reverse-proxy-control: 1` header and a loopback `Origin`.
 | `POST` | `/dsh-reverse-proxy/sessions/approve` | `{ "id": "…" }` | `{ "ok": true }` (pending → active) |
 | `POST` | `/dsh-reverse-proxy/sessions/revoke` | `{ "id": "…" }` | `{ "ok": true }` (device loses access immediately) |
 
-On the proxy itself, `/dsh-reverse-proxy/healthz` answers `{"ok":true}` and the
-login page lives at `/_dsh_reverse_proxy/login`.
+On the proxy itself, `/_dsh_reverse_proxy/healthz` answers `{"ok":true}`
+without a token (load-balancer probe). The login page lives at
+`/_dsh_reverse_proxy/login`.
 
 ## Model Experience
 
-This plugin adds no model-visible prompt, tool, or session content. Token and
-proxy status exist only in the human Web control surface, so token and KV-cache
-effects are zero.
+This plugin adds no model-visible prompt, tool, or session content. Token
+and proxy status exist only in the human Web control surface, so token and
+KV-cache effects are zero.
 
 ## Known Limitations and Deferred Work
 
-- The public URL is owned by the chosen tunnel and cannot be discovered by this
-  provider-neutral plugin.
-- The login cookie cannot always carry `Secure` because TLS usually terminates
-  outside the local proxy; deploy the tunnel with HTTPS and protect local
-  machine access.
-- The proxy strips upstream `set-cookie` and its own session cookie: correct
-  for today's DeepSeek Harness Web (loopback trust, no cookies), but a future DeepSeek Harness Web
-  feature that depends on browser cookies would need revisiting.
-- Failed logins are rate-limited per remote IP (`loginMaxAttempts` then a
-  `429` lockout) on top of the fixed per-attempt delay; a 192-bit token makes
-  brute force impractical regardless, and rotating the token invalidates all
-  sessions. Shared-NAT users share one bucket — see `loginLockoutSeconds`.
-- Stopping the proxy destroys both ends of every upgraded WebSocket session:
-  remote browsers are disconnected immediately and the proxy's upstream socket
-  sends FIN to the backend (verified by the WebSocket teardown test). The
-  backend's own upgraded socket may linger briefly until its handler observes
-  the FIN, so DeepSeek Harness-side session cleanup follows the backend's own idle policy.
-- HTTP/2 terminates at the tunnel or browser edge; the local proxy forwards
-  HTTP/1.1, SSE, and WebSocket traffic.
+- **Client settings panel stays memory-scoped under a tunnel hostname.**
+  The server-side APIs (`settings.*`, `credentials.*`, `host.listDirectory`,
+  …) return 200 because Host/Origin were rewritten to loopback. The
+  official settings UI separately sets `connection.isLoopback` from
+  `location.hostname`, which is never loopback on a tunnel domain, so
+  edits in that panel do not persist. The correct fix is for Harness to
+  let a deployment declare trust through the existing `__DSH_BOOT__`
+  channel; this plugin will not monkey-patch another plugin's service
+  instance.
+- **`GET /token` is loopback HTTP with no caller identity.** The endpoint
+  now requires the same control header and loopback Origin as mutations,
+  which stops a bare `curl`. Any local process that can send that header
+  can still read the token. The state file is `0600`; treat the local
+  machine as the trust boundary.
+- Origin rewrite is configuration-plane: Harness sees a loopback Origin
+  on every proxied request, including settings and credentials mutations.
+- The public URL is owned by the chosen tunnel and cannot be discovered
+  by this provider-neutral plugin.
+- The login cookie cannot always carry `Secure` because TLS usually
+  terminates outside the local proxy.
+- The proxy strips upstream `set-cookie` and its own session cookie.
+- Stopping the proxy destroys both ends of every upgraded WebSocket
+  session. The backend's own upgraded socket may linger until its handler
+  observes FIN.
+- HTTP/2 terminates at the tunnel or browser edge; the local proxy
+  forwards HTTP/1.1, SSE, and WebSocket.
+- Web profile only. Do not install into headless.
 
 ## Contributing
 

@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a defect in dsh-reverse-proxy
+description: Report a defect in dsh-full-remote
 title: "bug: "
 labels: [bug]
 body:
@@ -14,7 +14,7 @@ body:
     attributes:
       label: Versions
       description: Plugin version and DeepSeek Harness version / checkout commit
-      placeholder: "dsh-reverse-proxy 0.1.0, deepseek-harness 0.1.0-rc.5"
+      placeholder: "dsh-full-remote 0.2.0, deepseek-harness 0.1.0-rc.6"
     validations:
       required: true
   - type: dropdown

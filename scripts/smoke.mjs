@@ -1,5 +1,5 @@
 /**
- * Real-boot smoke test for dsh-reverse-proxy.
+ * Real-boot smoke test for dsh-full-remote.
  *
  * Boots a real DeepSeek Harness web profile with this plugin installed via
  * the community-standard `dsh plugin add` flow, then exercises the control
@@ -175,7 +175,7 @@ async function main() {
     const restarted = await json(await fetch(`${BASE}/dsh-reverse-proxy/start`, { method: 'POST', headers: CONTROL }), 'restart')
     assert(restarted?.running === true, 'proxy restart', JSON.stringify(restarted))
     const restartedProxy = `http://127.0.0.1:${new URL(restarted.target).port}`
-    const token = await json(await fetch(`${BASE}/dsh-reverse-proxy/token`), 'token')
+    const token = await json(await fetch(`${BASE}/dsh-reverse-proxy/token`, { headers: CONTROL }), 'token')
     assert(typeof token?.accessToken === 'string' && token.accessToken.length >= 24, 'token reveal', JSON.stringify(token))
     const login = await fetch(`${restartedProxy}/_dsh_reverse_proxy/login`, {
       method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },

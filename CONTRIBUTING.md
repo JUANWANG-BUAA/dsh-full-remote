@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in dsh-reverse-proxy! It is a small,
+Thanks for your interest in dsh-full-remote! It is a small,
 single-purpose [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 bundle, so most changes are small and self-contained.
 
@@ -53,5 +53,5 @@ or English describing the change, e.g. `修复 …` / `Add …`.
 
 ## Release notes
 
-Unreleased changes go under the `0.1.0 (unreleased)` heading of
-`CHANGELOG.md` until the next version is cut.
+Unreleased changes go under an Unreleased heading of `CHANGELOG.md`
+until the next version is cut. The current release is `0.2.0`.

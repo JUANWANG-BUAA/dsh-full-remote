@@ -1,5 +1,5 @@
 /**
- * dsh-reverse-proxy host entry.
+ * dsh-full-remote host entry (plugin id `reverse-proxy` is frozen).
  *
  * Composes three jobs behind one plugin row:
  *  - Config schema (Schemastery): every tunable, validated loudly at load.
@@ -16,15 +16,15 @@ import { listenProxy } from './proxy.js'
 import { defaultStateFile, readState, writeState } from './persist.js'
 import { generateAccessToken } from './security.js'
 import { createSessionStore } from './sessions.js'
-import { pathnameOf, readJson, sendJson } from './http-util.js'
+import { pathnameOf, readJson, sendJson, formatHttpUrl, isSelfLoop, isWildcardHost, publishHost, reachableHosts } from './http-util.js'
 
 export const name = 'reverse-proxy'
 export const inject = ['webServer']
 
 export const Config = Schema.object({
-  listenHost: Schema.string().default('127.0.0.1').description('Default address exposed to the tunnel client; the UI can override it at runtime.'),
+  listenHost: Schema.string().default('127.0.0.1').description('Default bind address. 0.0.0.0 / :: bind every interface but are not copyable destinations — the panel reports a reachable address separately. Prefer a concrete LAN IP for phone-on-WiFi. The UI can override this at runtime.'),
   listenPort: Schema.number().min(0).max(65535).default(3081).description('Default local tunnel target port; 0 chooses a free port; the UI can override it at runtime.'),
-  backendHost: Schema.string().default('127.0.0.1').description('DeepSeek Harness Web backend host.'),
+  backendHost: Schema.string().default('127.0.0.1').description('DeepSeek Harness Web backend host. Must be a loopback address, not a wildcard (0.0.0.0 / ::). TCP connects here; Host/Origin rewrite always uses 127.0.0.1 regardless.'),
   backendPort: Schema.number().min(0).max(65535).default(0).description('DeepSeek Harness Web backend port; 0 follows webServer.port.'),
   stateFile: Schema.string().default('').description('Durable state file; empty uses $DSH_HOME/reverse-proxy.json.'),
   autoRestore: Schema.boolean().default(true).description('Restore the last enabled state after DeepSeek Harness restarts.'),
@@ -45,6 +45,9 @@ export const Config = Schema.object({
 
 const CONTROL_PREFIX = '/dsh-reverse-proxy'
 const VIEWPORT = 'width=device-width, initial-scale=1, viewport-fit=cover'
+// FROZEN (roadmap §7.1 class 2/3/4): plugin id, cookie name, control prefix,
+// forwarding header, polyfill marker. Renaming any of these drops sessions
+// or silently disables anti-spoof stripping. Only the npm package name moves.
 
 export function injectViewport(html) {
   return html.replace(
@@ -69,7 +72,12 @@ const RANDOM_UUID_POLYFILL = '<script data-plugin="dsh-reverse-proxy">'
   + 'for(var i=0;i<16;i++){var s=b[i].toString(16);h[i]=s.length===1?"0"+s:s}'
   + 'return h[0]+h[1]+h[2]+h[3]+"-"+h[4]+h[5]+"-"+h[6]+h[7]+"-"+h[8]+h[9]+"-"+h[10]+h[11]+h[12]+h[13]+h[14]+h[15]}'
   + 'try{Object.defineProperty(c,"randomUUID",{value:u,configurable:true})}'
-  + 'catch(e){try{c.randomUUID=u}catch(e2){}}}})();'
+  + 'catch(e){try{c.randomUUID=u}catch(e2){}}}'
+  + 'var AS=globalThis.AbortSignal;'
+  + 'if(AS&&typeof AS.any!=="function"){AS.any=function(ss){var x=new AbortController();'
+  + 'function a(){x.abort()};for(var i=0;i<ss.length;i++){if(ss[i].aborted){x.abort();return x.signal}'
+  + 'ss[i].addEventListener("abort",a,{once:true})}return x.signal}}'
+  + '})();'
   + '</script>'
 
 export function injectIndexEnhancements(html) {
@@ -167,15 +175,17 @@ export function createRuntime(ctx, config) {
   const snapshot = async (extra = {}) => {
     await load()
     const backendPort = config.backendPort || ctx.webServer.port
-    const { host, port } = effectiveListen()
+    const listen = bound === undefined ? effectiveListen() : { host: bound.host, port: bound.port }
+    const published = publishHost(listen.host)
     return {
       enabled: state.enabled,
       running: bound !== undefined,
-      target: bound === undefined
-        ? `http://${host}:${port}`
-        : `http://${bound.host}:${bound.port}`,
-      backend: `http://${config.backendHost}:${backendPort}`,
-      listen: effectiveListen(),
+      target: formatHttpUrl(published, listen.port),
+      backend: formatHttpUrl(config.backendHost, backendPort),
+      listen,
+      bound: listen,
+      reachables: reachableHosts(listen.host).map(host => formatHttpUrl(host, listen.port)),
+      wildcard: isWildcardHost(listen.host),
       approvalMode: config.approvalMode,
       authenticated: true,
       ...extra,
@@ -187,7 +197,7 @@ export function createRuntime(ctx, config) {
     bound = undefined
     if (current !== undefined) {
       await current.close()
-      ctx.logger.info(`reverse-proxy: stopped listening on http://${current.host}:${current.port}`)
+      ctx.logger.info(`reverse-proxy: stopped listening on ${formatHttpUrl(current.host, current.port)}`)
     }
   }
 
@@ -207,8 +217,8 @@ export function createRuntime(ctx, config) {
     const backendPort = config.backendPort || ctx.webServer.port
     // A backend pointing at the proxy's own listen address would loop every
     // request back into itself. Refuse loudly instead of spinning.
-    if (host === config.backendHost && port === backendPort) {
-      ctx.logger.warn(`reverse-proxy: refusing to start — backend (${config.backendHost}:${backendPort}) equals the listen address`)
+    if (isSelfLoop(host, port, config.backendHost, backendPort)) {
+      ctx.logger.warn(`reverse-proxy: refusing to start — listen ${formatHttpUrl(host, port)} would loop onto backend ${formatHttpUrl(config.backendHost, backendPort)}`)
       return snapshot({ reason: 'self-loop' })
     }
     try {
@@ -240,7 +250,7 @@ export function createRuntime(ctx, config) {
     }
     state.enabled = true
     await save()
-    ctx.logger.info(`reverse-proxy: listening on http://${bound.host}:${bound.port}`)
+    ctx.logger.info(`reverse-proxy: listening on ${formatHttpUrl(bound.host, bound.port)}`)
     return snapshot()
   }
 
@@ -297,18 +307,22 @@ export function createRuntime(ctx, config) {
       sendJson(res, 403, { error: 'loopback-required' })
       return
     }
+    const allowed = (req.headers['x-dsh-reverse-proxy-control'] === '1') && isLoopbackOrigin(req.headers.origin)
     if (path === `${CONTROL_PREFIX}/status` && req.method === 'GET') {
       sendJson(res, 200, await serial(() => snapshot()))
       return
     }
     if (path === `${CONTROL_PREFIX}/token` && req.method === 'GET') {
+      if (!allowed) {
+        sendJson(res, 403, { error: 'forbidden' })
+        return
+      }
       sendJson(res, 200, { accessToken: await serial(async () => {
         await load()
         return state.accessToken
       }) })
       return
     }
-    const allowed = (req.headers['x-dsh-reverse-proxy-control'] === '1') && isLoopbackOrigin(req.headers.origin)
     const actions = new Map([
       [`${CONTROL_PREFIX}/start`, () => start],
       [`${CONTROL_PREFIX}/stop`, () => stop],
@@ -402,6 +416,9 @@ export function createRuntime(ctx, config) {
  * @param {Schema.Type<typeof Config>} config
  */
 export function apply(ctx, config) {
+  if (isWildcardHost(config.backendHost)) {
+    throw new Error(`reverse-proxy: backendHost "${config.backendHost}" is a wildcard listen address, not a backend. Use 127.0.0.1.`)
+  }
   const runtime = createRuntime(ctx, config)
   ctx.effect(() => {
     const unroute = ctx.webServer.register({

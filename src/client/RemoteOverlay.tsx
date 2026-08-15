@@ -22,6 +22,10 @@ function messageOf(error: unknown) {
   return error instanceof Error ? error.message : ''
 }
 
+function isWildcardListen(host: string) {
+  return host === '0.0.0.0' || host === '::' || host === '::0' || host === '[::]'
+}
+
 export function RemoteOverlay({ useStore, actions, api, t }: RemoteOverlayProps) {
   const open = useStore(state => state.open)
   const [status, setStatus] = useState<ProxyStatus>()
@@ -206,7 +210,9 @@ export function RemoteOverlay({ useStore, actions, api, t }: RemoteOverlayProps)
     }
   }
 
+  const wildcard = isWildcardListen(listenHost.trim())
   const nonLoopback = listenHost.trim() !== ''
+    && !wildcard
     && !['127.0.0.1', 'localhost', '::1', '[::1]', '::ffff:127.0.0.1'].includes(listenHost.trim())
 
   return createPortal((
@@ -219,7 +225,7 @@ export function RemoteOverlay({ useStore, actions, api, t }: RemoteOverlayProps)
         actions.close()
       }}
     >
-      <button className={css.mask} type="button" aria-label="关闭反向代理面板" onClick={() => { actions.close() }} />
+      <button className={css.mask} type="button" aria-label={t('overlay.mask')} onClick={() => { actions.close() }} />
       <section className={css.panel}>
         <header className={css.header}>
           <div>
@@ -265,6 +271,7 @@ export function RemoteOverlay({ useStore, actions, api, t }: RemoteOverlayProps)
               />
             </label>
           </div>
+          {wildcard && <p className={css.warn}>{t('listen.wildcard')}</p>}
           {nonLoopback && <p className={css.warn}>{t('listen.warn')}</p>}
           <button
             className={css.secondaryButton}
@@ -290,6 +297,9 @@ export function RemoteOverlay({ useStore, actions, api, t }: RemoteOverlayProps)
             <code>{status?.target ?? t('tunnel.loading')}</code>
             <span>{t('tunnel.copy')}</span>
           </button>
+          {status?.wildcard === true && status.listen !== undefined && (
+            <p className={css.meta}>{t('tunnel.bound', { bind: `${status.listen.host}:${status.listen.port}` })}</p>
+          )}
         </div>
 
         <div className={css.section}>

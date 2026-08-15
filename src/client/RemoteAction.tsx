@@ -60,7 +60,10 @@ export function RemoteAction({ wide, actions, t }: RemoteActionProps) {
 
   useLayoutEffect(() => {
     const foot = findSidebarFootArea(anchorRef.current)
-    if (foot === null) return
+    if (foot === null) {
+      console.warn('[dsh-full-remote] sidebar foot layout not recognized; the action stays as the slot native inline button')
+      return
+    }
     const node = insertSidebarActionRow(foot)
     node.className = css.actionRow
     // The holder must still be attached (StrictMode double-invoke can run a
