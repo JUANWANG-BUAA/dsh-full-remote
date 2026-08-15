@@ -45,26 +45,18 @@ DSh 默认信任 loopback Web 端点。任意 tunnel 可能把它发布到公网
 
 ## 安装
 
-**npm**（发布后推荐）：
-
 ```sh
-dsh plugin --profile web add dsh-reverse-proxy
-```
-
-**tarball**（目标机器无需构建工具）：
-
-```sh
+# 1. 在本仓库构建 tarball（只需一次）
 pnpm pack
+
+# 2. 加入 profile（首次使用会自动创建该 profile）
 dsh plugin --profile web add ./dsh-reverse-proxy-0.1.0.tgz
+
+# 3. 启动 DSh
+dsh --profile web
 ```
 
-**目录 / git 安装**：本仓库把 DSh 类型包以 `link:` devDependencies 指向同级 `../deepseek-harness` checkout，因此目录与 git 安装必须在具备该目录结构的机器上进行。跨机器分发请发布 npm 或安装 tarball。
-
-```sh
-pnpm dsh plugin --profile web add /absolute/path/to/dsh-remote
-pnpm dsh --profile web --dump-config
-pnpm dsh --profile web
-```
+发布到 npm 后，第 2 步可简化为一行：`dsh plugin add dsh-reverse-proxy`。
 
 打开 `http://127.0.0.1:3080`。**反向代理** 入口位于侧边栏底部、Settings 的正上方。启动后复制本地目标，再配置任意 tunnel：
 
@@ -91,9 +83,9 @@ DSh 的 Client 插件图按进程组合——同一进程无法做到"给手机�
 # 桌面：127.0.0.1:3080，保留完整第三方 UI。
 dsh --profile web
 
-# 手机：只安装官方 Web bundle 与本插件，使用独立端口。
+# 手机：官方 Web bundle（其 npm 依赖尚未发布完整，需从源码 checkout 安装）+ 本插件，使用独立端口。
 dsh plugin --profile mobile add /path/to/deepseek-harness/packages/bundle/web-app
-dsh plugin --profile mobile add /path/to/dsh-remote
+dsh plugin --profile mobile add ./dsh-reverse-proxy-0.1.0.tgz
 dsh --profile mobile --port 3082
 ```
 

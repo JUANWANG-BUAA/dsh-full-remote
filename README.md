@@ -61,30 +61,19 @@ Keep the token secret. Use HTTPS on the public side of your tunnel.
 
 ## Install
 
-**npm** (recommended once published):
-
 ```sh
-dsh plugin --profile web add dsh-reverse-proxy
-```
-
-**Tarball** (no build tooling needed on the target machine):
-
-```sh
+# 1. Build the package tarball (once, in this repo)
 pnpm pack
+
+# 2. Add it to a profile (the profile is created on first use)
 dsh plugin --profile web add ./dsh-reverse-proxy-0.1.0.tgz
+
+# 3. Start DSh
+dsh --profile web
 ```
 
-**From a checkout directory / git URL**: this repo keeps the DSh type packages
-as `link:` devDependencies pointing at a sibling
-`../deepseek-harness` checkout, so directory and git installs must run on a
-machine with that layout. Publish to npm or install the tarball for portable
-distribution.
-
-```sh
-pnpm dsh plugin --profile web add /absolute/path/to/dsh-remote
-pnpm dsh --profile web --dump-config
-pnpm dsh --profile web
-```
+After the package is published to npm, step 2 becomes a one-liner:
+`dsh plugin add dsh-reverse-proxy`.
 
 Open `http://127.0.0.1:3080`. The **反向代理** action sits at the bottom of the
 sidebar, directly above Settings. Start the endpoint, copy its local target,
@@ -122,9 +111,10 @@ way to give phones a lean UI is a second profile:
 # Desktop: keep the full third-party UI on 127.0.0.1:3080.
 dsh --profile web
 
-# Mobile: install only the official web bundle + this plugin, serve separately.
+# Mobile: official web bundle (its npm deps are still unpublished, so install
+# it from a source checkout) + this plugin, served separately.
 dsh plugin --profile mobile add /path/to/deepseek-harness/packages/bundle/web-app
-dsh plugin --profile mobile add /path/to/dsh-remote
+dsh plugin --profile mobile add ./dsh-reverse-proxy-0.1.0.tgz
 dsh --profile mobile --port 3082
 ```
 
