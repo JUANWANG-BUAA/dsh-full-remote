@@ -2,8 +2,7 @@
 
 ## Registry reality (checked 2026-08-15)
 
-- `@deepseek-ai/dsh-client-runtime`, `-ui-layout`, `-ui-sidebar`,
-  `-ui-slots` publish `0.1.0-rc.6` on npm.
+- `@deepseek-ai/dsh-client-runtime`, `-ui-slots` publish `0.1.0-rc.6` on npm.
 - `@deepseek-ai/dsh-web-app@latest` still points at `0.0.1-rc.1`, whose
   dependency `@deepseek-ai/dsh-client-ui-model` was never published.
   **`@deepseek-ai/dsh-web-app@0.1.0-rc.6` (dist-tag `next`) installs
@@ -52,7 +51,8 @@ package is a different product.
 
 ## Post-publish checklist
 
-- [ ] Tag `v0.2.0`, let CI publish, verify `npm view dsh-full-remote`.
+- [x] Tag `v0.2.0` (rename); `dsh-full-remote@0.2.0` is on npm.
+- [ ] Tag `v0.2.1`, let CI publish, verify `npm view dsh-full-remote version`.
 - [ ] `npm deprecate dsh-reverse-proxy "Package renamed to dsh-full-remote."`
 - [ ] Apply GitHub topics from `docs/github-metadata.md` (30 seconds).
 - [ ] PR the plugin into `awesome-dsh-plugin` as `dsh-full-remote`.

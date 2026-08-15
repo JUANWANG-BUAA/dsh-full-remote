@@ -21,22 +21,25 @@
 栅栏对远端因此失效，所以本插件必须自己建一道更强的门：192-bit 访问令牌、
 逐设备凭据（只存哈希）、失败登录限流、可选的首访审批。
 
-**主张停在「服务端 API 完整」，不是「完整的 UI 体验」。** Harness 官方设置
-面板另有一套客户端判定（`connection.isLoopback`），按页面 URL 推断信任。
-隧道域名下该面板仍以内存作用域运行，改动不落盘。接口本身返回 200。
+**主张停在「服务端 API 完整」，并钉住手机端两条客户端行为：** 官方设置会落盘；
+「增加新工作区」走应用内目录浏览器，而不是在宿主机显示器上弹出系统选目录框。
+index tap 声明 `__DSH_FULL_REMOTE_TRUSTED__`，并包装 `window.__ModuleLoader__`，
+让官方设置插件在 bind 之前就看到 `connection.isLoopback === true`。远程页上的
+「在宿主机打开」会作用到这台 Mac。上游的长期契约仍是 `__DSH_BOOT__` 信任字段。
 见 [Known Limitations](#known-limitations-and-deferred-work)。
 
 插件不会启动或管理任何穿透软件。把 frp、ngrok、cloudflared、Tailscale、
-SSH 或其他隧道指向侧栏里显示的本地目标即可。
+SSH 或其他隧道指向 **设置 → 反向代理** 里显示的本地目标即可。
 
 ## 截图
 
 每项功能各配一张截图，均在干净的 harness profile 上拍摄（不含个人数据）。
+登录门截图是现行 UI。三张控制页截图展示的字段已迁到 **设置 → 反向代理**；
+PNG 里的窗口边框仍是上一版 overlay 对话框。
 
 | 功能 | 截图 |
 |---|---|
-| 侧边栏入口——独占一行，位于其他底部操作正上方 | ![侧边栏入口](./docs/rp-demo-sidebar.png) |
-| 控制面板——状态、tunnel 目标、一键复制 | ![控制面板](./docs/rp-demo-panel.png) |
+| 控制页——状态、tunnel 目标、一键复制 | ![控制面板](./docs/rp-demo-panel.png) |
 | 运行时发布地址——应用前的非回环警告 | ![发布地址](./docs/rp-demo-listen-address.png) |
 | 访问令牌——显示与轮换 | ![访问令牌](./docs/rp-demo-token.png) |
 | 远程登录门——桌面端 | ![登录门](./docs/rp-demo-login.png) |
@@ -55,6 +58,8 @@ SSH 或其他隧道指向侧栏里显示的本地目标即可。
 - 运行时发布地址，持久化，绑定失败自动回滚。
 - 带保护的 `crypto.randomUUID` 与 `AbortSignal.any` polyfill，远程
   plain-HTTP 下附件功能仍然可用。
+- 隧道域名下官方设置会落盘；「增加新工作区」走应用内目录浏览器，手机
+  不再依赖宿主机显示器上的系统选目录框。
 
 ## 安全模型
 
@@ -87,15 +92,16 @@ dsh --profile web
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.2.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.2.1.tgz
 ```
 
 git 安装（`dsh plugin add github:JUANWANG-BUAA/dsh-full-remote#<sha>`）经自包含
 的 `prepare` 脚本构建；pnpm ≥10 用户需在 profile workspace 里允许构建：
 `allowBuilds: { dsh-full-remote: true }`。
 
-打开 `http://127.0.0.1:3080`。**反向代理** 入口位于侧边栏底部、Settings
-的正上方。启动后复制本地目标，再配置任意隧道：
+打开 `http://127.0.0.1:3080`。打开 **设置**——左栏最后一项是 **反向代理**
+（英文：**Reverse proxy**），排在官方页面下面。启动后复制本地目标，再
+配置任意隧道：
 
 ```sh
 # 仅为接入示例；插件不会执行这些命令。
@@ -106,10 +112,24 @@ ssh -R 8080:127.0.0.1:3081 user@example-host
 
 远程浏览器在看到任何 DeepSeek Harness 内容前必须输入访问令牌。
 
+## 升级
+
+已经装过的 profile **不会**在 `dsh web` 启动时自动拉新版本。npm 上出现新
+版本后，在本机执行：
+
+```sh
+dsh plugin --profile web update dsh-full-remote
+```
+
+然后重启 `dsh web`。`add` 只给尚未安装的人用；重复执行 `add` 不一定会把
+lockfile 里钉住的旧版本升上去。
+
+本地 `link:` 安装跟 npm 无关：在仓库里 `pnpm run build`，再重启 `dsh web`。
+
 ## 绑定地址怎么选
 
-绑定任意 IP 今天就能用 —— `cordis.yml` 里的 `listenHost`，或面板里的
-**LISTEN ADDRESS**。运行时值优先于配置，写入状态文件，重启后保留。
+绑定任意 IP 今天就能用 —— `cordis.yml` 里的 `listenHost`，或设置页里的
+发布地址。运行时值优先于配置，写入状态文件，重启后保留。
 
 | 你填的 | 含义 | 什么时候用 |
 |---|---|---|
@@ -127,10 +147,16 @@ ssh -R 8080:127.0.0.1:3081 user@example-host
 
 ## 手动指定发布 IP / 端口
 
-打开侧边栏面板，编辑 **LISTEN ADDRESS**：填写 IP/主机与端口（`0` 表示
+打开 **设置 → 反向代理**，编辑 **发布地址**：填写 IP/主机与端口（`0` 表示
 自动选择空闲端口），点击 **应用发布地址**。覆盖值写入状态文件、立即生效
 （运行中的代理会自动重启），并在 DeepSeek Harness 重启后继续使用。若新
-地址绑定失败，插件自动回滚到原地址并在面板中提示。
+地址绑定失败，插件自动回滚到原地址并弹出说明。
+
+启动失败时面板顶部会弹出 toast，而不是按钮无反应。常见原因：
+
+- 端口已被占用：改成 `3081` 或其他空闲端口，点 **应用发布地址** 再启动。
+- 发布地址与 Harness 后端相同：会形成死循环，把端口改成不同的值。
+- 从隧道域名操作控制面板：请用本机 `127.0.0.1` 窗口启动/停止。
 
 ## 手机与桌面使用独立 profile
 
@@ -187,13 +213,22 @@ profile。
 `dsh-reverse-proxy` 改名为 `dsh-full-remote` 后全部冻结。已有会话与
 状态文件继续有效。
 
+安装本插件还会钉住应用内目录选择器，让手机可以增加工作区：
+
+- 禁用 `directory-picker` 行（`directory-picker-auto` 会在宿主机显示器
+  上弹出系统选目录框）；
+- 插入 `directory-picker-browse` 与 `directory-picker-browse-ui`。
+
+不要在同一个 profile 里重新启用 `directory-picker`——它会抢走
+`directoryPicker`，「增加新工作区」又会弹到宿主机上。
+
 ## 兼容性
 
-侧边栏入口与面板挂载在 client 包 `0.1.0-rc.5` 才引入的
-`sidebar.footer.action` 与 `shell.overlay` 两个 slot 上。
+控制页挂载在 `settings.section` slot 上（order 30，排在官方的
+General / Models / Plugins / Agent presets 后面）。
 
 - 本插件 client peer 范围是 `>=0.1.0-rc.5 <0.2`，当前 npm 已可解析
-  （runtime/layout/sidebar/slots 等包已发布 `0.1.0-rc.6`）。
+  （runtime/slots 等包已发布 `0.1.0-rc.6`）。
 - harness 对未激活的行会令整个启动失败（严格激活门）。
 
 ## 开发
@@ -214,10 +249,8 @@ bundle，并在真实 harness 组合上验证控制面、登录门、限流与 i
 （`scripts/smoke.mjs`）。
 
 包同时提供 Host 入口 `lib/index.js` 与官方 DeepSeek Harness Client 入口
-`lib/client.js`。浏览器 UI 只注册到官方 `sidebar.footer.action` 与
-`shell.overlay` slot。在标准侧边栏布局下，入口会被提升为独立整行（按布局
-特征检测，不经过私有 API）；未知布局自动降级为 slot 原生行内按钮，并打
-console 警告，让降级可见。
+`lib/client.js`。浏览器 UI 只注册到官方 `settings.section` slot
+（id `reverse-proxy`，order 30）。不再猜测侧边栏 DOM 布局。
 
 ## 控制面 API
 
@@ -227,7 +260,7 @@ loopback，且**永不**经公共代理转发。写操作**以及显示令牌**�
 
 | 方法 | 路径 | 请求体 | 返回 |
 |---|---|---|---|
-| `GET` | `/dsh-reverse-proxy/status` | — | 快照（`enabled`、`running`、`target`、`backend`、`listen`、`reachables`、`wildcard`） |
+| `GET` | `/dsh-reverse-proxy/status` | — | 快照（`enabled`、`running`、`target`、`backend`、`listen`、`reachables`、`wildcard`；启动失败后还会带上次的 `reason`） |
 | `GET` | `/dsh-reverse-proxy/token` | — | `{ accessToken }`（需要控制头） |
 | `POST` | `/dsh-reverse-proxy/start` | — | 快照 |
 | `POST` | `/dsh-reverse-proxy/stop` | — | 快照 |
@@ -247,11 +280,20 @@ loopback，且**永不**经公共代理转发。写操作**以及显示令牌**�
 
 ## Known Limitations and Deferred Work
 
-- **隧道域名下官方设置面板仍是内存作用域。** 服务端 API（`settings.*`、
-  `credentials.*`、`host.listDirectory` 等）因 Host / Origin 被改写成回环
-  而返回 200。官方设置 UI 另用页面 URL 推断 `connection.isLoopback`，隧道
-  域名下恒为 false，面板改动不落盘。正确解法是让 Harness 经现成的
-  `__DSH_BOOT__` 通道由部署声明信任；本插件不会去篡改别人的服务实例。
+- **远程设置落盘：在 connection provide 时信任该页。**
+  代理已经把 Host / Origin 改写成回环，所以 `settings.*` 返回 200。index
+  tap 设置 `__DSH_FULL_REMOTE_TRUSTED__`，并包装 `__ModuleLoader__`，让官方
+  设置 / 模型 / 语言在 bind 时使用 host 持久化。该页上 `isLoopback` 保持
+  true——手机上的「在宿主机打开」会作用到这台电脑。上游的长期契约仍是
+  `__DSH_BOOT__` 信任字段。
+- **增加工作区使用应用内目录浏览器。** 安装本插件会禁用
+  `directory-picker-auto`（webServer 绑 `127.0.0.1` 时它会在宿主机显示器
+  上弹出系统选目录框），并挂上 browse 后端 + UI。手机可以选文件夹；本机
+  Mac 界面也改用同一个应用内对话框，而不再走 Finder。
+- **设置左栏图标是 harness 默认齿轮。** `SettingsRoot` 只为官方 section
+  id 准备了字形。双节点桥接图标画在反向代理页本身。
+- 从隧道域名启动 / 停止 / 显示令牌 / 改发布地址会 403（控制路由永不转发）。
+  请用本机 `127.0.0.1` 窗口操作；设置页会用 toast 说明这一点。
 - **`GET /token` 是没有调用者身份的回环 HTTP。** 该端点现在与写操作一样
   要求控制头和 loopback Origin，能挡住一条裸 `curl`。本机任意能发这个头
   的进程仍可读走令牌。状态文件是 `0600`；本机就是信任边界。

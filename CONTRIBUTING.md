@@ -30,9 +30,10 @@ smoke job (`scripts/smoke.mjs`) that installs the bundle through
 ## Tests
 
 - `tests/*.test.js` — unit/integration tests via `node:test` (proxy behavior,
-  security primitives, control surface, Cordis lifecycle, WebSocket upgrade).
+  security primitives, control surface, Cordis lifecycle, WebSocket upgrade,
+  index bootstrap).
 - `tests/remote.client.test.tsx` — client UI tests via `vitest` +
-  Testing Library.
+  Testing Library (settings section, toasts, i18n, settings persistence).
 
 Add or update tests for every behavior change.
 
@@ -54,4 +55,4 @@ or English describing the change, e.g. `修复 …` / `Add …`.
 ## Release notes
 
 Unreleased changes go under an Unreleased heading of `CHANGELOG.md`
-until the next version is cut. The current release is `0.2.0`.
+until the next version is cut. The current release is `0.2.1`.

@@ -1,21 +1,41 @@
 /**
- * Client entry — sidebar action + control panel for the Web UI.
+ * Client entry — settings section + control API for the Web UI.
  *
- * Registers exactly two official slots (sidebar.footer.action and
- * shell.overlay) and wires the loopback control API. The locale service is
- * OPTIONAL: present, the panel follows the active DSh locale; absent, it
- * falls back to zh.
+ * Registers one official slot (`settings.section`, order 30: after General,
+ * Models, Plugins, Agent presets) and wires the loopback control API.
+ * The locale service is OPTIONAL: present, the page follows the active
+ * DSh locale; absent, it falls back to zh.
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
-import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
-import { RemoteAction } from './RemoteAction.tsx'
-import { RemoteOverlay } from './RemoteOverlay.tsx'
-import { createRemotePanelStore } from './store.ts'
+import { RemoteSection } from './RemoteSection.tsx'
 import { bindTranslate } from './i18n.ts'
+import { trustSettingsPersistence } from './trust-settings.ts'
 import type { ProxyApi, ProxyStatus, SessionInfo } from './types.ts'
 
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SlotMap {
+    'settings.section': {
+      kind: 'list'
+      scope: 'root'
+      owner: { close: () => void }
+    }
+  }
+}
+
 export const inject = ['slots']
+
+/**
+ * Map a control-surface HTTP failure to the Error `toastFromCaught` already
+ * understands. The public proxy answers `/dsh-reverse-proxy/*` with plain
+ * `403 forbidden` (not JSON), so a phone that opens Settings → Reverse proxy
+ * must not surface a locale-stuck "请求失败 (403)".
+ */
+export function errorFromControlResponse(status: number, body: { error?: string }): Error {
+  const code = typeof body.error === 'string' ? body.error.trim() : ''
+  if (code !== '') return new Error(code)
+  if (status === 403 || status === 401) return new Error('forbidden')
+  return new Error(`HTTP ${status}`)
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/dsh-reverse-proxy${path}`, {
@@ -27,7 +47,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   })
   const body = await response.json().catch(() => ({})) as { error?: string }
-  if (!response.ok) throw new Error(body.error ?? `请求失败 (${response.status})`)
+  if (!response.ok) throw errorFromControlResponse(response.status, body)
   return body as T
 }
 
@@ -61,25 +81,21 @@ function createApi(): ProxyApi {
 }
 
 export function apply(ctx: ClientContext): void {
-  const store = createRemotePanelStore()
+  // Backup: official locale / theme / models bind during their own apply,
+  // which is earlier than this plugin. The index-tap ModuleLoader wrap is
+  // the path that actually reaches those consumers.
+  ctx.inject(['settingsScope'], (scope: ClientContext) => {
+    const binder = scope.get('settingsScope') as { bind: (spec: unknown) => unknown }
+    trustSettingsPersistence(binder, () => scope.get('connection') as { isLoopback?: boolean } | undefined)
+  })
   const api = createApi()
   const { t, dispose } = bindTranslate(ctx)
   if (dispose !== undefined) ctx.effect(() => dispose)
-  // `sidebar.footer.action` is an ascending-order list slot; -1 pins this
-  // entry above every other bottom control (Settings, third-party actions),
-  // i.e. the very first row of the sidebar foot block.
-  ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
-    name: 'sidebar.footer.action',
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
     id: 'reverse-proxy',
-    order: -1,
-    store,
-    inject: () => ({ t }),
-  }, RemoteAction))
-  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
-    name: 'shell.overlay',
-    id: 'reverse-proxy',
-    order: 40,
-    store,
+    order: 30,
+    label: () => t('action.label'),
     inject: () => ({ api, t }),
-  }, RemoteOverlay))
+  }, RemoteSection))
 }

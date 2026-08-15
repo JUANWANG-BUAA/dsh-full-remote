@@ -407,12 +407,24 @@ export function listenProxy(spec) {
             return
           }
           closed = true
-          server.close((error) => error === undefined ? done() : closeReject(error))
-          server.closeAllConnections?.()
-          // closeAllConnections() leaves upgraded sockets alone — destroy
-          // both sides of every live WebSocket session explicitly.
+          // Tear down live sockets first so server.close() is not waiting on
+          // SSE / keep-alive / leftover upgrades. If close still hangs (a
+          // half-open peer that ignore FIN), the grace timer unblocks rotate
+          // and stop instead of freezing the serial gate forever.
           for (const socket of upgradedSockets) socket.destroy()
           for (const up of upstreamSockets) up.destroy()
+          server.closeAllConnections?.()
+          let settled = false
+          const finish = (error) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timer)
+            if (error === undefined) done()
+            else closeReject(error)
+          }
+          const timer = setTimeout(() => finish(), 2_000)
+          timer.unref?.()
+          server.close(error => finish(error))
         }),
       })
     })

@@ -1,9 +1,9 @@
 /**
- * DevicesSection — connected-device management inside the control panel.
+ * DevicesSection — connected-device management inside the settings page.
  *
  * Pure presentational slice: renders the session list (online / pending)
  * and delegates every action through the passed callbacks. Polling and API
- * state live in RemoteOverlay.
+ * state live in RemoteSection.
  */
 import type { SessionInfo } from './types.ts'
 import type { ReverseProxyTranslate } from './i18n.ts'
@@ -20,9 +20,9 @@ export type DevicesSectionProps = {
 
 export function DevicesSection({ sessions, approvalMode, busy, t, onKick, onDecide }: DevicesSectionProps) {
   return (
-    <div className={css.section}>
-      <span className={css.label}>DEVICES</span>
-      {approvalMode && <p>{t('devices.approvalHint')}</p>}
+    <section className={css.group}>
+      <h3 className={css.groupHead}>{t('devices.title')}</h3>
+      {approvalMode && <p className={css.hint}>{t('devices.approvalHint')}</p>}
       {sessions.length === 0 ? (
         <p className={css.emptyText}>{t('devices.empty')}</p>
       ) : (
@@ -52,6 +52,6 @@ export function DevicesSection({ sessions, approvalMode, busy, t, onKick, onDeci
           ))}
         </ul>
       )}
-    </div>
+    </section>
   )
 }

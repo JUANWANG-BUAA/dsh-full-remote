@@ -40,13 +40,9 @@ declare module '@deepseek-ai/dsh-client-runtime/client' {
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
-  /** Minimal runtime-props share: `wide` is the only owner prop we read. */
-  export type PropsRuntime<K extends string> = { wide: boolean }
+  /** Minimal runtime-props share: settings.section supplies `close`. */
+  export type PropsRuntime<K extends string> = { close?: () => void, wide?: boolean }
 
   /** The store share: our handles expose exactly useStore + actions. */
   export type PropsStore<H> = H
 }
-
-/** Type-only module augmentations consumed via `import type {}`. */
-declare module '@deepseek-ai/dsh-client-ui-layout/client' {}
-declare module '@deepseek-ai/dsh-client-ui-sidebar/client' {}

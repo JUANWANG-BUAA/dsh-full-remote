@@ -6,7 +6,7 @@
  *  - Runtime orchestration: state file, token/session lifecycle, and the
  *    proxy server instance with rollback-safe listen changes.
  *  - Loopback-only control surface: HTTP routes under /dsh-reverse-proxy
- *    that the sidebar panel drives.
+ *    that the settings section drives.
  *
  * Side effects are confined to ctx.effect(): routes, index taps and the
  * proxy all unwind when the plugin fiber disposes.
@@ -17,6 +17,7 @@ import { defaultStateFile, readState, writeState } from './persist.js'
 import { generateAccessToken } from './security.js'
 import { createSessionStore } from './sessions.js'
 import { pathnameOf, readJson, sendJson, formatHttpUrl, isSelfLoop, isWildcardHost, publishHost, reachableHosts } from './http-util.js'
+import { PAGE_BOOTSTRAP_SOURCE } from './page-bootstrap.js'
 
 export const name = 'reverse-proxy'
 export const inject = ['webServer']
@@ -62,30 +63,19 @@ export function injectViewport(html) {
  * secure-context-only, and the DeepSeek Harness Web composer calls it when attaching
  * files — on a proxied page that call throws and breaks attachments. This
  * guarded shim restores it from `crypto.getRandomValues`, which remains
- * available in insecure contexts. No-op on loopback and HTTPS origins.
+ * available in insecure contexts. The same IIFE also wraps
+ * `window.__ModuleLoader__` so `connection.isLoopback` is true before
+ * official settings plugins bind (a late `settingsScope.bind` wrap cannot
+ * rewrite scopes that already chose memory persistence).
  */
-const RANDOM_UUID_POLYFILL = '<script data-plugin="dsh-reverse-proxy">'
-  + '(function(){var c=globalThis.crypto;'
-  + 'if(c&&typeof c.randomUUID!=="function"&&typeof c.getRandomValues==="function"){'
-  + 'function u(){var b=c.getRandomValues(new Uint8Array(16));'
-  + 'b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;var h=[];'
-  + 'for(var i=0;i<16;i++){var s=b[i].toString(16);h[i]=s.length===1?"0"+s:s}'
-  + 'return h[0]+h[1]+h[2]+h[3]+"-"+h[4]+h[5]+"-"+h[6]+h[7]+"-"+h[8]+h[9]+"-"+h[10]+h[11]+h[12]+h[13]+h[14]+h[15]}'
-  + 'try{Object.defineProperty(c,"randomUUID",{value:u,configurable:true})}'
-  + 'catch(e){try{c.randomUUID=u}catch(e2){}}}'
-  + 'var AS=globalThis.AbortSignal;'
-  + 'if(AS&&typeof AS.any!=="function"){AS.any=function(ss){var x=new AbortController();'
-  + 'function a(){x.abort()};for(var i=0;i<ss.length;i++){if(ss[i].aborted){x.abort();return x.signal}'
-  + 'ss[i].addEventListener("abort",a,{once:true})}return x.signal}}'
-  + '})();'
-  + '</script>'
+const INDEX_BOOTSTRAP = `<script data-plugin="dsh-reverse-proxy">${PAGE_BOOTSTRAP_SOURCE}</script>`
 
 export function injectIndexEnhancements(html) {
   const withViewport = injectViewport(html)
   if (!withViewport.includes('<head>')) return withViewport
   // Idempotent: multiple taps (or a retried transform) must not stack copies.
   if (withViewport.includes('data-plugin="dsh-reverse-proxy"')) return withViewport
-  return withViewport.replace('<head>', `<head>${RANDOM_UUID_POLYFILL}`)
+  return withViewport.replace('<head>', `<head>${INDEX_BOOTSTRAP}`)
 }
 
 function isLoopbackAddress(address) {
@@ -113,6 +103,8 @@ export function createRuntime(ctx, config) {
   let bound
   let disposed = false
   let state
+  /** Last start refusal, kept in memory so the panel can explain a stopped proxy. @type {string | undefined} */
+  let lastFailure
   /** @type {Promise<void>} */
   let gate = Promise.resolve()
   const statePath = config.stateFile || defaultStateFile()
@@ -177,6 +169,7 @@ export function createRuntime(ctx, config) {
     const backendPort = config.backendPort || ctx.webServer.port
     const listen = bound === undefined ? effectiveListen() : { host: bound.host, port: bound.port }
     const published = publishHost(listen.host)
+    const reason = extra.reason ?? lastFailure
     return {
       enabled: state.enabled,
       running: bound !== undefined,
@@ -188,7 +181,7 @@ export function createRuntime(ctx, config) {
       wildcard: isWildcardHost(listen.host),
       approvalMode: config.approvalMode,
       authenticated: true,
-      ...extra,
+      ...(reason !== undefined ? { reason } : {}),
     }
   }
 
@@ -205,21 +198,30 @@ export function createRuntime(ctx, config) {
     await load()
     await closeBound()
     state.enabled = false
+    lastFailure = undefined
     await save()
     return snapshot()
   }
 
+  const failStart = (reason) => {
+    lastFailure = reason
+    return snapshot({ reason })
+  }
+
   const start = async () => {
     await load()
-    if (disposed) return snapshot({ reason: 'disposed' })
-    if (bound !== undefined) return snapshot()
+    if (disposed) return failStart('disposed')
+    if (bound !== undefined) {
+      lastFailure = undefined
+      return snapshot()
+    }
     const { host, port } = effectiveListen()
     const backendPort = config.backendPort || ctx.webServer.port
     // A backend pointing at the proxy's own listen address would loop every
     // request back into itself. Refuse loudly instead of spinning.
     if (isSelfLoop(host, port, config.backendHost, backendPort)) {
       ctx.logger.warn(`reverse-proxy: refusing to start — listen ${formatHttpUrl(host, port)} would loop onto backend ${formatHttpUrl(config.backendHost, backendPort)}`)
-      return snapshot({ reason: 'self-loop' })
+      return failStart('self-loop')
     }
     try {
       bound = await listenProxy({
@@ -246,15 +248,20 @@ export function createRuntime(ctx, config) {
       })
     } catch (error) {
       ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
-      return snapshot({ reason: 'listen-failed' })
+      return failStart('listen-failed')
     }
+    lastFailure = undefined
     state.enabled = true
     await save()
     ctx.logger.info(`reverse-proxy: listening on ${formatHttpUrl(bound.host, bound.port)}`)
     return snapshot()
   }
 
-  const rotateToken = () => serial(async () => {
+  // Same shape as start/stop: the work function is unwrapped. HTTP handle
+  // and the runtime export each wrap it in serial() once. Wrapping here AND
+  // in handle() nested the same gate (gate waits for rotateToken, which
+  // waits for gate) and froze the control panel on "Rotate token".
+  const rotateToken = async () => {
     await load()
     const restart = bound !== undefined
     await closeBound()
@@ -266,7 +273,7 @@ export function createRuntime(ctx, config) {
     ctx.logger.info('reverse-proxy: access token rotated')
     if (restart) await start()
     return { ...(await snapshot()), accessToken: state.accessToken }
-  })
+  }
 
   /**
    * Change the published listen address at runtime. A running proxy is
@@ -285,6 +292,7 @@ export function createRuntime(ctx, config) {
     const wasRunning = bound !== undefined
     state.listenHost = hostname
     state.listenPort = portNumber
+    lastFailure = undefined
     await save()
     await closeBound()
     if (!wasRunning) {
@@ -404,7 +412,7 @@ export function createRuntime(ctx, config) {
       await load()
       return state.accessToken
     }),
-    rotateToken,
+    rotateToken: () => serial(rotateToken),
     setListen,
     handle,
   }

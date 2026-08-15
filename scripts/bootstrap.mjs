@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 
 const HARNESS_REPO = 'https://github.com/deepseek-ai/deepseek-harness.git'
 // Verified against the checkout this plugin is developed on
-// (`packages/client/*` 0.1.0-rc.5, slots `shell.overlay` / `sidebar.footer.action`).
+// (`packages/client/*` 0.1.0-rc.5, slot `settings.section`).
 const HARNESS_COMMIT = '47f943859b'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))

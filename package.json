@@ -1,6 +1,6 @@
 {
   "name": "dsh-full-remote",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Remote DeepSeek Harness with full server-side API access: Host/Origin rewrite restores settings.*, credentials.*, and host.listDirectory that other tunnels 403. Token-gated reverse proxy plus mobile control UI.",
   "type": "module",
   "main": "lib/index.js",
@@ -42,7 +42,6 @@
     "README.zh.md",
     "docs/rp-demo-panel.png",
     "docs/rp-demo-login.png",
-    "docs/rp-demo-sidebar.png",
     "docs/rp-demo-listen-address.png",
     "docs/rp-demo-token.png",
     "docs/rp-demo-mobile-login.png"
@@ -84,8 +83,7 @@
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-layout",
-        "@deepseek-ai/dsh-client-ui-sidebar"
+        "@deepseek-ai/dsh-client-ui-slots"
       ]
     }
   },
@@ -95,8 +93,6 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=4.0.1 <5",
     "@deepseek-ai/dsh-client-runtime": ">=0.1.0-rc.5 <0.2",
-    "@deepseek-ai/dsh-client-ui-layout": ">=0.1.0-rc.5 <0.2",
-    "@deepseek-ai/dsh-client-ui-sidebar": ">=0.1.0-rc.5 <0.2",
     "@deepseek-ai/dsh-client-ui-slots": ">=0.1.0-rc.5 <0.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"

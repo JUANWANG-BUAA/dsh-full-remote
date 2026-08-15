@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRuntime } from '../src/index.js'
 import { request } from 'node:http'
+import { createServer } from 'node:net'
 
 const cleanups = []
 afterEach(async () => {
@@ -211,6 +212,24 @@ describe('runtime control surface', () => {
     const started = await runtime.start()
     assert.equal(started.running, false)
     assert.equal(started.reason, 'self-loop')
+    const status = await runtime.status()
+    assert.equal(status.reason, 'self-loop')
+  })
+
+  it('rotates the token through the control route without deadlocking the serial gate', async () => {
+    const { runtime } = await makeRuntime()
+    await runtime.start()
+    const before = await runtime.token()
+    const rotated = await Promise.race([
+      call(runtime, { path: '/dsh-reverse-proxy/rotate-token', method: 'POST', headers: CONTROL }),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('rotate-token hung on the serial gate')), 3000)
+      }),
+    ])
+    assert.equal(rotated.status, 200)
+    assert.notEqual(rotated.body.accessToken, before)
+    assert.equal(rotated.body.running, true)
+    assert.equal(await runtime.token(), rotated.body.accessToken)
   })
 
   it('refuses to start when listen is a wildcard covering the backend port', async () => {
@@ -318,5 +337,29 @@ describe('runtime control surface', () => {
     const status = await runtime.start()
     assert.equal(status.reason, 'disposed')
     assert.equal(status.running, false)
+  })
+
+  it('keeps listen-failed on status until the address changes or a later start succeeds', async () => {
+    const blocker = createServer()
+    await new Promise((resolve, reject) => {
+      blocker.once('error', reject)
+      blocker.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise(resolve => blocker.close(resolve)))
+    const addr = blocker.address()
+    if (addr === null || typeof addr === 'string') throw new Error('expected a TCP bind')
+    const occupied = addr.port
+    const { runtime } = await makeRuntime()
+    await runtime.setListen('127.0.0.1', occupied)
+    const started = await runtime.start()
+    assert.equal(started.running, false)
+    assert.equal(started.reason, 'listen-failed')
+    assert.equal((await runtime.status()).reason, 'listen-failed')
+
+    await runtime.setListen('127.0.0.1', 0)
+    assert.equal((await runtime.status()).reason, undefined)
+    const retried = await runtime.start()
+    assert.equal(retried.running, true)
+    assert.equal(retried.reason, undefined)
   })
 })

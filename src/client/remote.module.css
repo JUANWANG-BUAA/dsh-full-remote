@@ -1,211 +1,119 @@
-.sidebarAction,
-.sidebarActionRail,
-.iconButton,
+/* Reverse-proxy settings section. Matches Plugins / Agent presets:
+   18/600 title, 13px intro, grouped fields, `--dsw-alias-*` tokens.
+   The shell already pads `.options` by 24px. */
+
 .copyField,
 .secondaryButton,
 .textButton,
 .primaryButton,
-.dangerButton,
-.mask {
+.dangerButton {
   font: inherit;
   touch-action: manipulation;
 }
 
-.sidebarAction,
-.sidebarActionRail {
+.section {
   display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  border: 0;
-  border-radius: 12px;
-  color: var(--dsw-alias-label-secondary);
-  background: transparent;
-  cursor: pointer;
-}
-
-/* The button is portaled out of the footer-actions flex row into its own
-   line above the other plugins' buttons (see RemoteAction.tsx). */
-.actionRow {
-  width: 100%;
-}
-
-/* Match the official sidebar footer controls: 34px row height (6px vertical
-   padding + 22px line height, like the Settings trigger), 10px left padding
-   (icon lands at x=18), 8px icon-text gap, 16px icon box, and a full-width
-   hit/hover area spanning the whole sidebar row. */
-.sidebarAction {
-  gap: 8px;
-  justify-content: flex-start;
-  width: 100%;
-  min-height: 34px;
-  padding: 6px 10px;
-}
-
-/* Rail (collapsed) mode: 36×36 like the official collapsed controls. */
-.sidebarActionRail {
-  width: 36px;
-  height: 36px;
-}
-
-.sidebarAction:hover,
-.sidebarActionRail:hover {
+  flex-direction: column;
+  gap: 12px;
+  max-width: 720px;
   color: var(--dsw-alias-label-primary);
-  background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.actionIcon {
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.intro {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.heroMain {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.brand {
   display: grid;
   flex: none;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-tertiary);
 }
 
-.actionLabel {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.brand[data-online='true'] {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.heroCopy {
+  min-width: 0;
+}
+
+.heroCopy strong {
+  display: block;
   font-size: 14px;
-  font-weight: 500;
   line-height: 22px;
+  font-weight: 500;
 }
 
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 2147483000;
-  width: 100%;
-  max-width: none;
-  height: 100%;
-  max-height: none;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  overflow: hidden;
-  pointer-events: auto;
+.hero > .primaryButton,
+.hero > .dangerButton {
+  align-self: center;
+  flex: none;
 }
 
-.overlay::backdrop {
-  background: var(--dsw-alias-bg-mask-1);
-}
-
-.mask {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  border: 0;
-  background: var(--dsw-alias-bg-mask-1);
-  cursor: default;
-}
-
-.panel {
-  position: absolute;
-  top: 50%;
-  left: 50%;
+.group {
   display: flex;
   flex-direction: column;
-  width: min(460px, calc(100vw - 32px));
-  max-height: min(760px, calc(100dvh - 32px));
-  overflow: auto;
-  transform: translate(-50%, -50%);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 20px;
-  background-color: var(--dsw-alias-bg-layer-1);
-  background-image: linear-gradient(var(--dsw-alias-bg-layer-2), var(--dsw-alias-bg-layer-2));
-  color: var(--dsw-alias-label-primary);
-  box-shadow: var(--dsw-shadow-lv3);
+  gap: 8px;
+  min-width: 0;
 }
 
-.header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 22px 22px 16px;
-}
-
-.header h2 {
-  margin: 2px 0 0;
-  font-size: 22px;
-  line-height: 30px;
-  font-weight: 650;
-}
-
-.eyebrow,
-.label {
+.groupHead {
   margin: 0;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--dsw-alias-label-tertiary);
-  font-size: 11px;
-  line-height: 16px;
-  font-weight: 700;
-  letter-spacing: .08em;
 }
 
-.iconButton {
-  flex: none;
-  width: 44px;
-  height: 44px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
-  background: transparent;
-  color: inherit;
-  font-size: 24px;
-  cursor: pointer;
-}
-
-.statusCard {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  margin: 0 22px;
-  padding: 15px;
-  border-radius: 14px;
-  background: var(--dsw-alias-bg-layer-1);
-}
-
-.onlineDot,
-.offlineDot {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  margin-top: 5px;
-  border-radius: 999px;
-}
-
-.onlineDot {
-  background: var(--dsw-alias-state-success-primary);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--dsw-alias-state-success-primary) 18%, transparent);
-}
-
-.offlineDot {
-  background: var(--dsw-alias-label-caption);
-}
-
-.statusCard strong {
-  font-size: 14px;
-  line-height: 20px;
-}
-
-.statusCard p,
-.section p {
-  margin: 3px 0 0;
+.hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--dsw-alias-label-tertiary);
-  font-size: 13px;
-  line-height: 20px;
-}
-
-.section {
-  padding: 19px 22px 0;
 }
 
 .listenRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 112px;
+  grid-template-columns: minmax(0, 1fr) 104px auto;
   gap: 10px;
-  margin-top: 10px;
+  align-items: end;
+}
+
+.listenRow > .secondaryButton {
+  align-self: end;
+  height: 34px;
 }
 
 .field {
@@ -218,36 +126,37 @@
 .field > span {
   color: var(--dsw-alias-label-tertiary);
   font-size: 12px;
-  line-height: 16px;
+  line-height: 1.5;
 }
 
 .input {
   box-sizing: border-box;
   width: 100%;
-  min-height: 48px;
+  height: 34px;
   padding: 0 12px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
-  background: var(--dsw-alias-bg-layer-1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3);
   color: var(--dsw-alias-label-primary);
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .input:focus-visible {
-  outline: 2px solid var(--dsw-alias-brand-primary);
-  outline-offset: 2px;
+  outline: none;
+  border-color: var(--dsw-alias-brand-primary);
 }
 
 .warn {
-  margin: 10px 0 0;
-  padding: 9px 12px;
+  margin: 0;
+  padding: 8px 10px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3);
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
-  line-height: 18px;
+  line-height: 1.5;
 }
 
 .copyField {
@@ -256,12 +165,11 @@
   justify-content: space-between;
   gap: 12px;
   width: 100%;
-  min-height: 48px;
-  margin-top: 10px;
-  padding: 10px 12px;
+  min-height: 34px;
+  padding: 6px 12px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 12px;
-  background: var(--dsw-alias-bg-layer-1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3);
   color: inherit;
   text-align: left;
   cursor: pointer;
@@ -277,73 +185,146 @@
   flex: none;
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
-  font-weight: 650;
-}
-
-.meta {
-  margin: 8px 0 0;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 12px;
-  line-height: 18px;
+  font-weight: 500;
 }
 
 .secondaryButton,
 .primaryButton,
 .dangerButton {
-  width: 100%;
-  min-height: 48px;
-  border-radius: 12px;
-  padding: 0 16px;
-  font-weight: 650;
+  align-self: flex-start;
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 5px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 500;
   cursor: pointer;
 }
 
 .secondaryButton {
-  margin-top: 10px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  background: transparent;
-  color: inherit;
+  border-color: var(--dsw-alias-border-l2);
+  background: none;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.secondaryButton:hover:not(:disabled) {
+  color: var(--dsw-alias-label-primary);
+  border-color: var(--dsw-alias-label-dimmed);
 }
 
 .primaryButton {
-  border: 0;
-  background: var(--dsw-alias-button-primary-fill);
-  color: var(--dsw-alias-label-primary-inverted);
+  background: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-bg-layer-3);
 }
 
 .dangerButton {
-  border: 1px solid var(--dsw-alias-state-error-primary);
+  border-color: var(--dsw-alias-state-error-primary);
   background: transparent;
   color: var(--dsw-alias-state-error-primary);
 }
 
 .textButton {
-  min-height: 44px;
-  margin-top: 4px;
+  align-self: center;
+  flex: none;
+  min-height: 28px;
+  padding: 0;
   border: 0;
   background: transparent;
   color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 1.5;
   cursor: pointer;
 }
 
-.tokenBlock {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+.textButton:hover:not(:disabled) {
+  color: var(--dsw-alias-label-primary);
 }
 
-.notice {
-  margin: 14px 22px 0;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-1);
-  color: var(--dsw-alias-label-secondary);
+.tokenRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.tokenRow > .copyField {
+  flex: 1;
+  width: auto;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 8px 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.toastBody {
+  min-width: 0;
+  flex: 1;
+}
+
+.toastBody strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.toastBody p {
+  margin: 4px 0 0;
   font-size: 13px;
   line-height: 20px;
 }
 
-.footer {
-  padding: 22px;
+.toastError {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 55%, var(--dsw-alias-border-l2));
+  background: color-mix(in srgb, var(--dsw-alias-state-error-primary) 12%, var(--dsw-alias-bg-layer-3));
+}
+
+.toastWarn {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-warn-label, #c48a00) 55%, var(--dsw-alias-border-l2));
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-label, #c48a00) 12%, var(--dsw-alias-bg-layer-3));
+}
+
+.toastSuccess {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, var(--dsw-alias-border-l2));
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 12%, var(--dsw-alias-bg-layer-3));
+}
+
+.toastDismiss {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-top: -4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.toastDismiss:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toast {
+    animation: toast-in 160ms ease-out;
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+  }
 }
 
 button:focus-visible {
@@ -353,66 +334,19 @@ button:focus-visible {
 
 button:disabled {
   cursor: not-allowed;
-  opacity: .55;
+  opacity: .4;
 }
 
-@media (max-width: 640px) {
-  .panel {
-    top: auto;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    max-height: min(88dvh, 720px);
-    transform: none;
-    border-right: 0;
-    border-bottom: 0;
-    border-left: 0;
-    border-radius: 22px 22px 0 0;
-    padding-bottom: env(safe-area-inset-bottom, 0);
-  }
-
-  .header {
-    padding-top: 18px;
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .panel {
-    animation: panel-in 180ms ease-out;
-  }
-
-  @keyframes panel-in {
-    from {
-      opacity: 0;
-      transform: translate(-50%, calc(-50% + 12px));
-    }
-  }
-}
-
-@media (max-width: 640px) and (prefers-reduced-motion: no-preference) {
-  .panel {
-    animation-name: sheet-in;
-  }
-
-  @keyframes sheet-in {
-    from {
-      transform: translateY(20px);
-      opacity: 0;
-    }
-  }
-}
-
-/* Connected devices list */
 .emptyText {
-  font-size: 13px;
-  color: var(--rp-muted, #8a93a0);
-  margin: 8px 0 0;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .deviceList {
   list-style: none;
-  margin: 10px 0 0;
+  margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -425,9 +359,9 @@ button:disabled {
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid var(--rp-border, #d9dde3);
+  border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 12px;
-  background: var(--rp-card, #fff);
+  background: var(--dsw-alias-bg-layer-3);
 }
 
 .deviceInfo {
@@ -449,47 +383,54 @@ button:disabled {
 .deviceMeta {
   flex-basis: 100%;
   font-size: 12px;
-  color: var(--rp-muted, #8a93a0);
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .pendingBadge,
 .onlineBadge {
   font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
+  font-weight: 500;
+  padding: 1px 8px;
   border-radius: 999px;
   white-space: nowrap;
 }
 
 .onlineBadge {
-  color: #0a7d32;
-  background: #e5f6ec;
+  color: var(--dsw-alias-state-success-primary);
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent);
 }
 
 .pendingBadge {
-  color: #8a5a00;
-  background: #fdf3dd;
+  color: var(--dsw-alias-state-warn-label, #8a5a00);
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-label, #c48a00) 14%, transparent);
 }
 
 .deviceActions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
-@media (prefers-color-scheme: dark) {
-  .deviceItem {
-    border-color: var(--rp-border-dark, #343a43);
-    background: var(--rp-card-dark, #1b1f24);
+@media (max-width: 560px) {
+  .hero {
+    flex-wrap: wrap;
   }
 
-  .onlineBadge {
-    color: #7fe0a8;
-    background: #14331f;
+  .hero > .primaryButton,
+  .hero > .dangerButton {
+    width: 100%;
   }
 
-  .pendingBadge {
-    color: #f2c879;
-    background: #33260d;
+  .listenRow {
+    grid-template-columns: minmax(0, 1fr) 104px;
+  }
+
+  .listenRow > .secondaryButton {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .tokenRow {
+    flex-wrap: wrap;
   }
 }

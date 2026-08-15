@@ -1,3 +1,11 @@
+# Pin the in-app directory picker so a phone can add a workspace.
+# directory-picker-auto would mount the macOS/Windows native chooser whenever
+# webServer binds 127.0.0.1 — that dialog opens on the host display, so a
+# remote "Add workspace" looks broken. Official overlay shape: disable auto
+# and mount the browse pair (web-app cordis.patch.yml says to pin this way).
+# Patch cannot rename a row (name mismatch is skipped), so disable + insert.
+- id: directory-picker
+  disabled: true
 # Insert the authenticated reverse proxy into the Web composition.
 # Install with: dsh plugin --profile web add dsh-full-remote
 - insert:
@@ -6,3 +14,7 @@
       config:
         listenHost: 127.0.0.1
         listenPort: 3081
+    - id: directory-picker-browse
+      name: '@deepseek-ai/dsh-host-directory-picker-browse'
+    - id: directory-picker-browse-ui
+      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'

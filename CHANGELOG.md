@@ -3,6 +3,61 @@
 All notable changes to dsh-full-remote (formerly dsh-reverse-proxy) are
 documented in this file.
 
+## Unreleased
+
+## 0.2.1 (2026-08-15)
+
+### Added
+
+- Reverse-proxy controls now live on the official Settings left nav
+  (`settings.section`, order 30), matching the Models / Plugins page
+  rhythm. The sidebar footer action, overlay dialog, and DOM-guessed
+  layout promotion are gone.
+
+### Fixed
+
+- **Rotate token no longer freezes the control surface.** The HTTP handler
+  wrapped `rotateToken` in the serial gate twice; the inner wait deadlocked
+  the same gate. `proxy.close()` also has a 2s grace so a lingering SSE
+  cannot pin rotate/stop forever.
+- Official settings edits persist on a tunnel hostname. The index tap
+  declares `__DSH_FULL_REMOTE_TRUSTED__` and wraps `__ModuleLoader__` so
+  `connection.isLoopback` is true before official plugins bind. A late
+  `settingsScope.bind` wrap cannot rewrite scopes that already chose
+  memory persistence.
+- **Add workspace works on a phone.** The bundle patch disables
+  `directory-picker-auto` (native chooser on the host display) and mounts
+  the in-app browse backend + UI pair.
+- Opening **Settings → Reverse proxy** from a tunnel hostname maps the
+  proxy's plain-text `403` to the "use the local 127.0.0.1 window" toast
+  instead of a locale-stuck HTTP blurb.
+- Clicking **启动代理** when the listen port is occupied (or would loop
+  onto the backend) now surfaces the failure in the panel. `GET /status`
+  keeps the last start `reason` until the listen address changes or a
+  later start succeeds.
+
+### Changed
+
+- Settings page uses a two-node bridge glyph (local solid, remote
+  hollow) instead of the diamond-and-cross that collided with other
+  panel icons. Status, start/stop, listen, token, and devices are
+  grouped like the official Plugins page; the primary action sits in
+  the status card instead of at the bottom.
+- Control panel toasts for start/stop/listen outcomes. Bind failures,
+  self-loop refusals, disposed plugins, and forbidden remote control each
+  get a dedicated message with the next step, instead of a silent 200 or
+  a raw `reason` code.
+- Client graph inject no longer lists `ui-layout` / `ui-sidebar`; the
+  page waits on `slots` from `@deepseek-ai/dsh-client-ui-slots`.
+
+### Documentation
+
+- README install sections now say how to upgrade:
+  `dsh plugin --profile web update dsh-full-remote`, then restart.
+  Profiles do not auto-update on boot.
+- Known Limitations cover settings persistence, the browse-picker pin,
+  and the harness-default gear icon on the Settings left nav.
+
 ## 0.2.0 (2026-08-15)
 
 ### Changed

@@ -1,20 +1,15 @@
 import type { ComponentProps } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { RemoteAction } from '../src/client/RemoteAction.tsx'
-import { RemoteOverlay } from '../src/client/RemoteOverlay.tsx'
-import { findSidebarFootArea, insertSidebarActionRow } from '../src/client/sidebarFoot.ts'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { errorFromControlResponse } from '../src/client/index.ts'
+import { RemoteSection } from '../src/client/RemoteSection.tsx'
+import {
+  pageNeedsHostSettingsPersistence,
+  trustSettingsPersistence,
+} from '../src/client/trust-settings.ts'
 import type { ProxyApi, ProxyStatus } from '../src/client/types.ts'
 import { translatorFor, zh, en, type ReverseProxyTranslate } from '../src/client/i18n.ts'
-
-beforeAll(() => {
-  HTMLDialogElement.prototype.showModal = function showModal() {
-    this.setAttribute('open', '')
-  }
-  HTMLDialogElement.prototype.close = function close() {
-    this.removeAttribute('open')
-  }
-})
+import { toastFromCaught, toastFromStatus } from '../src/client/toast.ts'
 
 afterEach(cleanup)
 
@@ -43,33 +38,20 @@ function api(overrides: Partial<ProxyApi> = {}): ProxyApi {
 
 /**
  * The real slot contracts extend GlobalStandardProps with session/workspace
- * hooks the panel never reads. The one cast lives here so every render call
+ * hooks the page never reads. The one cast lives here so every render call
  * below stays fully typed and readable.
  */
-function overlayProps(
+function sectionProps(
   service: ProxyApi,
-  close = vi.fn(),
   t: ReverseProxyTranslate = translatorFor(zh),
-): ComponentProps<typeof RemoteOverlay> {
+): ComponentProps<typeof RemoteSection> {
   return {
     api: service,
     t,
-    actions: { open: vi.fn(), close },
-    useStore: (selector: (state: { open: boolean }) => boolean) => selector({ open: true }),
+    close: vi.fn(),
     useSessions: vi.fn(),
     useWorkspaces: vi.fn(),
-  } as unknown as ComponentProps<typeof RemoteOverlay>
-}
-
-function actionProps(open = vi.fn(), wide = true): ComponentProps<typeof RemoteAction> {
-  return {
-    wide,
-    t: translatorFor(zh),
-    actions: { open, close: vi.fn() },
-    useStore: vi.fn(),
-    useSessions: vi.fn(),
-    useWorkspaces: vi.fn(),
-  } as unknown as ComponentProps<typeof RemoteAction>
+  } as unknown as ComponentProps<typeof RemoteSection>
 }
 
 describe('i18n dictionaries', () => {
@@ -80,102 +62,168 @@ describe('i18n dictionaries', () => {
   it('translates through the active dictionary and keeps the zh fallback default', () => {
     expect(translatorFor(en)('start')).toBe('Start proxy')
     expect(translatorFor(zh)('start')).toBe('启动代理')
-    expect(translatorFor(en)('error.listenFailed', { reason: 'x' })).toBe('Failed to update listen address: x')
+    expect(translatorFor(en)('error.startListenFailed', { bind: '0.0.0.0:8000' })).toContain('0.0.0.0:8000')
   })
 })
 
-describe('sidebar foot promotion', () => {
-  it('returns null on a flat tree without a column-flex ancestor', () => {
-    let leaf = document.createElement('div')
-    for (let i = 0; i < 8; i++) {
-      const parent = document.createElement('div')
-      parent.appendChild(leaf)
-      leaf = parent
-    }
-    expect(findSidebarFootArea(leaf)).toBeNull()
+describe('toast mapping', () => {
+  const t = translatorFor(zh)
+
+  it('maps listen-failed on start to occupancy copy with the bind address', () => {
+    const toast = toastFromStatus(
+      { ...stopped, listen: { host: '0.0.0.0', port: 8000 }, reason: 'listen-failed' },
+      t,
+      'start',
+    )
+    expect(toast.kind).toBe('error')
+    expect(toast.text).toContain('0.0.0.0:8000')
+    expect(toast.text).toContain('应用发布地址')
   })
 
-  it('finds the nearest column-flex ancestor within the depth budget', () => {
-    const getComputedStyle = vi.spyOn(window, 'getComputedStyle').mockImplementation((element: Element) => {
-      const column = element instanceof HTMLElement && element.dataset.column === '1'
-      return { flexDirection: column ? 'column' : 'row' } as CSSStyleDeclaration
-    })
-    try {
-      const foot = document.createElement('div')
-      foot.dataset.column = '1'
-      const actionsRow = document.createElement('div')
-      const wrapper = document.createElement('div')
-      const anchor = document.createElement('div')
-      wrapper.appendChild(anchor)
-      actionsRow.appendChild(wrapper)
-      foot.appendChild(actionsRow)
-      expect(findSidebarFootArea(anchor)).toBe(foot)
-    } finally {
-      getComputedStyle.mockRestore()
-    }
+  it('maps forbidden control errors to the local-window copy', () => {
+    expect(toastFromCaught(new Error('forbidden'), t).text).toMatch(/127\.0\.0\.1/)
   })
 
-  it('inserts a marked holder row as the first child of the foot area', () => {
-    const foot = document.createElement('div')
-    const first = document.createElement('div')
-    foot.appendChild(first)
-    const holder = insertSidebarActionRow(foot)
-    expect(foot.firstElementChild).toBe(holder)
-    expect(holder.getAttribute('data-dsh-reverse-proxy-action-row')).toBe('1')
+  it('maps a proxy 403 with no JSON body to forbidden, not a locale-stuck HTTP blurb', () => {
+    expect(errorFromControlResponse(403, {}).message).toBe('forbidden')
+    expect(errorFromControlResponse(401, {}).message).toBe('forbidden')
+    expect(errorFromControlResponse(403, { error: 'loopback-required' }).message).toBe('loopback-required')
+    expect(errorFromControlResponse(500, {}).message).toBe('HTTP 500')
   })
 })
 
-describe('remote client UI', () => {
-  it('opens from the sidebar action with official-control geometry', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      const open = vi.fn()
-      render(<RemoteAction {...actionProps(open)} />)
-      fireEvent.click(screen.getByRole('button', { name: '打开反向代理' }))
-      expect(open).toHaveBeenCalledOnce()
-      expect(screen.getByText('反向代理')).toBeTruthy()
-      expect(warn).toHaveBeenCalled()
-    } finally {
-      warn.mockRestore()
+describe('settings persistence trust', () => {
+  it('requires the index-tap flag and a non-loopback hostname', () => {
+    expect(pageNeedsHostSettingsPersistence('app.example', 1)).toBe(true)
+    expect(pageNeedsHostSettingsPersistence('127.0.0.1', 1)).toBe(false)
+    expect(pageNeedsHostSettingsPersistence('localhost', 1)).toBe(false)
+    expect(pageNeedsHostSettingsPersistence('app.example', undefined)).toBe(false)
+    expect(pageNeedsHostSettingsPersistence('', 1)).toBe(false)
+  })
+
+  it('makes bind() see isLoopback and restores the handle afterwards', () => {
+    const connection = { isLoopback: false }
+    const seen: boolean[] = []
+    const binder = {
+      bind(spec: unknown) {
+        seen.push(connection.isLoopback)
+        return spec
+      },
     }
+    trustSettingsPersistence(binder, () => connection, { hostname: 'tunnel.example', trusted: 1 })
+    expect(binder.bind({ namespace: 'ui-test' })).toEqual({ namespace: 'ui-test' })
+    expect(seen).toEqual([true])
+    expect(connection.isLoopback).toBe(false)
   })
 
-  it('uses the locale for the overlay mask aria-label', async () => {
-    const close = vi.fn()
-    render(<RemoteOverlay {...overlayProps(api(), close, translatorFor(en))} />)
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Close reverse proxy panel' })).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: 'Close reverse proxy panel' }))
-    expect(close).toHaveBeenCalledOnce()
+  it('does not wrap bind on a loopback page', () => {
+    const connection = { isLoopback: false }
+    const binder = { bind: vi.fn((spec: unknown) => spec) }
+    const original = binder.bind
+    trustSettingsPersistence(binder, () => connection, { hostname: '127.0.0.1', trusted: 1 })
+    expect(binder.bind).toBe(original)
   })
+})
 
-  it('loads status, starts the proxy, and closes with Escape', async () => {
+describe('remote settings section', () => {
+  it('renders as a settings page, not a dialog overlay', async () => {
     const service = api()
-    const close = vi.fn()
-    render(<RemoteOverlay {...overlayProps(service, close)} />)
+    render(<RemoteSection {...sectionProps(service)} />)
+    expect(document.querySelector('dialog')).toBeNull()
+    expect(await screen.findByRole('heading', { name: '反向代理' })).toBeTruthy()
+    expect(screen.getByText(/把任意隧道指到下方地址/)).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '隧道目标' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '发布地址' })).toBeTruthy()
+  })
+
+  it('uses the locale for the section heading', async () => {
+    render(<RemoteSection {...sectionProps(api(), translatorFor(en))} />)
+    expect(await screen.findByRole('heading', { name: 'Reverse proxy' })).toBeTruthy()
+  })
+
+  it('loads status and starts the proxy', async () => {
+    const service = api()
+    render(<RemoteSection {...sectionProps(service)} />)
     await waitFor(() => expect(service.status).toHaveBeenCalledOnce())
-    const dialog = document.querySelector('dialog')
-    expect(dialog).toBeTruthy()
-    expect(document.body.contains(dialog)).toBe(true)
     expect(await screen.findByText('代理尚未运行')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '启动代理' }))
     await waitFor(() => expect(service.start).toHaveBeenCalledOnce())
-    fireEvent.keyDown(document, { key: 'Escape' })
-    expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('shows a dedicated toast when start returns listen-failed', async () => {
+    const failed: ProxyStatus = {
+      ...stopped,
+      listen: { host: '0.0.0.0', port: 8000 },
+      reason: 'listen-failed',
+    }
+    const service = api({
+      status: vi.fn().mockResolvedValue(failed),
+      start: vi.fn().mockResolvedValue(failed),
+    })
+    render(<RemoteSection {...sectionProps(service)} />)
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(screen.getByText(/0\.0\.0\.0:8000/)).toBeTruthy()
+    expect(screen.getByText(/占用/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '启动代理' }))
+    await waitFor(() => expect(service.start).toHaveBeenCalledOnce())
+    expect(screen.getByRole('alert').textContent).toMatch(/应用发布地址/)
+  })
+
+  it('explains a self-loop start refusal with the colliding addresses', async () => {
+    const looped: ProxyStatus = {
+      ...stopped,
+      listen: { host: '127.0.0.1', port: 3080 },
+      backend: 'http://127.0.0.1:3080',
+      reason: 'self-loop',
+    }
+    const service = api({ start: vi.fn().mockResolvedValue(looped) })
+    render(<RemoteSection {...sectionProps(service)} />)
+    await waitFor(() => expect(service.status).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: '启动代理' }))
+    expect(await screen.findByText(/死循环/)).toBeTruthy()
+    expect(screen.getByRole('alert').textContent).toMatch(/127\.0\.0\.1:3080/)
+  })
+
+  it('maps control-plane HTTP errors to an actionable toast', async () => {
+    const service = api({ start: vi.fn().mockRejectedValue(new Error('forbidden')) })
+    render(<RemoteSection {...sectionProps(service)} />)
+    await waitFor(() => expect(service.status).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: '启动代理' }))
+    expect(await screen.findByText(/不要从隧道/)).toBeTruthy()
+  })
+
+  it('shows a success toast after the proxy starts', async () => {
+    const service = api()
+    render(<RemoteSection {...sectionProps(service)} />)
+    await waitFor(() => expect(service.status).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: '启动代理' }))
+    expect(await screen.findByText(/代理已启动/)).toBeTruthy()
   })
 
   it('reveals the access token only after an explicit gesture', async () => {
     const service = api()
-    render(<RemoteOverlay {...overlayProps(service)} />)
+    render(<RemoteSection {...sectionProps(service)} />)
     expect(screen.queryByText('secret-token')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '显示访问令牌' }))
     expect(await screen.findByText('secret-token')).toBeTruthy()
+  })
+
+  it('rotates the token after it has been revealed', async () => {
+    const service = api()
+    render(<RemoteSection {...sectionProps(service)} />)
+    fireEvent.click(screen.getByRole('button', { name: '显示访问令牌' }))
+    expect(await screen.findByText('secret-token')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '轮换令牌' }))
+    await waitFor(() => expect(service.rotateToken).toHaveBeenCalledOnce())
+    expect(await screen.findByText('next-token')).toBeTruthy()
+    expect(await screen.findByText(/已轮换/)).toBeTruthy()
   })
 
   it('applies a custom listen address and warns about wildcard binds', async () => {
     const service = api({
       setListen: vi.fn().mockResolvedValue({ ...stopped, listen: { host: '0.0.0.0', port: 9081 }, wildcard: true, target: 'http://127.0.0.1:9081' }),
     })
-    render(<RemoteOverlay {...overlayProps(service)} />)
+    render(<RemoteSection {...sectionProps(service)} />)
     await waitFor(() => expect(service.status).toHaveBeenCalledOnce())
     fireEvent.change(screen.getByPlaceholderText('127.0.0.1'), { target: { value: '0.0.0.0' } })
     fireEvent.change(screen.getByPlaceholderText('3081'), { target: { value: '9081' } })
@@ -186,7 +234,7 @@ describe('remote client UI', () => {
 
   it('warns when the listen host is a non-loopback unicast address', async () => {
     const service = api()
-    render(<RemoteOverlay {...overlayProps(service)} />)
+    render(<RemoteSection {...sectionProps(service)} />)
     await waitFor(() => expect(service.status).toHaveBeenCalledOnce())
     fireEvent.change(screen.getByPlaceholderText('127.0.0.1'), { target: { value: '192.168.1.5' } })
     expect(screen.getByText(/非回环/)).toBeTruthy()
@@ -194,7 +242,7 @@ describe('remote client UI', () => {
 
   it('rejects an empty listen host without calling the API', async () => {
     const service = api()
-    render(<RemoteOverlay {...overlayProps(service)} />)
+    render(<RemoteSection {...sectionProps(service)} />)
     await waitFor(() => expect(service.status).toHaveBeenCalledOnce())
     fireEvent.change(screen.getByPlaceholderText('127.0.0.1'), { target: { value: '  ' } })
     fireEvent.click(screen.getByRole('button', { name: '应用发布地址' }))
@@ -204,9 +252,9 @@ describe('remote client UI', () => {
 
   it('lists connected devices and kicks one', async () => {
     const now = Date.now()
-    const device = { id: 's1', label: 'Chrome on macOS', status: 'active', createdAt: now, lastSeenAt: now }
+    const device = { id: 's1', label: 'Chrome on macOS', status: 'active' as const, createdAt: now, lastSeenAt: now }
     const service = api({ sessions: vi.fn().mockResolvedValue([device]) })
-    render(<RemoteOverlay {...overlayProps(service)} />)
+    render(<RemoteSection {...sectionProps(service)} />)
     expect(await screen.findByText('Chrome on macOS')).toBeTruthy()
     expect(screen.getByText('在线')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '踢出' }))
@@ -216,9 +264,9 @@ describe('remote client UI', () => {
 
   it('approves a pending device from the panel', async () => {
     const now = Date.now()
-    const pending = { id: 'p1', label: 'Safari on iOS', status: 'pending', createdAt: now, lastSeenAt: now }
+    const pending = { id: 'p1', label: 'Safari on iOS', status: 'pending' as const, createdAt: now, lastSeenAt: now }
     const service = api({ sessions: vi.fn().mockResolvedValue([pending]) })
-    render(<RemoteOverlay {...overlayProps(service)} />)
+    render(<RemoteSection {...sectionProps(service)} />)
     expect(await screen.findByText('Safari on iOS')).toBeTruthy()
     expect(screen.getByText('待审批')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '批准' }))
@@ -227,21 +275,23 @@ describe('remote client UI', () => {
   })
 
   it('shows the approval-mode hint and an empty devices state', async () => {
-    const service = api({ sessions: vi.fn().mockResolvedValue([]) })
-    render(<RemoteOverlay {...overlayProps(service)} />)
+    const service = api({
+      status: vi.fn().mockResolvedValue({ ...stopped, approvalMode: true }),
+      sessions: vi.fn().mockResolvedValue([]),
+    })
+    render(<RemoteSection {...sectionProps(service)} />)
     expect(await screen.findByText('暂无设备。远程浏览器登录后会显示在这里。')).toBeTruthy()
+    expect(await screen.findByText(/审批模式已开启/)).toBeTruthy()
   })
 
   it('copies the tunnel target via execCommand when the async Clipboard API is unavailable', async () => {
-    // Remote browsers run on plain HTTP (insecure context): navigator.clipboard
-    // is undefined there. The panel must fall back to execCommand('copy').
     const service = api()
     const originalExecCommand = document.execCommand
     const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
     document.execCommand = vi.fn().mockReturnValue(true)
     Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
     try {
-      render(<RemoteOverlay {...overlayProps(service)} />)
+      render(<RemoteSection {...sectionProps(service)} />)
       await waitFor(() => expect(service.status).toHaveBeenCalledOnce())
       expect(await screen.findByText('代理尚未运行')).toBeTruthy()
       fireEvent.click(await screen.findByRole('button', { name: /复制/ }))

@@ -233,6 +233,9 @@ describe('index enhancements', () => {
     assert.match(out, /typeof c\.randomUUID!=="function"/)
     assert.match(out, /AbortSignal/)
     assert.match(out, /AS\.any/)
+    assert.match(out, /__DSH_FULL_REMOTE_TRUSTED__/)
+    assert.match(out, /__ModuleLoader__/)
+    assert.match(out, /@deepseek-ai\/dsh-client-connection/)
   })
 })
 
@@ -247,6 +250,16 @@ describe('real index fixture', () => {
       assert.equal(out.includes(line), true, `missing ${line}`)
     }
     assert.equal((out.match(/data-plugin="dsh-reverse-proxy"/g) ?? []).length, 1)
+  })
+})
+
+describe('bundle patch', () => {
+  it('disables the native directory picker and pins the in-app browse pair', async () => {
+    const yaml = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
+    assert.match(yaml, /id: directory-picker\n {2}disabled: true/)
+    assert.match(yaml, /id: directory-picker-browse\n {6}name: '@deepseek-ai\/dsh-host-directory-picker-browse'/)
+    assert.match(yaml, /id: directory-picker-browse-ui\n {6}name: '@deepseek-ai\/dsh-client-ui-directory-picker-browse'/)
+    assert.match(yaml, /id: reverse-proxy\n {6}name: dsh-full-remote/)
   })
 })
 
@@ -837,5 +850,58 @@ describe('websocket upgrade', () => {
     await proxy.close()
     await new Promise(resolve => setTimeout(resolve, 300))
     assert.equal(backendEnded, true)
+  })
+})
+
+describe('proxy teardown', () => {
+  it('close() returns while a proxied response is still streaming', async () => {
+    const backend = createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      res.write('partial')
+    })
+    await new Promise((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise(resolve => {
+      backend.closeAllConnections?.()
+      backend.close(resolve)
+    }))
+    const token = generateAccessToken()
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: backend.address().port,
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 1024,
+      upstreamTimeoutMs: 2000,
+      loginDelayMs: 0,
+    })
+    const login = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    const cookie = login.headers['set-cookie'][0].split(';', 1)[0]
+    const pending = request({
+      hostname: '127.0.0.1',
+      port: proxy.port,
+      path: '/stream',
+      headers: { cookie },
+    })
+    pending.end()
+    await new Promise((resolve, reject) => {
+      pending.once('response', resolve)
+      pending.once('error', reject)
+    })
+    await Promise.race([
+      proxy.close(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('proxy.close hung')), 3000)),
+    ])
   })
 })

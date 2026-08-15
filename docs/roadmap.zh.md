@@ -1,8 +1,10 @@
 # dsh-full-remote · 分析与改进计划
 
-内部工作文档，不随 npm tarball 分发（`package.json` 的 `files` 逐个具名列出 6 张 `docs/rp-demo-*.png`，不是 glob，因此本文不进包）。
+内部工作文档，不随 npm tarball 分发（`package.json` 的 `files` 逐个具名列出 5 张 `docs/rp-demo-*.png`，不是 glob，因此本文不进包）。
 
-> 状态（2026-08-15）：P0 代码与文档已在 0.2.0 落地。安装段只写本插件，不写官方 web-app。GitHub 仓库已改名为 `dsh-full-remote`。GitHub topics、npm 发布、awesome PR 改名仍待执行。下文是当时的分析原文，未逐条改写成完成记录。
+> 状态（2026-08-15 夜间）：0.2.1 已把「设置落盘」「手机加工作区」「控制面迁入设置页」做成产品行为。下文是当日上午的分析原文，未逐条改写成完成记录。
+>
+> **0.2.0 当晚的社区对照**见 [`docs/progress-review.zh.md`](./progress-review.zh.md)（文首有 0.2.1 过时说明）。社区队列仍是：Discussion #76 现身 + awesome PR + deprecate 旧包。
 
 汇总 2026-08-15 的代码通读、harness 源码交叉验证、生态实测与三轮实验结论。文中每条事实都标注了来源；凡是「实测」二字，均指本机跑过脚本或调过 registry API，不是推理。
 

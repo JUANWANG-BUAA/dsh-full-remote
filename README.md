@@ -25,24 +25,30 @@ stronger door in front: a 192-bit access token, per-device credentials
 (hash at rest), failed-login rate limits, and optional first-visit
 approval.
 
-**The claim is server-side API completeness, not a complete UI.** Harness's
-official settings panel has a second, independent client check
-(`connection.isLoopback`) inferred from the page URL. Under a tunnel
-hostname the panel still runs in a memory scope and edits do not persist.
-The APIs themselves return 200. See [Known Limitations](#known-limitations-and-deferred-work).
+**The claim is server-side API completeness, plus two client behaviors this
+plugin pins for a phone on the LAN:** official settings persist, and "Add
+workspace" uses the in-app directory browser instead of a native chooser on
+the host display. The index tap declares `__DSH_FULL_REMOTE_TRUSTED__` and
+wraps `window.__ModuleLoader__` so `connection.isLoopback` is true before
+official settings plugins bind. Host path-open from a remote browser then
+acts on the host machine. The durable upstream fix is still a
+`__DSH_BOOT__` trust field. See
+[Known Limitations](#known-limitations-and-deferred-work).
 
 The plugin does not launch or manage tunnel software. Point frp, ngrok,
-cloudflared, Tailscale, SSH, or anything else at the local target shown in
-the sidebar.
+cloudflared, Tailscale, SSH, or anything else at the local target shown
+in **Settings → Reverse proxy**.
 
 ## Screenshots
 
 Each feature is shown against a clean harness profile (no personal data).
+Login-gate shots are current. The three control-page shots show the same
+fields after they moved to **Settings → Reverse proxy**; the window chrome
+in those PNGs is the previous overlay dialog.
 
 | Feature | Screenshot |
 |---|---|
-| Sidebar entry — own row above the other footer actions | ![Sidebar entry](./docs/rp-demo-sidebar.png) |
-| Control panel — status, tunnel target, one-click copy | ![Control panel](./docs/rp-demo-panel.png) |
+| Control page — status, tunnel target, one-click copy | ![Control panel](./docs/rp-demo-panel.png) |
 | Runtime publish address — non-loopback warning before applying | ![Listen address](./docs/rp-demo-listen-address.png) |
 | Access token — reveal and rotate | ![Access token](./docs/rp-demo-token.png) |
 | Remote login gate — desktop | ![Login gate](./docs/rp-demo-login.png) |
@@ -63,6 +69,9 @@ Each feature is shown against a clean harness profile (no personal data).
 - Runtime listen address with persistence and automatic rollback.
 - Guarded `crypto.randomUUID` + `AbortSignal.any` polyfills so remote
   file attachments keep working on plain HTTP.
+- Official settings persist on a tunnel hostname; "Add workspace" uses
+  the in-app directory browser so a phone does not depend on a native
+  chooser on the host display.
 
 ## Security model
 
@@ -100,7 +109,7 @@ From this repo, before the package is on npm:
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.2.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.2.1.tgz
 ```
 
 Git installs (`dsh plugin add github:JUANWANG-BUAA/dsh-full-remote#<sha>`)
@@ -108,10 +117,10 @@ run the self-contained `prepare` script; pnpm ≥10 users must allow the
 build with `allowBuilds: { dsh-full-remote: true }` in the profile
 workspace.
 
-Open `http://127.0.0.1:3080`. The sidebar action sits at the bottom,
-directly above Settings — **反向代理** in the default zh locale,
-**Reverse proxy** in English. Start the endpoint, copy its local target,
-and configure your tunnel:
+Open `http://127.0.0.1:3080`. Open **Settings** — **反向代理** is the last
+item in the left nav (English: **Reverse proxy**), below the official
+pages. Start the endpoint, copy its local target, and configure your
+tunnel:
 
 ```sh
 # Examples only — the plugin does not run these commands.
@@ -122,10 +131,26 @@ ssh -R 8080:127.0.0.1:3081 user@example-host
 
 The remote browser receives a token login page before any Harness content.
 
+## Upgrade
+
+An already-installed profile does **not** fetch new versions when
+`dsh web` starts. After a release on npm, run this on the machine that
+hosts Harness:
+
+```sh
+dsh plugin --profile web update dsh-full-remote
+```
+
+Then restart `dsh web`. `add` is for first-time installs; running it again
+does not reliably bump a version pinned in the lockfile.
+
+A local `link:` install ignores npm: `pnpm run build` in the repo, then
+restart `dsh web`.
+
 ## Choosing a listen address
 
 Binding any IP already works — via `listenHost` in `cordis.yml`, or the
-**LISTEN ADDRESS** fields in the panel. Runtime values win over config
+listen-address fields on the settings page. Runtime values win over config
 and persist across restarts.
 
 | What you type | What it means | When to use it |
@@ -145,12 +170,22 @@ load time; Host/Origin rewrite always uses `127.0.0.1` regardless.
 
 ## Publish on a different IP / port (runtime)
 
-Open the sidebar panel and edit **LISTEN ADDRESS**: set the IP/host and
-port (`0` picks a free port), then press **应用发布地址** (English
-locale: **Apply listen address**). The override is written to the state
-file, applied immediately (restarting a running proxy), and used again
-after Harness restarts. If the new address cannot bind, the plugin rolls
-back to the previous working address and reports it in the panel.
+Open **Settings → Reverse proxy** and edit **Listen address**: set the
+IP/host and port (`0` picks a free port), then press **Apply listen
+address** (zh locale: **应用发布地址**). The override is written to the
+state file, applied immediately (restarting a running proxy), and used
+again after Harness restarts. If the new address cannot bind, the plugin
+rolls back to the previous working address and shows a toast on the page.
+
+If **Start proxy** looks like a no-op, the panel now keeps a toast with
+the next step. Typical causes:
+
+- The listen port is already in use: change it (for example `3081`),
+  apply, then start.
+- The listen address equals the Harness backend: that would loop; pick a
+  different port.
+- The control panel was opened from a tunnel hostname: start and stop
+  from the local `127.0.0.1` window.
 
 ## Separate mobile and desktop profiles
 
@@ -211,13 +246,24 @@ The plugin id (`reverse-proxy`), cookie name, control prefix, and state
 file name are frozen across the npm rename from `dsh-reverse-proxy`.
 Existing sessions and state files keep working.
 
+Installing this plugin also pins the in-app directory picker so a phone
+can add a workspace:
+
+- disables the `directory-picker` row (`directory-picker-auto` would open
+  a native chooser on the host display);
+- inserts `directory-picker-browse` and `directory-picker-browse-ui`.
+
+Do not re-enable `directory-picker` in the same profile — it would steal
+`directoryPicker`, and "Add workspace" would pop on the host again.
+
 ## Compatibility
 
-The sidebar entry and panel mount on the `sidebar.footer.action` and
-`shell.overlay` slots introduced in client packages `0.1.0-rc.5`.
+The control page mounts on the `settings.section` slot
+(order 30, after the official General / Models / Plugins / Agent presets
+pages).
 
 - Our client peer range is `>=0.1.0-rc.5 <0.2` and resolves on npm today
-  (`0.1.0-rc.6` is published for the runtime/layout/sidebar/slots packages).
+  (`0.1.0-rc.6` is published for the runtime/slots packages).
 - Rows that cannot activate fail the whole harness boot (strict activation
   gate).
 
@@ -242,11 +288,8 @@ limiter, and index polyfill against a live harness composition
 
 The package has a Host entry (`lib/index.js`) and an official DeepSeek
 Harness Client entry (`lib/client.js`). The browser UI registers only
-through the official `sidebar.footer.action` and `shell.overlay` slots.
-On the standard sidebar layout the action is promoted to its own
-full-width row — detected by layout, never through private APIs. Unknown
-layouts fall back to the slot's native inline button and log a console
-warning so the fallback is visible.
+through the official `settings.section` slot (id `reverse-proxy`,
+order 30). It does not guess sidebar DOM geometry.
 
 ## Control API
 
@@ -257,7 +300,7 @@ public proxy. Mutations **and token reveal** require the
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| `GET` | `/dsh-reverse-proxy/status` | — | snapshot (`enabled`, `running`, `target`, `backend`, `listen`, `reachables`, `wildcard`) |
+| `GET` | `/dsh-reverse-proxy/status` | — | snapshot (`enabled`, `running`, `target`, `backend`, `listen`, `reachables`, `wildcard`; last start `reason` after a failed start) |
 | `GET` | `/dsh-reverse-proxy/token` | — | `{ accessToken }` (control header required) |
 | `POST` | `/dsh-reverse-proxy/start` | — | snapshot |
 | `POST` | `/dsh-reverse-proxy/stop` | — | snapshot |
@@ -279,15 +322,24 @@ KV-cache effects are zero.
 
 ## Known Limitations and Deferred Work
 
-- **Client settings panel stays memory-scoped under a tunnel hostname.**
-  The server-side APIs (`settings.*`, `credentials.*`, `host.listDirectory`,
-  …) return 200 because Host/Origin were rewritten to loopback. The
-  official settings UI separately sets `connection.isLoopback` from
-  `location.hostname`, which is never loopback on a tunnel domain, so
-  edits in that panel do not persist. The correct fix is for Harness to
-  let a deployment declare trust through the existing `__DSH_BOOT__`
-  channel; this plugin will not monkey-patch another plugin's service
-  instance.
+- **Remote settings persist by trusting the page at connection provide.**
+  The proxy already rewrites Host/Origin so `settings.*` returns 200. The
+  index tap sets `__DSH_FULL_REMOTE_TRUSTED__` and wraps
+  `__ModuleLoader__` so official settings / models / locale bind with
+  host persistence. `connection.isLoopback` stays true on that page —
+  "open on host" from a phone acts on the host desktop. The durable
+  upstream contract is still a `__DSH_BOOT__` trust field.
+- **Add workspace uses the in-app directory browser.** Installing this
+  plugin disables `directory-picker-auto` (which would pop a native
+  chooser on the host display whenever webServer binds `127.0.0.1`) and
+  mounts the browse backend + UI pair. A phone can pick a folder; the
+  local Mac GUI uses the same in-app dialog instead of Finder.
+- **Settings left-nav icon is the harness default gear.** `SettingsRoot`
+  only ships glyphs for official section ids. The two-node bridge glyph
+  lives on the reverse-proxy page itself.
+- Start / stop / token / listen from a tunnel hostname is 403 by design
+  (control routes are never forwarded). Operate those from the local
+  `127.0.0.1` window; the settings page then explains that with a toast.
 - **`GET /token` is loopback HTTP with no caller identity.** The endpoint
   now requires the same control header and loopback Origin as mutations,
   which stops a bare `curl`. Any local process that can send that header
