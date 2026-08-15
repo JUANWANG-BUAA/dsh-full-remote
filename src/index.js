@@ -9,12 +9,12 @@ export const inject = ['webServer']
 export const Config = Schema.object({
   listenHost: Schema.string().default('127.0.0.1').description('Default address exposed to the tunnel client; the UI can override it at runtime.'),
   listenPort: Schema.number().min(0).max(65535).default(3081).description('Default local tunnel target port; 0 chooses a free port; the UI can override it at runtime.'),
-  backendHost: Schema.string().default('127.0.0.1').description('DSh Web backend host.'),
-  backendPort: Schema.number().min(0).max(65535).default(0).description('DSh Web backend port; 0 follows webServer.port.'),
+  backendHost: Schema.string().default('127.0.0.1').description('DeepSeek Harness Web backend host.'),
+  backendPort: Schema.number().min(0).max(65535).default(0).description('DeepSeek Harness Web backend port; 0 follows webServer.port.'),
   stateFile: Schema.string().default('').description('Durable state file; empty uses $DSH_HOME/reverse-proxy.json.'),
-  autoRestore: Schema.boolean().default(true).description('Restore the last enabled state after DSh restarts.'),
+  autoRestore: Schema.boolean().default(true).description('Restore the last enabled state after DeepSeek Harness restarts.'),
   maxRequestBytes: Schema.number().min(1024).default(16 * 1024 * 1024).description('Maximum declared request body size.'),
-  upstreamTimeoutMs: Schema.number().min(1000).default(15_000).description('Timeout while connecting to the DSh backend.'),
+  upstreamTimeoutMs: Schema.number().min(1000).default(15_000).description('Timeout while connecting to the DeepSeek Harness backend.'),
   sessionMaxAgeSeconds: Schema.number().min(60).default(30 * 24 * 3600).description('Lifetime of the remote browser session cookie.'),
   cookieName: Schema.string().default('dsh_reverse_proxy_session').description('Authentication session cookie name.'),
 })

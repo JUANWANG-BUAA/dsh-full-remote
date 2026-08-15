@@ -8,8 +8,9 @@ export type RemoteActionProps =
   & PropsStore<ReturnType<typeof createRemotePanelStore>>
 
 /**
- * Official DSh icons are 16×16 fill glyphs; this "outgoing link" icon follows
- * the same convention so the entry lines up with the Settings trigger below it.
+ * Official DeepSeek Harness icons are 16×16 fill glyphs; this "outgoing link"
+ * icon follows the same convention so the entry lines up with the Settings
+ * trigger below it.
  */
 function ReverseProxyIcon({ size = 16 }: { size?: number }) {
   return (
