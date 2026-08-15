@@ -35,5 +35,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      # typecheck:ci uses the ambient fallback declarations (types.ci.d.ts):
+      # the harness client packages' types are gitignored build outputs, so a
+      # fresh clone cannot resolve them until the monorepo is built.
       - name: Typecheck, test, and build
-        run: pnpm run check
+        run: pnpm run check:ci

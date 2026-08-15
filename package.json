@@ -14,10 +14,12 @@
     "clean": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\"",
     "build": "pnpm run clean && tsdown",
     "typecheck": "tsc --noEmit",
+    "typecheck:ci": "tsc -p tsconfig.ci.json",
     "test:unit": "node --test tests/*.test.js",
     "test:client": "vitest run",
     "test": "pnpm run test:unit && pnpm run test:client",
     "check": "pnpm run typecheck && pnpm run test && pnpm run build",
+    "check:ci": "pnpm run typecheck:ci && pnpm run test && pnpm run build",
     "prepare": "pnpm run build"
   },
   "files": [
