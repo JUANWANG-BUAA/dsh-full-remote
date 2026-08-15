@@ -21,13 +21,23 @@ jobs:
         language: [javascript-typescript]
     steps:
       - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
-      - name: Build
+
+      - name: Install and build
         run: |
           pnpm install --frozen-lockfile
           pnpm run build
+
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v3

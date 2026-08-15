@@ -66,6 +66,12 @@ All notable changes to dsh-reverse-proxy are documented in this file.
 ### Tooling
 
 - ESLint flat config wired into `check` / `check:ci`.
+- Fixed CI on GitHub: the CodeQL job now provisions pnpm explicitly, and the
+  smoke job builds the harness checkout (`pnpm run build`) before booting —
+  a fresh checkout otherwise fails with MissingClientBundleError / "frontend
+  dist not built".
+- Host entry ships TypeScript declarations (`lib/index.d.ts` via tsdown
+  `dts`), and the tarball now includes CONTRIBUTING.md.
 - Community-standard install verified end to end: dependencies install from
   npm (no sibling-checkout requirement), self-contained `prepare`, and the
   tarball / directory / git `dsh plugin add` routes are documented and tested.

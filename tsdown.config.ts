@@ -26,6 +26,7 @@ export default defineConfig([
     fixedExtension: false,
     clean: false,
     sourcemap: true,
+    dts: true,
     deps: { neverBundle: ['@deepseek-ai/schemastery'] },
   },
   {

@@ -40,6 +40,10 @@ Consequences for this plugin:
   the script must be self-contained (no monorepo sibling assumptions), and
   pnpm ≥10 users must allow the build with
   `allowBuilds: { dsh-reverse-proxy: true }` in the profile workspace.
+- The smoke job must **build the harness first** (`pnpm run build` = lib +
+  web): dsh boots host packages and client bundles from `lib/` and the Web
+  UI from the frontend dist — a fresh checkout has none of these
+  (`MissingClientBundleError` / "frontend dist not built").
 - The harness has a **strict activation gate**: a row that stays PENDING
   (e.g. `webServer` missing in a headless profile) fails the whole boot.
   Installing into a headless profile is therefore not supported — the plugin

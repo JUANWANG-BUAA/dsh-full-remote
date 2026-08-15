@@ -60,6 +60,14 @@ jobs:
           corepack pnpm install --frozen-lockfile
         working-directory: .harness
 
+      # dsh boots host packages, client bundles, and the web frontend from
+      # build outputs: a fresh checkout has none of them, so the profile
+      # would fail with MissingClientBundleError / "frontend dist not
+      # built". Build everything first.
+      - name: Build harness (lib + web)
+        run: corepack pnpm run build
+        working-directory: .harness
+
       - name: Real-boot smoke test
         run: node scripts/smoke.mjs
         env:
