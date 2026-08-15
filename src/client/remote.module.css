@@ -27,10 +27,17 @@
   cursor: pointer;
 }
 
+/* The button is portaled out of the footer-actions flex row into its own
+   line above the other plugins' buttons (see RemoteAction.tsx). */
+.actionRow {
+  width: 100%;
+}
+
 .sidebarAction {
   gap: 9px;
   justify-content: flex-start;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   padding: 0 12px;
 }
 

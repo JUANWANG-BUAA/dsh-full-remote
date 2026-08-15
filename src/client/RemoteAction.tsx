@@ -1,3 +1,5 @@
+import { useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { createRemotePanelStore } from './store.ts'
@@ -28,7 +30,47 @@ function ReverseProxyIcon({ size = 16 }: { size?: number }) {
 }
 
 export function RemoteAction({ wide, actions }: RemoteActionProps) {
-  return (
+  // `sidebar.footer.action` is a nowrap flex row shared with other plugins'
+  // footer buttons. To sit on its own line above them, portal our button into
+  // a holder inserted at the top of the foot area. Only our own subtree moves;
+  // the host DOM structure is left untouched. Unknown host layouts degrade to
+  // the inline (in-row) button.
+  const anchorRef = useRef<HTMLDivElement | null>(null)
+  const [holder, setHolder] = useState<HTMLDivElement | null>(null)
+
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current
+    // Walk up from the anchor (slot entry wrapper, display: contents) until we
+    // find the footer area: a column flex container whose child is the actions
+    // row. Unknown host layouts degrade to the inline (in-row) button.
+    let footArea: HTMLElement | null = null
+    let cursor: HTMLElement | null = anchor
+    for (let i = 0; i < 6 && cursor !== null && footArea === null; i++) {
+      const parent = cursor.parentElement
+      const grandparent = parent?.parentElement ?? null
+      if (parent !== null && grandparent !== null && getComputedStyle(grandparent).flexDirection === 'column') {
+        footArea = grandparent
+      }
+      cursor = parent
+    }
+    if (footArea === null) return
+    const node = document.createElement('div')
+    node.className = css.actionRow
+    footArea.insertBefore(node, footArea.firstElementChild)
+    setHolder(node)
+    return () => {
+      setHolder(null)
+      node.remove()
+    }
+  }, [])
+
+  useLayoutEffect(() => {
+    if (holder === null) return
+    holder.style.display = 'flex'
+    holder.style.justifyContent = wide ? 'flex-start' : 'center'
+  }, [holder, wide])
+
+  const button = (
     <button
       type="button"
       className={wide ? css.sidebarAction : css.sidebarActionRail}
@@ -42,5 +84,12 @@ export function RemoteAction({ wide, actions }: RemoteActionProps) {
       </span>
       {wide && <span className={css.actionLabel}>反向代理</span>}
     </button>
+  )
+
+  return (
+    <>
+      <div ref={anchorRef} style={{ display: 'none' }} aria-hidden="true" />
+      {holder === null ? button : createPortal(button, holder)}
+    </>
   )
 }
