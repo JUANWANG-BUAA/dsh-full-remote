@@ -19,7 +19,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "typecheck:ci": "tsc -p tsconfig.ci.json",
-    "test:unit": "node --experimental-strip-types --test tests/*.test.js",
+    "test:unit": "node --experimental-strip-types --test tests/*.test.ts",
     "test:client": "vitest run",
     "test": "pnpm run test:unit && pnpm run test:client",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",

@@ -3,15 +3,24 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { Context, Service } from '@deepseek-ai/cordis'
-import * as plugin from '../src/index.ts'
+import { Context, Service, type Plugin } from '@deepseek-ai/cordis'
+import * as pluginModule from '../src/index.ts'
+
+/**
+ * The plugin's `apply(ctx: RuntimeContext, …)` uses a structural context type
+ * (with `webServer`) rather than the `Context` augmentation from the real host
+ * package, so it is not directly assignable to cordis's `Plugin.Object`. This
+ * cast is type-only: at runtime the harness's real `Context` does carry the
+ * `webServer` service and the plugin is a valid object plugin.
+ */
+const plugin = pluginModule as unknown as Plugin.Object
 
 class TestWebServer extends Service {
   port = 3080
   routes = 0
   taps = 0
 
-  constructor(ctx) {
+  constructor(ctx: Context) {
     super(ctx, 'webServer')
   }
 
@@ -32,7 +41,7 @@ describe('Cordis lifecycle', () => {
     try {
       const ctx = new Context()
       await ctx.plugin(TestWebServer)
-      const web = ctx.get('webServer')
+      const web = ctx.get('webServer') as TestWebServer
       const fiber = await ctx.plugin(plugin, {
         listenHost: '127.0.0.1',
         listenPort: 0,

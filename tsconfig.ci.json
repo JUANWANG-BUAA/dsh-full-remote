@@ -3,5 +3,5 @@
   "compilerOptions": {
     "paths": {}
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "types/ci.d.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx", "types/ci.d.ts"]
 }

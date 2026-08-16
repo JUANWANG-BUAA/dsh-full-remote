@@ -46,7 +46,8 @@ export interface ProxySpec {
   controlPrefix: string
   maxRequestBytes: number
   upstreamTimeoutMs: number
-  sessionMaxAgeSeconds: number
+  /** Session TTL; optional when a `sessionStore` is supplied (defaults to the store's own default). */
+  sessionMaxAgeSeconds?: number
   maxHeaderSizeBytes?: number
   requestTimeoutMs?: number
   headersTimeoutMs?: number

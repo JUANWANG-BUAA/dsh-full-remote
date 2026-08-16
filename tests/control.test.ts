@@ -6,16 +6,21 @@ import { join } from 'node:path'
 import { createRuntime } from '../src/index.ts'
 import { writeState } from '../src/persist.ts'
 import { request } from 'node:http'
+import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
 import { createServer } from 'node:net'
 
-const cleanups = []
+/** The runtime returned by `createRuntime` (config defaults are re-applied inside). */
+type Runtime = ReturnType<typeof createRuntime>
+type RuntimeConfig = Parameters<typeof createRuntime>[1]
+
+const cleanups: Array<() => Promise<unknown>> = []
 afterEach(async () => {
   // Sequential reverse order: disposers may write state files, so a parallel
   // rm would race them.
   for (const fn of cleanups.splice(0).reverse()) await fn()
 })
 
-function makeConfig(stateFile, extra = {}) {
+function makeConfig(stateFile: string, extra: Partial<RuntimeConfig> = {}): RuntimeConfig {
   return {
     listenHost: '127.0.0.1',
     listenPort: 0,
@@ -28,14 +33,22 @@ function makeConfig(stateFile, extra = {}) {
     sessionMaxAgeSeconds: 3600,
     cookieName: 'test_session',
     ...extra,
-  }
+  } as RuntimeConfig
 }
 
 function makeContext() {
-  return { webServer: { port: 3080 }, logger: { warn() {}, info() {}, debug() {} } }
+  return {
+    webServer: {
+      port: 3080,
+      register() { return () => {} },
+      tapIndex() { return () => {} },
+    },
+    logger: { warn() {}, info() {}, debug() {} },
+    effect() {},
+  }
 }
 
-async function makeRuntime() {
+async function makeRuntime(): Promise<{ runtime: Runtime, stateFile: string }> {
   const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-control-'))
   cleanups.push(() => rm(dir, { recursive: true, force: true }))
   const stateFile = join(dir, 'state.json')
@@ -44,26 +57,53 @@ async function makeRuntime() {
   return { runtime, stateFile }
 }
 
-function fakeRes() {
-  const res = { statusCode: 0, headers: {}, body: '' }
-  res.writeHead = (code, headers = {}) => {
-    res.statusCode = code
-    Object.assign(res.headers, headers)
-  }
-  res.end = (body = '') => {
-    res.body += String(body)
+interface FakeResponse {
+  statusCode: number
+  headers: Record<string, unknown>
+  body: string
+  writeHead(code: number, headers?: Record<string, unknown>): void
+  end(body?: string): void
+}
+
+function fakeRes(): FakeResponse {
+  const res: FakeResponse = {
+    statusCode: 0,
+    headers: {},
+    body: '',
+    writeHead(code: number, headers: Record<string, unknown> = {}) {
+      res.statusCode = code
+      Object.assign(res.headers, headers)
+    },
+    end(body: string = '') {
+      res.body += String(body)
+    },
   }
   return res
 }
 
-function fakeReq({ path, method = 'GET', headers = {}, remoteAddress = '127.0.0.1', body }) {
-  const handlers = {}
-  const req = {
+interface FakeRequest {
+  url: string
+  method: string
+  headers: Record<string, string>
+  socket: { remoteAddress: string }
+  on(event: string, fn: (chunk?: Buffer) => void): FakeRequest
+}
+
+function fakeReq(options: {
+  path: string
+  method?: string
+  headers?: Record<string, string>
+  remoteAddress?: string
+  body?: string
+}): FakeRequest {
+  const { path, method = 'GET', headers = {}, remoteAddress = '127.0.0.1', body } = options
+  const handlers: Record<string, ((chunk?: Buffer) => void) | undefined> = {}
+  const req: FakeRequest = {
     url: path,
     method,
     headers,
     socket: { remoteAddress },
-    on(event, fn) {
+    on(event: string, fn: (chunk?: Buffer) => void) {
       handlers[event] = fn
       return req
     },
@@ -75,10 +115,23 @@ function fakeReq({ path, method = 'GET', headers = {}, remoteAddress = '127.0.0.
   return req
 }
 
-function http({ port, path = '/', method = 'GET', headers = {}, body }) {
+interface HttpResponse {
+  status: number | undefined
+  headers: IncomingHttpHeaders
+  body: string
+}
+
+function http(options: {
+  port: number
+  path?: string
+  method?: string
+  headers?: Record<string, string>
+  body?: string
+}): Promise<HttpResponse> {
+  const { port, path = '/', method = 'GET', headers = {}, body } = options
   return new Promise((resolve, reject) => {
     const req = request({ hostname: '127.0.0.1', port, path, method, headers }, (res) => {
-      const chunks = []
+      const chunks: Buffer[] = []
       res.on('data', chunk => chunks.push(chunk))
       res.on('end', () => resolve({
         status: res.statusCode,
@@ -97,12 +150,22 @@ const CONTROL = {
   origin: 'http://127.0.0.1:3080',
 }
 
-async function call(runtime, { path, method = 'GET', headers = {}, remoteAddress = '127.0.0.1', body }) {
+async function call(runtime: Runtime, options: {
+  path: string
+  method?: string
+  headers?: Record<string, string>
+  remoteAddress?: string
+  body?: string
+}): Promise<{ status: number, body: unknown }> {
   const res = fakeRes()
-  await runtime.handle(fakeReq({ path, method, headers, remoteAddress, body }), res)
+  await runtime.handle(
+    fakeReq(options) as unknown as IncomingMessage,
+    res as unknown as ServerResponse,
+  )
   return {
     status: res.statusCode,
-    body: res.body === '' ? {} : JSON.parse(res.body),
+    // Control responses are JSON; the parse result is asserted per-test.
+    body: res.body === '' ? {} : JSON.parse(res.body) as unknown,
   }
 }
 
@@ -117,7 +180,7 @@ describe('device session control', () => {
 
     const started = await runtime.start()
     assert.equal(started.running, true)
-    const proxyPort = new URL(started.target).port
+    const proxyPort = Number(new URL(started.target).port)
 
     // A remote device logs in through the real proxy.
     const token = await runtime.token()
@@ -129,15 +192,16 @@ describe('device session control', () => {
       body: `token=${encodeURIComponent(token)}`,
     })
     assert.equal(login.status, 303)
-    assert.match(login.headers.location, /^\/_dsh_reverse_proxy\/wait\//)
+    assert.match(login.headers.location!, /^\/_dsh_reverse_proxy\/wait\//)
 
     // The control surface lists the pending device.
     const listed = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET', headers: CONTROL })
     assert.equal(listed.status, 200)
-    assert.equal(listed.body.sessions.length, 1)
-    assert.equal(listed.body.sessions[0].status, 'pending')
-    assert.equal(listed.body.sessions[0].label, 'Chrome on macOS')
-    const id = listed.body.sessions[0].id
+    const sessions = listed.body as { sessions: Array<{ id: string, status: string, label: string }> }
+    assert.equal(sessions.sessions.length, 1)
+    assert.equal(sessions.sessions[0].status, 'pending')
+    assert.equal(sessions.sessions[0].label, 'Chrome on macOS')
+    const id = sessions.sessions[0].id
 
     // Mutations require the control header; approve without it is rejected.
     const blocked = await call(runtime, {
@@ -157,7 +221,7 @@ describe('device session control', () => {
     })
     assert.deepEqual(approved.body, { ok: true })
     const afterApprove = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET', headers: CONTROL })
-    assert.equal(afterApprove.body.sessions[0].status, 'active')
+    assert.equal((afterApprove.body as { sessions: Array<{ status: string }> }).sessions[0].status, 'active')
 
     // Revoke; the list drains.
     const revoked = await call(runtime, {
@@ -168,7 +232,7 @@ describe('device session control', () => {
     })
     assert.deepEqual(revoked.body, { ok: true })
     const afterRevoke = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET', headers: CONTROL })
-    assert.deepEqual(afterRevoke.body.sessions, [])
+    assert.deepEqual(afterRevoke.body, { sessions: [] })
   })
 })
 
@@ -223,14 +287,15 @@ describe('runtime control surface', () => {
     const before = await runtime.token()
     const rotated = await Promise.race([
       call(runtime, { path: '/dsh-reverse-proxy/rotate-token', method: 'POST', headers: CONTROL }),
-      new Promise((_, reject) => {
+      new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error('rotate-token hung on the serial gate')), 3000)
       }),
     ])
     assert.equal(rotated.status, 200)
-    assert.notEqual(rotated.body.accessToken, before)
-    assert.equal(rotated.body.running, true)
-    assert.equal(await runtime.token(), rotated.body.accessToken)
+    const body = rotated.body as { accessToken: string, running: boolean }
+    assert.notEqual(body.accessToken, before)
+    assert.equal(body.running, true)
+    assert.equal(await runtime.token(), body.accessToken)
   })
 
   it('does not hydrate sessions when a short access token forces regeneration', async () => {
@@ -255,7 +320,7 @@ describe('runtime control surface', () => {
     const token = await runtime.token()
     assert.match(token, /^[A-Za-z0-9_-]{32}$/)
     const listed = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET', headers: CONTROL })
-    assert.deepEqual(listed.body.sessions, [])
+    assert.deepEqual(listed.body, { sessions: [] })
   })
 
   it('refuses to start when listen is a wildcard covering the backend port', async () => {
@@ -295,7 +360,7 @@ describe('runtime control surface', () => {
     assert.equal(bare.status, 403)
     const ok = await call(runtime, { path: '/dsh-reverse-proxy/token', headers: CONTROL })
     assert.equal(ok.status, 200)
-    assert.match(ok.body.accessToken, /^[A-Za-z0-9_-]{32}$/)
+    assert.match((ok.body as { accessToken: string }).accessToken, /^[A-Za-z0-9_-]{32}$/)
   })
 
   it('rejects malformed listen overrides without changing state', async () => {
@@ -314,7 +379,7 @@ describe('runtime control surface', () => {
       remoteAddress: '10.0.0.5',
     })
     assert.equal(res.status, 403)
-    assert.equal(res.body.error, 'loopback-required')
+    assert.equal((res.body as { error: string }).error, 'loopback-required')
   })
 
   it('requires the control header and a loopback origin for mutations', async () => {
@@ -337,7 +402,7 @@ describe('runtime control surface', () => {
 
     const status = await call(runtime, { path: '/dsh-reverse-proxy/status', headers: CONTROL })
     assert.equal(status.status, 200)
-    assert.equal(status.body.running, false)
+    assert.equal((status.body as { running: boolean }).running, false)
 
     const changed = await call(runtime, {
       path: '/dsh-reverse-proxy/listen',
@@ -346,7 +411,7 @@ describe('runtime control surface', () => {
       body: JSON.stringify({ host: '0.0.0.0', port: 9081 }),
     })
     assert.equal(changed.status, 200)
-    assert.deepEqual(changed.body.listen, { host: '0.0.0.0', port: 9081 })
+    assert.deepEqual((changed.body as { listen: unknown }).listen, { host: '0.0.0.0', port: 9081 })
 
     const malformed = await call(runtime, {
       path: '/dsh-reverse-proxy/listen',
@@ -370,11 +435,11 @@ describe('runtime control surface', () => {
 
   it('keeps listen-failed on status until the address changes or a later start succeeds', async () => {
     const blocker = createServer()
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       blocker.once('error', reject)
       blocker.listen(0, '127.0.0.1', resolve)
     })
-    cleanups.push(() => new Promise(resolve => blocker.close(resolve)))
+    cleanups.push(() => new Promise<void>(resolve => blocker.close(() => resolve())))
     const addr = blocker.address()
     if (addr === null || typeof addr === 'string') throw new Error('expected a TCP bind')
     const occupied = addr.port

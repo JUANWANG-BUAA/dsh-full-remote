@@ -30,7 +30,13 @@ export function probeFence(spec: {
   backendHost: string
   backendPort: number
   timeoutMs?: number
-}) {
+}): Promise<{
+  ok: boolean
+  method: string
+  status: number
+  rewriteAuthority: string
+  detail?: string
+}> {
   const rewriteAuthority = rewriteLoopbackAuthority(spec.backendPort)
   const timeoutMs = spec.timeoutMs ?? 3_000
   const body = JSON.stringify({

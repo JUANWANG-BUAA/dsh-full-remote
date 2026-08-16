@@ -5,11 +5,19 @@ import { createAuditLog } from '../src/audit.ts'
 import { qrToSvg } from '../src/qr-svg.ts'
 import { probeFence } from '../src/self-check.ts'
 import { createServer } from 'node:http'
+import type { Server } from 'node:http'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInviteStore } from '../src/invites.ts'
 import { createSessionStore, encodeSessionCookie } from '../src/sessions.ts'
+
+/** The bound TCP port of a server that was started with `listen(0, host)`. */
+function portOf(server: Server): number {
+  const address = server.address()
+  if (address === null || typeof address === 'string') throw new Error('expected a TCP bind')
+  return address.port
+}
 
 describe('cidr allowlist', () => {
   it('parses IPv4 CIDR and bare addresses', () => {
@@ -35,7 +43,8 @@ describe('audit log', () => {
       const audit = createAuditLog({ enabled: true, path })
       await audit.record('login.ok', { remote: '1.2.3.4' })
       const text = await readFile(path, 'utf8')
-      const line = JSON.parse(text.trim())
+      // JSON.parse is untyped by design; the record shape is asserted below.
+      const line = JSON.parse(text.trim()) as { event: string, remote: string, ts: string }
       assert.equal(line.event, 'login.ok')
       assert.equal(line.remote, '1.2.3.4')
       assert.equal(typeof line.ts, 'string')
@@ -49,7 +58,9 @@ describe('qr invite', () => {
   it('renders an SVG for a short invite URL', () => {
     const svg = qrToSvg('http://127.0.0.1:3081/_dsh_reverse_proxy/login?invite=abc')
     assert.equal(typeof svg, 'string')
-    assert.match(svg, /^<svg[\s\S]*<\/svg>$/)
+    // qrToSvg returns null only for empty/oversized input; the assertion above
+    // already guarantees a non-null string for this valid short URL.
+    assert.match(svg as string, /^<svg[\s\S]*<\/svg>$/)
   })
 })
 
@@ -62,7 +73,7 @@ describe('one-time invites', () => {
     assert.equal(store.consume(''), false)
     const brief = createInviteStore({ ttlMs: 20 })
     const stale = brief.issue()
-    await new Promise(resolve => setTimeout(resolve, 35))
+    await new Promise<void>(resolve => setTimeout(resolve, 35))
     assert.equal(brief.consume(stale), false)
     brief.clear()
     assert.equal(brief.size(), 0)
@@ -77,7 +88,7 @@ describe('session idle + rename', () => {
     assert.equal(store.rename(session.id, 'Phone'), true)
     assert.equal(store.list()[0].label, 'Phone')
     assert.equal(store.rename(session.id, ''), false)
-    await new Promise(resolve => setTimeout(resolve, 1100))
+    await new Promise<void>(resolve => setTimeout(resolve, 1100))
     assert.equal(store.validate(cookie), undefined)
   })
 
@@ -86,7 +97,7 @@ describe('session idle + rename', () => {
     const session = store.login({ userAgent: 'Chrome/126' })
     const cookie = encodeSessionCookie(session.id, session.secret)
     assert.equal(store.pending(cookie, session.id)?.status, 'pending')
-    await new Promise(resolve => setTimeout(resolve, 1100))
+    await new Promise<void>(resolve => setTimeout(resolve, 1100))
     assert.equal(store.pending(cookie, session.id), undefined)
   })
 })
@@ -99,15 +110,17 @@ describe('fence self-check', () => {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end('{"ok":true}')
     })
-    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
-    const port = server.address().port
+    await new Promise<void>((resolve) => {
+      server.listen(0, '127.0.0.1', resolve)
+    })
+    const port = portOf(server)
     try {
       const result = await probeFence({ backendHost: '127.0.0.1', backendPort: port })
       assert.equal(result.ok, true)
       assert.equal(result.status, 200)
       assert.equal(result.method, 'settings.describe')
     } finally {
-      await new Promise(resolve => server.close(resolve))
+      await new Promise<void>(resolve => server.close(() => resolve()))
     }
   })
 
@@ -116,14 +129,16 @@ describe('fence self-check', () => {
       res.writeHead(403)
       res.end('forbidden')
     })
-    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
-    const port = server.address().port
+    await new Promise<void>((resolve) => {
+      server.listen(0, '127.0.0.1', resolve)
+    })
+    const port = portOf(server)
     try {
       const result = await probeFence({ backendHost: '127.0.0.1', backendPort: port })
       assert.equal(result.ok, false)
       assert.equal(result.status, 403)
     } finally {
-      await new Promise(resolve => server.close(resolve))
+      await new Promise<void>(resolve => server.close(() => resolve()))
     }
   })
 })

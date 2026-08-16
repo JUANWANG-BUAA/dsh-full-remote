@@ -1,7 +1,10 @@
 import { afterEach, describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer, request } from 'node:http'
+import type { IncomingHttpHeaders, IncomingMessage, Server } from 'node:http'
 import { createConnection } from 'node:net'
+import type { Socket } from 'node:net'
+import type { Duplex } from 'node:stream'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -13,18 +16,44 @@ import { generateAccessToken, safeEqual } from '../src/security.ts'
 import { createInviteStore } from '../src/invites.ts'
 import { createSessionStore, encodeSessionCookie, hashSessionSecret, newSessionId, newSessionSecret } from '../src/sessions.ts'
 
+interface HttpResponse {
+  status: number | undefined
+  headers: IncomingHttpHeaders
+  body: string
+}
 
-const cleanups = []
+interface LogEntry {
+  method: string | undefined
+  path: string
+  status: number
+  remote: string
+}
+
+/** The bound TCP port of a server that was started with `listen(0, host)`. */
+function portOf(server: Server): number {
+  const address = server.address()
+  if (address === null || typeof address === 'string') throw new Error('expected a TCP bind')
+  return address.port
+}
+
+const cleanups: Array<() => unknown> = []
 afterEach(async () => {
   // Sequential reverse order: disposers may write state files, so a parallel
   // rm would race them.
   for (const fn of cleanups.splice(0).reverse()) await fn()
 })
 
-function http({ port, path = '/', method = 'GET', headers = {}, body }) {
+function http(options: {
+  port: number
+  path?: string
+  method?: string
+  headers?: Record<string, string>
+  body?: string
+}): Promise<HttpResponse> {
+  const { port, path = '/', method = 'GET', headers = {}, body } = options
   return new Promise((resolve, reject) => {
     const req = request({ hostname: '127.0.0.1', port, path, method, headers }, (res) => {
-      const chunks = []
+      const chunks: Buffer[] = []
       res.on('data', chunk => chunks.push(chunk))
       res.on('end', () => resolve({
         status: res.statusCode,
@@ -38,7 +67,13 @@ function http({ port, path = '/', method = 'GET', headers = {}, body }) {
   })
 }
 
-function chunked({ port, path = '/', headers = {}, chunks }) {
+function chunked(options: {
+  port: number
+  path?: string
+  headers?: Record<string, string>
+  chunks: string[]
+}): Promise<{ status: number | undefined, body: string }> {
+  const { port, path = '/', headers = {}, chunks } = options
   return new Promise((resolve, reject) => {
     const req = request({
       hostname: '127.0.0.1',
@@ -47,7 +82,7 @@ function chunked({ port, path = '/', headers = {}, chunks }) {
       method: 'POST',
       headers: { ...headers, 'transfer-encoding': 'chunked' },
     }, (res) => {
-      const parts = []
+      const parts: Buffer[] = []
       res.on('data', chunk => parts.push(chunk))
       res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(parts).toString('utf8') }))
     })
@@ -59,25 +94,30 @@ function chunked({ port, path = '/', headers = {}, chunks }) {
 
 /** Raw WebSocket handshake over a plain TCP socket; resolves once the proxy
  * has written its complete response head (101 relay or 401 deny). */
-function wsHandshake({ port, path = '/ws', cookie }) {
+function wsHandshake(options: {
+  port: number
+  path?: string
+  cookie?: string
+}): Promise<{ socket: Socket, status: string, headers: string[], head: Buffer }> {
+  const { port, path = '/ws', cookie } = options
   return new Promise((resolve, reject) => {
     const socket = createConnection(port, '127.0.0.1')
-    const chunks = []
+    const chunks: Buffer[] = []
     let settled = false
-    const settle = (error, result) => {
+    const settle = (error: Error | null, result?: { status: string, headers: string[], head: Buffer }) => {
       if (settled) return
       settled = true
       if (error) reject(error)
-      else resolve({ socket, ...result })
+      else resolve({ socket, ...result! })
     }
-    const parse = (chunk) => {
+    const parse = (chunk: Buffer) => {
       chunks.push(chunk)
       const buffer = Buffer.concat(chunks)
       const at = buffer.indexOf('\r\n\r\n')
       if (at === -1) return
       socket.removeListener('data', parse)
       const lines = buffer.slice(0, at).toString('utf8').split('\r\n')
-      settle(undefined, { status: lines[0] ?? '', headers: lines.slice(1), head: buffer.slice(at + 4) })
+      settle(null, { status: lines[0] ?? '', headers: lines.slice(1), head: buffer.slice(at + 4) })
     }
     socket.on('data', parse)
     socket.on('error', error => settle(error))
@@ -100,11 +140,11 @@ function wsHandshake({ port, path = '/ws', cookie }) {
 
 /** Wait for data on an established raw socket; resolves 100ms after the last
  * chunk so a split frame arrives whole. */
-function readSocket(socket, timeoutMs = 2000) {
+function readSocket(socket: Socket, timeoutMs = 2000): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('socket read timeout')), timeoutMs)
-    const parts = []
-    const onData = (chunk) => {
+    const parts: Buffer[] = []
+    const onData = (chunk: Buffer) => {
       parts.push(chunk)
       clearTimeout(timer)
       setTimeout(() => {
@@ -300,7 +340,7 @@ describe('listen address formatting', () => {
     const headers = forwardHeaders({
       headers: { host: 'public.example', origin: 'http://public.example' },
       socket: { remoteAddress: '10.0.0.8' },
-    }, rewriteLoopbackAuthority(62468))
+    } as unknown as IncomingMessage, rewriteLoopbackAuthority(62468))
     assert.equal(headers.host, '127.0.0.1:62468')
     assert.equal(headers.origin, 'http://127.0.0.1:62468')
     assert.equal(headers['sec-fetch-site'], 'same-origin')
@@ -322,7 +362,7 @@ describe('header forwarding', () => {
         'x-forwarded-proto': 'https',
       },
       socket: { remoteAddress: '127.0.0.1' },
-    }, '127.0.0.1:3080')
+    } as unknown as IncomingMessage, '127.0.0.1:3080')
     assert.equal(headers.host, '127.0.0.1:3080')
     assert.equal(headers.authorization, 'Bearer ok')
     assert.equal(headers['x-forwarded-for'], '127.0.0.1')
@@ -338,7 +378,7 @@ describe('header forwarding', () => {
     const trusted = forwardHeaders({
       headers: { host: 'public.example', 'x-forwarded-proto': 'https' },
       socket: { remoteAddress: '10.0.0.1' },
-    }, '127.0.0.1:3080', { trustForwardedProto: true })
+    } as unknown as IncomingMessage, '127.0.0.1:3080', { trustForwardedProto: true })
     assert.equal(trusted['x-forwarded-proto'], 'https')
   })
 
@@ -384,14 +424,14 @@ describe('authenticated reverse proxy', () => {
         marker: req.headers['x-dsh-reverse-proxy'],
       }))
     })
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       backend.once('error', reject)
       backend.listen(0, '127.0.0.1', resolve)
     })
-    cleanups.push(() => new Promise(resolve => backend.close(resolve)))
-    const backendPort = backend.address().port
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
+    const backendPort = portOf(backend)
     const token = generateAccessToken()
-    const logged = []
+    const logged: LogEntry[] = []
     const proxy = await listenProxy({
       listenHost: '127.0.0.1',
       listenPort: 0,
@@ -436,8 +476,8 @@ describe('authenticated reverse proxy', () => {
       body: `token=${encodeURIComponent(token)}`,
     })
     assert.equal(login.status, 303)
-    assert.match(login.headers['set-cookie'][0], /Max-Age=3600/)
-    const cookie = login.headers['set-cookie'][0].split(';', 1)[0]
+    assert.match(login.headers['set-cookie']![0], /Max-Age=3600/)
+    const cookie = login.headers['set-cookie']![0].split(';', 1)[0]
 
     const blocked = await http({
       port: proxy.port,
@@ -465,18 +505,18 @@ describe('authenticated reverse proxy', () => {
   })
 
   it('rewrites Host to loopback when backendHost is the 0.0.0.0 wildcard', async () => {
-    const seen = []
+    const seen: Array<{ host: string | undefined, origin: string | undefined }> = []
     const backend = createServer((req, res) => {
       seen.push({ host: req.headers.host, origin: req.headers.origin })
       res.writeHead(200, { 'content-type': 'text/plain' })
       res.end('ok')
     })
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       backend.once('error', reject)
       backend.listen(0, '127.0.0.1', resolve)
     })
-    cleanups.push(() => new Promise(resolve => backend.close(resolve)))
-    const backendPort = backend.address().port
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
+    const backendPort = portOf(backend)
     const token = generateAccessToken()
     const proxy = await listenProxy({
       listenHost: '127.0.0.1',
@@ -498,7 +538,7 @@ describe('authenticated reverse proxy', () => {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: `token=${encodeURIComponent(token)}`,
     })
-    const cookie = login.headers['set-cookie'][0].split(';', 1)[0]
+    const cookie = login.headers['set-cookie']![0].split(';', 1)[0]
     const proxied = await http({ port: proxy.port, path: '/api/example', headers: { cookie } })
     assert.equal(proxied.status, 200)
     assert.equal(seen[0].host, `127.0.0.1:${backendPort}`)
@@ -511,17 +551,17 @@ describe('authenticated reverse proxy', () => {
       res.writeHead(200, { 'content-type': 'text/plain' })
       res.end('ok')
     })
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       backend.once('error', reject)
       backend.listen(0, '127.0.0.1', resolve)
     })
-    cleanups.push(() => new Promise(resolve => backend.close(resolve)))
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
     const token = generateAccessToken()
     const proxy = await listenProxy({
       listenHost: '127.0.0.1',
       listenPort: 0,
       backendHost: '127.0.0.1',
-      backendPort: backend.address().port,
+      backendPort: portOf(backend),
       accessToken: token,
       cookieName: 'session',
       controlPrefix: '/dsh-reverse-proxy',
@@ -537,7 +577,7 @@ describe('authenticated reverse proxy', () => {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: `token=${encodeURIComponent(token)}`,
     })
-    const cookie = login.headers['set-cookie'][0].split(';', 1)[0]
+    const cookie = login.headers['set-cookie']![0].split(';', 1)[0]
 
     const over = await chunked({
       port: proxy.port,
@@ -558,22 +598,22 @@ describe('authenticated reverse proxy', () => {
 })
 
 describe('device sessions', () => {
-  async function proxyWith(storeOptions = {}, spec = {}) {
-    const backend = createServer((req, res) => {
+  async function proxyWith(storeOptions: Parameters<typeof createSessionStore>[0] = {}, spec: Record<string, unknown> = {}) {
+    const backend = createServer((_req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end('{"ok":true}')
     })
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       backend.once('error', reject)
       backend.listen(0, '127.0.0.1', resolve)
     })
-    cleanups.push(() => new Promise(resolve => backend.close(resolve)))
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
     const sessionStore = createSessionStore(storeOptions)
     const proxy = await listenProxy({
       listenHost: '127.0.0.1',
       listenPort: 0,
       backendHost: '127.0.0.1',
-      backendPort: backend.address().port,
+      backendPort: portOf(backend),
       accessToken: 'correct-token',
       cookieName: 'session',
       controlPrefix: '/dsh-reverse-proxy',
@@ -587,7 +627,7 @@ describe('device sessions', () => {
     return { proxy, sessionStore }
   }
 
-  const login = (port, token = 'correct-token', headers = {}) => http({
+  const login = (port: number, token = 'correct-token', headers: Record<string, string> = {}) => http({
     port,
     path: '/_dsh_reverse_proxy/login',
     method: 'POST',
@@ -595,7 +635,7 @@ describe('device sessions', () => {
     body: `token=${encodeURIComponent(token)}`,
   })
 
-  const cookieOf = (response) => response.headers['set-cookie'][0].split(';', 1)[0]
+  const cookieOf = (response: HttpResponse) => response.headers['set-cookie']![0].split(';', 1)[0]
 
   it('issues a per-device session on login that revocation kills immediately', async () => {
     const { proxy, sessionStore } = await proxyWith()
@@ -619,8 +659,8 @@ describe('device sessions', () => {
     const { proxy, sessionStore } = await proxyWith({ approvalRequired: true })
     const loginRes = await login(proxy.port, 'correct-token', { 'user-agent': 'Mozilla/5.0 (Macintosh) Chrome/126' })
     assert.equal(loginRes.status, 303)
-    assert.match(loginRes.headers.location, /^\/_dsh_reverse_proxy\/wait\//)
-    const waitPath = loginRes.headers.location
+    assert.match(loginRes.headers.location!, /^\/_dsh_reverse_proxy\/wait\//)
+    const waitPath = loginRes.headers.location!
     const cookie = cookieOf(loginRes)
 
     // Pending cookie is rejected by the auth gate.
@@ -649,7 +689,7 @@ describe('device sessions', () => {
   it('keeps rejected devices out and answers unknown wait ids with a login redirect', async () => {
     const { proxy, sessionStore } = await proxyWith({ approvalRequired: true })
     const loginRes = await login(proxy.port)
-    const waitPath = loginRes.headers.location
+    const waitPath = loginRes.headers.location!
     const cookie = cookieOf(loginRes)
     const [device] = sessionStore.list()
     sessionStore.revoke(device.id)
@@ -709,7 +749,7 @@ describe('device sessions', () => {
 })
 
 describe('login rate limiting', () => {
-  const badLogin = (port, token = 'wrong') => http({
+  const badLogin = (port: number, token = 'wrong') => http({
     port,
     path: '/_dsh_reverse_proxy/login',
     method: 'POST',
@@ -717,22 +757,22 @@ describe('login rate limiting', () => {
     body: `token=${encodeURIComponent(token)}`,
   })
 
-  async function proxyWith(overrides = {}) {
+  async function proxyWith(overrides: Record<string, unknown> = {}) {
     const backend = createServer((req, res) => {
       req.resume()
       res.writeHead(200, { 'content-type': 'text/plain' })
       res.end('ok')
     })
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       backend.once('error', reject)
       backend.listen(0, '127.0.0.1', resolve)
     })
-    cleanups.push(() => new Promise(resolve => backend.close(resolve)))
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
     const proxy = await listenProxy({
       listenHost: '127.0.0.1',
       listenPort: 0,
       backendHost: '127.0.0.1',
-      backendPort: backend.address().port,
+      backendPort: portOf(backend),
       accessToken: 'correct-token',
       cookieName: 'session',
       controlPrefix: '/dsh-reverse-proxy',
@@ -780,7 +820,7 @@ describe('login rate limiting', () => {
     const proxy = await proxyWith({ loginLockoutMs: 40 })
     for (let i = 0; i < 3; i++) await badLogin(proxy.port)
     assert.equal((await badLogin(proxy.port)).status, 429)
-    await new Promise(resolve => setTimeout(resolve, 80))
+    await new Promise<void>(resolve => setTimeout(resolve, 80))
     const next = await badLogin(proxy.port)
     assert.notEqual(next.status, 429)
   })
@@ -806,7 +846,7 @@ describe('login rate limiting', () => {
       path: '/_dsh_reverse_proxy/login?invite=invite-prefill',
     })
     assert.equal(page.status, 200)
-    assert.match(page.headers['content-security-policy'] ?? '', /script-src 'unsafe-inline'/)
+    assert.match((page.headers['content-security-policy'] as string) ?? '', /script-src 'unsafe-inline'/)
     assert.equal(page.headers['referrer-policy'], 'no-referrer')
     assert.match(page.body, /requestSubmit/)
     assert.match(page.body, /name="invite"/)
@@ -819,13 +859,13 @@ describe('websocket upgrade', () => {
    * frame back to the sender (node's bare upgrade event does not answer 101
    * by itself — real WebSocket servers do). Like the harness webServer, it
    * tracks its own upgraded sockets so cleanup can tear them down reliably. */
-  async function echoBackend() {
-    const upgraded = new Set()
-    const backend = createServer((req, res) => {
+  async function echoBackend(): Promise<Server> {
+    const upgraded = new Set<Duplex>()
+    const backend = createServer((_req, res) => {
       res.writeHead(200, { 'content-type': 'text/plain' })
       res.end('ok')
     })
-    backend.on('upgrade', (req, socket) => {
+    backend.on('upgrade', (_req, socket) => {
       upgraded.add(socket)
       socket.once('close', () => upgraded.delete(socket))
       socket.write([
@@ -837,25 +877,25 @@ describe('websocket upgrade', () => {
       ].join('\r\n'))
       socket.on('data', chunk => { socket.write(chunk) })
     })
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       backend.once('error', reject)
       backend.listen(0, '127.0.0.1', resolve)
     })
-    cleanups.push(() => new Promise(resolve => {
+    cleanups.push(() => new Promise<void>(resolve => {
       for (const socket of upgraded) socket.destroy()
-      backend.close(resolve)
+      backend.close(() => resolve())
     }))
     return backend
   }
 
-  async function proxyWithCookie() {
+  async function proxyWithCookie(): Promise<{ proxy: Awaited<ReturnType<typeof listenProxy>>, cookie: string }> {
     const backend = await echoBackend()
     const token = generateAccessToken()
     const proxy = await listenProxy({
       listenHost: '127.0.0.1',
       listenPort: 0,
       backendHost: '127.0.0.1',
-      backendPort: backend.address().port,
+      backendPort: portOf(backend),
       accessToken: token,
       cookieName: 'session',
       controlPrefix: '/dsh-reverse-proxy',
@@ -871,7 +911,7 @@ describe('websocket upgrade', () => {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: `token=${encodeURIComponent(token)}`,
     })
-    return { proxy, cookie: login.headers['set-cookie'][0].split(';', 1)[0] }
+    return { proxy, cookie: login.headers['set-cookie']![0].split(';', 1)[0] }
   }
 
   it('denies unauthenticated upgrade attempts with 401', async () => {
@@ -896,7 +936,7 @@ describe('websocket upgrade', () => {
   })
 
   it('strips Set-Cookie from upstream websocket upgrade responses', async () => {
-    const upgraded = new Set()
+    const upgraded = new Set<Duplex>()
     const backend = createServer((_req, res) => {
       res.writeHead(200)
       res.end('ok')
@@ -913,20 +953,20 @@ describe('websocket upgrade', () => {
         '',
       ].join('\r\n'))
     })
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       backend.once('error', reject)
       backend.listen(0, '127.0.0.1', resolve)
     })
-    cleanups.push(() => new Promise(resolve => {
+    cleanups.push(() => new Promise<void>(resolve => {
       for (const socket of upgraded) socket.destroy()
-      backend.close(resolve)
+      backend.close(() => resolve())
     }))
     const token = generateAccessToken()
     const proxy = await listenProxy({
       listenHost: '127.0.0.1',
       listenPort: 0,
       backendHost: '127.0.0.1',
-      backendPort: backend.address().port,
+      backendPort: portOf(backend),
       accessToken: token,
       cookieName: 'session',
       controlPrefix: '/dsh-reverse-proxy',
@@ -942,7 +982,7 @@ describe('websocket upgrade', () => {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: `token=${encodeURIComponent(token)}`,
     })
-    const cookie = login.headers['set-cookie'][0].split(';', 1)[0]
+    const cookie = login.headers['set-cookie']![0].split(';', 1)[0]
     const { socket, status, headers } = await wsHandshake({ port: proxy.port, path: '/ws', cookie })
     cleanups.push(() => socket.destroy())
     assert.match(status, /^HTTP\/1\.1 101/)
@@ -964,7 +1004,7 @@ describe('websocket upgrade', () => {
       listenHost: '127.0.0.1',
       listenPort: 0,
       backendHost: '127.0.0.1',
-      backendPort: backend.address().port,
+      backendPort: portOf(backend),
       accessToken: token,
       cookieName: 'session',
       controlPrefix: '/dsh-reverse-proxy',
@@ -980,12 +1020,12 @@ describe('websocket upgrade', () => {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: `token=${encodeURIComponent(token)}`,
     })
-    const cookie = login.headers['set-cookie'][0].split(';', 1)[0]
+    const cookie = login.headers['set-cookie']![0].split(';', 1)[0]
     const { socket } = await wsHandshake({ port: proxy.port, path: '/ws', cookie })
     cleanups.push(() => socket.destroy())
 
     await proxy.close()
-    await new Promise(resolve => setTimeout(resolve, 300))
+    await new Promise<void>(resolve => setTimeout(resolve, 300))
     assert.equal(backendEnded, true)
   })
 })
@@ -996,20 +1036,20 @@ describe('proxy teardown', () => {
       res.writeHead(200, { 'content-type': 'text/plain' })
       res.write('partial')
     })
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       backend.once('error', reject)
       backend.listen(0, '127.0.0.1', resolve)
     })
-    cleanups.push(() => new Promise(resolve => {
+    cleanups.push(() => new Promise<void>(resolve => {
       backend.closeAllConnections?.()
-      backend.close(resolve)
+      backend.close(() => resolve())
     }))
     const token = generateAccessToken()
     const proxy = await listenProxy({
       listenHost: '127.0.0.1',
       listenPort: 0,
       backendHost: '127.0.0.1',
-      backendPort: backend.address().port,
+      backendPort: portOf(backend),
       accessToken: token,
       cookieName: 'session',
       controlPrefix: '/dsh-reverse-proxy',
@@ -1024,7 +1064,7 @@ describe('proxy teardown', () => {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: `token=${encodeURIComponent(token)}`,
     })
-    const cookie = login.headers['set-cookie'][0].split(';', 1)[0]
+    const cookie = login.headers['set-cookie']![0].split(';', 1)[0]
     const pending = request({
       hostname: '127.0.0.1',
       port: proxy.port,
@@ -1032,13 +1072,13 @@ describe('proxy teardown', () => {
       headers: { cookie },
     })
     pending.end()
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       pending.once('response', resolve)
       pending.once('error', reject)
     })
     await Promise.race([
       proxy.close(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('proxy.close hung')), 3000)),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('proxy.close hung')), 3000)),
     ])
   })
 
@@ -1047,17 +1087,17 @@ describe('proxy teardown', () => {
       res.writeHead(200)
       res.end('ok')
     })
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       backend.once('error', reject)
       backend.listen(0, '127.0.0.1', resolve)
     })
-    cleanups.push(() => new Promise(resolve => backend.close(resolve)))
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
     const token = generateAccessToken()
     const first = await listenProxy({
       listenHost: '127.0.0.1',
       listenPort: 0,
       backendHost: '127.0.0.1',
-      backendPort: backend.address().port,
+      backendPort: portOf(backend),
       accessToken: token,
       cookieName: 'session',
       controlPrefix: '/dsh-reverse-proxy',
@@ -1071,7 +1111,7 @@ describe('proxy teardown', () => {
       listenHost: '127.0.0.1',
       listenPort: port,
       backendHost: '127.0.0.1',
-      backendPort: backend.address().port,
+      backendPort: portOf(backend),
       accessToken: token,
       cookieName: 'session',
       controlPrefix: '/dsh-reverse-proxy',

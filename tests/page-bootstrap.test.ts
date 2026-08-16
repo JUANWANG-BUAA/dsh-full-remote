@@ -3,8 +3,21 @@ import assert from 'node:assert/strict'
 import vm from 'node:vm'
 import { CONNECTION_CLIENT_ID, PAGE_BOOTSTRAP_SOURCE } from '../src/page-bootstrap.ts'
 
-function bootPage() {
-  const env = { Object, Function, Error, TypeError, console }
+/**
+ * The vm sandbox starts from a few well-known globals and then accumulates the
+ * PAGE_BOOTSTRAP_SOURCE globals plus test-injected fixtures, so it is modeled
+ * as a permissive record whose test-injected fields are cast at the read site.
+ */
+type BootEnv = Record<string, unknown> & {
+  Object: ObjectConstructor
+  Function: FunctionConstructor
+  Error: ErrorConstructor
+  TypeError: TypeErrorConstructor
+  console: Console
+}
+
+function bootPage(): BootEnv {
+  const env: BootEnv = { Object, Function, Error, TypeError, console }
   env.globalThis = env
   vm.createContext(env)
   vm.runInContext(PAGE_BOOTSTRAP_SOURCE, env)
@@ -26,7 +39,7 @@ describe('page bootstrap', () => {
     const env = bootPage()
     env.provided = []
     env.factoryModule = {
-      apply(ctx) {
+      apply(ctx: { provide(name: string, value: unknown): void }) {
         ctx.provide('connection', { isLoopback: false, api: {} })
       },
     }
@@ -42,9 +55,10 @@ describe('page bootstrap', () => {
         provide: function(key, value) { globalThis.provided.push({ key: key, value: value }) }
       });
     `, env)
-    assert.equal(env.provided.length, 1)
-    assert.equal(env.provided[0].key, 'connection')
-    assert.equal(env.provided[0].value.isLoopback, true)
+    const provided = env.provided as Array<{ key: string, value: { isLoopback: boolean } }>
+    assert.equal(provided.length, 1)
+    assert.equal(provided[0].key, 'connection')
+    assert.equal(provided[0].value.isLoopback, true)
   })
 
   it('does not wrap unrelated plugin factories', () => {
@@ -66,7 +80,7 @@ describe('page bootstrap', () => {
     vm.runInContext('delete globalThis.__DSH_FULL_REMOTE_TRUSTED__', env)
     env.provided = []
     env.factoryModule = {
-      apply(ctx) {
+      apply(ctx: { provide(name: string, value: unknown): void }) {
         ctx.provide('connection', { isLoopback: false, api: {} })
       },
     }
@@ -81,6 +95,7 @@ describe('page bootstrap', () => {
         provide: function(key, value) { globalThis.provided.push(value) }
       });
     `, env)
-    assert.equal(env.provided[0].isLoopback, false)
+    const provided = env.provided as Array<{ isLoopback: boolean }>
+    assert.equal(provided[0].isLoopback, false)
   })
 })
