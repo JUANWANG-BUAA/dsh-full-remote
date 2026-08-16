@@ -14,7 +14,7 @@ import { createServer as createHttpsServer } from 'node:https'
 import type { Duplex } from 'node:stream'
 import { parseCookies, safeEqual } from './security.ts'
 import { createSessionStore, encodeSessionCookie } from './sessions.ts'
-import { readBody, sendHtml, pathnameOf, rewriteLoopbackAuthority } from './http-util.ts'
+import { isLoopbackHost, readBody, sendHtml, pathnameOf, rewriteLoopbackAuthority } from './http-util.ts'
 import { LOGIN_COPY, LOGIN_PATH, loginLocale, loginPage, waitPage } from './pages.ts'
 
 /** Response header bag the proxy relays between client and upstream. */
@@ -61,6 +61,8 @@ export interface ProxySpec {
   tls?: boolean | { key: string | Buffer, cert: string | Buffer }
   inviteStore?: { consume: (code: string) => boolean }
   trustForwardedProto?: boolean
+  /** When true and the direct peer is loopback, use the first X-Forwarded-For value as the remote client IP for CIDR / rate limiting / audit. Only enable behind a trusted local tunnel/edge. */
+  trustForwardedFor?: boolean
   log?: (entry: { method: string | undefined, path: string, status: number, remote: string }) => void
 }
 
@@ -68,6 +70,7 @@ export interface ProxySpec {
 type RuntimeSpec = ProxySpec & {
   tls: boolean
   trustForwardedProto: boolean
+  trustForwardedFor: boolean
   rewriteAuthority: string
   trackUpstream: (up: ClientRequest | Duplex) => void
   loginTracker: LoginTracker
@@ -102,6 +105,34 @@ const SPOOFABLE_FORWARDING = new Set([
 const INTERNAL_HEADERS = new Set(['cookie', 'referer', 'referrer'])
 const LOGIN_FAILURE_DELAY_MS = 250
 const MAX_TRACKED_LOGIN_IPS = 4096
+
+/**
+ * The first address in an X-Forwarded-For list. Empty/missing becomes undefined.
+ */
+function firstForwardedIp(value: string | string[] | undefined): string | undefined {
+  const text = Array.isArray(value) ? value[0] : value
+  const first = String(text ?? '').split(',')[0]?.trim()
+  return first === '' ? undefined : first
+}
+
+/**
+ * The client IP used for CIDR checks, login rate limiting, audit and logs.
+ *
+ * A local tunnel (cloudflared/ngrok/frp/SSH) connects from 127.0.0.1, so the
+ * socket address is not the real remote user. When the operator explicitly
+ * enables `trustForwardedFor` AND the immediate peer is loopback, we trust the
+ * first X-Forwarded-For value from that local edge. Direct non-loopback peers
+ * are never trusted with a spoofable header.
+ */
+export function effectiveRemoteAddress(req: IncomingMessage, spec: RuntimeSpec): string {
+  const direct = req.socket.remoteAddress ?? ''
+  if (spec.trustForwardedFor === true && isLoopbackHost(direct)) {
+    const forwarded = firstForwardedIp(req.headers['x-forwarded-for'])
+    if (forwarded !== undefined) return forwarded
+  }
+  return direct
+}
+
 /** Login / wait pages: allow the tiny auto-submit / poll scripts. */
 const GATE_PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
 const GATE_PAGE_HEADERS = {
@@ -163,7 +194,7 @@ function createLoginTracker(spec: { loginMaxAttempts?: number, loginLockoutMs?: 
   }
 }
 
-export function forwardHeaders(req: IncomingMessage, backendHost: string, options: { tls?: boolean, trustForwardedProto?: boolean } = {}) {
+export function forwardHeaders(req: IncomingMessage, backendHost: string, options: { tls?: boolean, trustForwardedProto?: boolean, forwardedFor?: string } = {}) {
   const headers: Record<string, string | string[] | undefined> = {}
   for (const [key, value] of Object.entries(req.headers)) {
     const lower = key.toLowerCase()
@@ -183,7 +214,7 @@ export function forwardHeaders(req: IncomingMessage, backendHost: string, option
   // normalize this; without it a split front/API deploy can 403 privileged
   // methods even when Host looks like loopback.
   headers['sec-fetch-site'] = 'same-origin'
-  headers['x-forwarded-for'] = remote
+  headers['x-forwarded-for'] = options.forwardedFor ?? remote
   headers['x-forwarded-host'] = sourceHost
   headers['x-forwarded-proto'] = proto
   headers['x-dsh-reverse-proxy'] = '1'
@@ -253,6 +284,7 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
     headers: forwardHeaders(req, spec.rewriteAuthority, {
       tls: spec.tls === true,
       trustForwardedProto: spec.trustForwardedProto === true,
+      forwardedFor: effectiveRemoteAddress(req, spec),
     }),
   }, (incoming) => {
     clearTimeout(connectTimer)
@@ -320,7 +352,7 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse, spec: Runt
     return
   }
   try {
-    const remote = req.socket.remoteAddress ?? ''
+    const remote = effectiveRemoteAddress(req, spec)
     if (spec.ipAllowed !== undefined && !spec.ipAllowed(remote)) {
       drainRequest(req)
       spec.audit?.('login.denied', { reason: 'cidr', remote })
@@ -398,6 +430,7 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse, spec: Runt
  *  tls?: boolean | { key: string | Buffer, cert: string | Buffer },
  *  inviteStore?: { consume: (code: string) => boolean },
  *  trustForwardedProto?: boolean,
+ *  trustForwardedFor?: boolean,
  *  log?: (entry: { method: string, path: string, status: number, remote: string }) => void,
  * }} spec
  * @returns {Promise<{ host: string, port: number, close: () => Promise<void> }>}
@@ -423,14 +456,16 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     ...spec,
     tls: tlsEnabled,
     trustForwardedProto: spec.trustForwardedProto === true,
+    trustForwardedFor: spec.trustForwardedFor === true,
     rewriteAuthority,
     trackUpstream,
     loginTracker: createLoginTracker(spec),
     sessionStore: spec.sessionStore ?? createSessionStore({ maxAgeSeconds: spec.sessionMaxAgeSeconds }),
   }
   const denyCidr = (req: IncomingMessage, res: ServerResponse): boolean => {
-    if (spec.ipAllowed === undefined || spec.ipAllowed(req.socket.remoteAddress ?? '')) return false
-    spec.audit?.('access.denied', { reason: 'cidr', remote: req.socket.remoteAddress ?? '', path: req.url ?? '/' })
+    const remote = effectiveRemoteAddress(req, runtimeSpec)
+    if (spec.ipAllowed === undefined || spec.ipAllowed(remote)) return false
+    spec.audit?.('access.denied', { reason: 'cidr', remote, path: req.url ?? '/' })
     drainRequest(req)
     res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' })
     res.end('forbidden\n')
@@ -438,7 +473,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
   }
   const logRequest = spec.log === undefined ? undefined : (req: IncomingMessage, res: ServerResponse) => {
     res.once('finish', () => {
-      spec.log!({ method: req.method, path: req.url ?? '/', status: res.statusCode, remote: req.socket.remoteAddress ?? '' })
+      spec.log!({ method: req.method, path: req.url ?? '/', status: res.statusCode, remote: effectiveRemoteAddress(req, runtimeSpec) })
     })
   }
   const onRequest = async (req: IncomingMessage, res: ServerResponse) => {
@@ -517,21 +552,23 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
   server.on('upgrade', (req, socket, head) => {
     upgradedSockets.add(socket)
     socket.once('close', () => upgradedSockets.delete(socket))
-    if (spec.ipAllowed !== undefined && !spec.ipAllowed(req.socket.remoteAddress ?? '')) {
+    const upgradeRemote = effectiveRemoteAddress(req, runtimeSpec)
+    if (spec.ipAllowed !== undefined && !spec.ipAllowed(upgradeRemote)) {
       denySocket(socket, '403 Forbidden')
-      spec.audit?.('access.denied', { reason: 'cidr', remote: req.socket.remoteAddress ?? '', path: req.url ?? '/', upgrade: true })
+      spec.audit?.('access.denied', { reason: 'cidr', remote: upgradeRemote, path: req.url ?? '/', upgrade: true })
       return
     }
     const path = pathnameOf(req.url)
     const cookie = parseCookies(req.headers.cookie)[spec.cookieName]
     if (path.startsWith(spec.controlPrefix) || runtimeSpec.sessionStore.validate(cookie) === undefined) {
       denySocket(socket, '401 Unauthorized')
-      spec.log?.({ method: req.method, path: req.url ?? '/', status: 401, remote: req.socket.remoteAddress ?? '' })
+      spec.log?.({ method: req.method, path: req.url ?? '/', status: 401, remote: upgradeRemote })
       return
     }
     const headers = forwardHeaders(req, rewriteAuthority, {
       tls: tlsEnabled,
       trustForwardedProto: spec.trustForwardedProto === true,
+      forwardedFor: upgradeRemote,
     })
     headers.connection = 'Upgrade'
     headers.upgrade = req.headers.upgrade ?? 'websocket'
@@ -548,7 +585,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
       // After a successful upgrade Node detaches the socket from the request,
       // so req.destroy() would leave it open — track the socket itself too.
       trackUpstream(upSocket)
-      spec.log?.({ method: req.method, path: req.url ?? '/', status: upRes.statusCode ?? 101, remote: req.socket.remoteAddress ?? '' })
+      spec.log?.({ method: req.method, path: req.url ?? '/', status: upRes.statusCode ?? 101, remote: upgradeRemote })
       writeRawHead(
         socket,
         upRes.statusCode ?? 101,

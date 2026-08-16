@@ -104,6 +104,8 @@ flowchart LR
   expiry). The link does not contain the standing token.
 - Fixed delay and per-IP lockout on failed logins
 - Optional CIDR allowlist for remote IPs
+- Optional `trustForwardedFor` to use real client IPs from a trusted local
+  tunnel in CIDR / rate-limit / audit
 
 ### Operation
 
@@ -234,6 +236,7 @@ Common options:
     listenPort: 3081
     approvalMode: false          # true: approve each new device locally
     allowedCidrs: []             # e.g. ["192.168.1.0/24"]; empty: any IP after login
+    trustForwardedFor: false     # true: trust X-Forwarded-For from a trusted local tunnel
     sessionIdleSeconds: 0        # 0: off; otherwise idle timeout in seconds
     auditLog: true
     allowTokenRead: true         # false: token only returned on rotation
@@ -265,7 +268,10 @@ access-control layer provided by this plugin consists of:
 - loopback-only control routes (`/dsh-reverse-proxy/*`), which require a
   control header and are never forwarded through the public proxy;
 - removal of spoofable forwarding and hop-by-hop headers, so the proxy's
-  own cookie never reaches the backend.
+  own cookie never reaches the backend;
+- optional `trustForwardedFor`: when enabled, only a loopback peer's
+  `X-Forwarded-For` is trusted for CIDR / rate-limit / audit, so a local
+  tunnel can see real client IPs. Keep it disabled for direct LAN access.
 
 The access token must be treated as a secret. Terminate TLS on the public
 side of the tunnel. For LAN use without a tunnel, set
@@ -284,6 +290,10 @@ side of the tunnel. For LAN use without a tunnel, set
   loopback HTTP, so any local process that sends the control header can
   read the token. Set `allowTokenRead: false` to receive the token only
   when rotating.
+- By default, a tunnel running on the same machine makes every remote
+  client appear as `127.0.0.1` to the proxy. `allowedCidrs` and per-IP
+  login lockout therefore apply to the tunnel as a whole unless
+  `trustForwardedFor: true` is set behind a trusted local edge.
 - The plugin replaces Harness's remote trust check with its own
   access-control layer. A defect in this layer has serious consequences.
   If Harness provides official remote access in the future, the role of

@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { injectIndexEnhancements, injectViewport } from '../src/index.ts'
 import { readState, writeState } from '../src/persist.ts'
-import { forwardHeaders, listenProxy, sanitizeResponseHeaders, sanitizeUpgradeResponseHeaders } from '../src/proxy.ts'
+import { effectiveRemoteAddress, forwardHeaders, listenProxy, sanitizeResponseHeaders, sanitizeUpgradeResponseHeaders } from '../src/proxy.ts'
 import { formatAuthority, formatHttpUrl, isSelfLoop, isWildcardHost, publishHost, rewriteLoopbackAuthority } from '../src/http-util.ts'
 import { generateAccessToken, safeEqual } from '../src/security.ts'
 import { createInviteStore } from '../src/invites.ts'
@@ -372,6 +372,14 @@ describe('header forwarding', () => {
     assert.equal(headers.cookie, undefined)
     assert.equal(headers.referer, undefined)
     assert.equal(headers['x-dsh-reverse-proxy'], '1')
+  })
+
+  it('allows the caller to override the forwarded-for value', () => {
+    const headers = forwardHeaders({
+      headers: { host: 'public.example' },
+      socket: { remoteAddress: '127.0.0.1' },
+    } as unknown as IncomingMessage, '127.0.0.1:3080', { forwardedFor: '203.0.113.9' })
+    assert.equal(headers['x-forwarded-for'], '203.0.113.9')
   })
 
   it('trusts X-Forwarded-Proto only when opted in', () => {
@@ -851,6 +859,103 @@ describe('login rate limiting', () => {
     assert.match(page.body, /requestSubmit/)
     assert.match(page.body, /name="invite"/)
     assert.match(page.body, /value="invite-prefill"/)
+  })
+})
+
+describe('trustForwardedFor', () => {
+  async function proxyWith(overrides: Record<string, unknown> = {}) {
+    const backend = createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      res.end('ok')
+    })
+    await new Promise<void>((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: portOf(backend),
+      accessToken: 'correct-token',
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 4096,
+      upstreamTimeoutMs: 2000,
+      loginDelayMs: 0,
+      ...overrides,
+    })
+    cleanups.push(proxy.close)
+    return proxy
+  }
+
+  it('ignores X-Forwarded-For when the direct peer is not loopback', () => {
+    const req = {
+      headers: { 'x-forwarded-for': '10.0.0.1' },
+      socket: { remoteAddress: '192.168.1.10' },
+    } as unknown as IncomingMessage
+    const spec = { trustForwardedFor: true } as Parameters<typeof effectiveRemoteAddress>[1]
+    assert.equal(effectiveRemoteAddress(req, spec), '192.168.1.10')
+  })
+
+  it('falls back to the socket address when no forwarded header exists', () => {
+    const req = {
+      headers: {},
+      socket: { remoteAddress: '127.0.0.1' },
+    } as unknown as IncomingMessage
+    const spec = { trustForwardedFor: true } as Parameters<typeof effectiveRemoteAddress>[1]
+    assert.equal(effectiveRemoteAddress(req, spec), '127.0.0.1')
+  })
+
+  it('only trusts X-Forwarded-For from a loopback peer when enabled', async () => {
+    const disabled = await proxyWith({
+      ipAllowed: (ip: string) => ip === '127.0.0.1' || ip.startsWith('192.168.1.'),
+    })
+    const allowedWithoutTrust = await http({
+      port: disabled.port,
+      path: '/_dsh_reverse_proxy/healthz',
+      headers: { 'x-forwarded-for': '10.0.0.1' },
+    })
+    assert.equal(allowedWithoutTrust.status, 200)
+
+    const enabled = await proxyWith({
+      ipAllowed: (ip: string) => ip === '127.0.0.1' || ip.startsWith('192.168.1.'),
+      trustForwardedFor: true,
+    })
+    const denied = await http({
+      port: enabled.port,
+      path: '/_dsh_reverse_proxy/healthz',
+      headers: { 'x-forwarded-for': '10.0.0.1' },
+    })
+    assert.equal(denied.status, 403)
+    const allowed = await http({
+      port: enabled.port,
+      path: '/_dsh_reverse_proxy/healthz',
+      headers: { 'x-forwarded-for': '192.168.1.5' },
+    })
+    assert.equal(allowed.status, 200)
+  })
+
+  it('rate limits by forwarded client IP behind a local tunnel', async () => {
+    const proxy = await proxyWith({
+      trustForwardedFor: true,
+      loginMaxAttempts: 3,
+      loginLockoutMs: 60_000,
+    })
+    const bad = (ip: string) => http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-forwarded-for': ip,
+      },
+      body: 'token=wrong',
+    })
+    for (let i = 0; i < 3; i++) assert.equal((await bad('203.0.113.1')).status, 401)
+    assert.equal((await bad('203.0.113.1')).status, 429)
+    assert.equal((await bad('203.0.113.2')).status, 401)
   })
 })
 

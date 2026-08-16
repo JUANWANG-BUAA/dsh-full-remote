@@ -14,6 +14,7 @@ export type ProxyStatus = {
   approvalMode?: boolean
   tls?: boolean
   auditLog?: boolean
+  trustForwardedFor?: boolean
   reason?: string
 }
 
@@ -41,6 +42,7 @@ export type SelfCheckResult = {
   tls: boolean
   auditLog: boolean
   allowTokenRead: boolean
+  trustForwardedFor: boolean
   /** Filled on the client from `window.__DSH_FULL_REMOTE_TRUSTED__`. */
   trustBootstrap?: boolean
   bootstrapFailed?: boolean

@@ -5,6 +5,20 @@ documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Config `trustForwardedFor`: when enabled and the direct peer is loopback,
+  the proxy uses the first `X-Forwarded-For` value as the remote client IP
+  for CIDR allowlist, login rate limiting, audit and logs. This lets a local
+  tunnel (cloudflared/ngrok/frp/SSH) distinguish real remote clients instead
+  of treating them all as `127.0.0.1`. Keep disabled for LAN direct access.
+- The reverse-proxy self-check now reports whether `trustForwardedFor` is
+  active, so operators can see the tunnel IP behavior from the panel.
+
+### Fixed
+
+- Document the tunnel IP limitation and the new opt-in in both READMEs.
+
 ## 0.2.4 (2026-08-16)
 
 ### Changed

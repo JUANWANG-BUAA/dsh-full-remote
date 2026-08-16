@@ -77,6 +77,7 @@ flowchart LR
 - 手机邀请：二维码或一次性链接（单次有效，15 分钟过期），链接中不含长期令牌
 - 登录失败计入固定延时，并按 IP 累计锁定
 - 可选 CIDR 白名单，限制远程 IP
+- 可选 `trustForwardedFor`：在可信本地隧道后使用真实客户端 IP 进行 CIDR / 限流 / 审计
 
 ### 运维
 
@@ -184,6 +185,7 @@ dsh plugin --profile web update dsh-full-remote
     listenPort: 3081
     approvalMode: false          # true：新设备需要本机批准
     allowedCidrs: []             # 例如 ["192.168.1.0/24"]；留空 = 登录后不限 IP
+    trustForwardedFor: false     # true：信任可信本地隧道传来的 X-Forwarded-For
     sessionIdleSeconds: 0        # 0 = 关闭；否则按空闲秒数过期
     auditLog: true
     allowTokenRead: true         # false：令牌只在轮换时返回
@@ -206,7 +208,8 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 - 按设备的 `HttpOnly`、`SameSite=Strict` 会话 Cookie，携带按设备秘密，存储时只保存其哈希；
 - 登录失败计入固定延时，并按 IP 返回 `429` 锁定；
 - 控制接口（`/dsh-reverse-proxy/*`）仅限回环地址访问，需要控制头，且永远不会被公网代理转发；
-- 剥离可伪造的转发头与逐跳头，代理自身的 Cookie 不会到达后端。
+- 剥离可伪造的转发头与逐跳头，代理自身的 Cookie 不会到达后端；
+- 可选 `trustForwardedFor`：开启后仅信任回环对端传来的 `X-Forwarded-For`，用于 CIDR / 限流 / 审计，使本地隧道能识别真实客户端 IP。局域网直连请保持关闭。
 
 访问令牌须按机密保管。公网侧应终止 TLS。局域网直连可配置 `tlsCertFile` / `tlsKeyFile`（例如用 [mkcert](https://github.com/FiloSottile/mkcert) 生成）。
 
@@ -215,6 +218,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 - 控制操作（启动、停止、查看令牌、修改监听地址）仅可在本机 Harness 窗口执行，隧道地址下无效。
 - 远程页面上的设置持久化依赖临时的信任注入，待 Harness 提供正式的部署信任字段后可以移除。手机上的「在宿主机打开」作用于运行 Harness 的机器。
 - 默认 `allowTokenRead: true` 时，`GET /token` 通过回环 HTTP 提供，任何能发送控制头的本机进程均可读取。设为 `false` 后，令牌仅在轮换时返回。
+- 默认情况下，运行在本机的隧道会让所有远程客户端在代理看来都是 `127.0.0.1`。因此 `allowedCidrs` 与按 IP 登录锁定只对“隧道整体”生效；如需按真实客户端 IP 生效，请在可信本地边缘后设置 `trustForwardedFor: true`。
 - 插件以自身的访问控制层替代 Harness 的远程信任校验，该层若存在缺陷，影响严重。若 Harness 未来提供官方远程访问能力，应重新评估本插件的定位。
 
 ## 开发

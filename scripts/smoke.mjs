@@ -139,6 +139,7 @@ async function main() {
     // 4. Control surface: status, listen, start.
     const status0 = await json(await fetchWithGrace(`${BASE}/dsh-reverse-proxy/status`, { headers: CONTROL }, 'status'), 'status')
     assert(status0?.authenticated === true && status0?.running === false, 'status snapshot', JSON.stringify(status0))
+    assert(status0?.trustForwardedFor === false, 'default trustForwardedFor', JSON.stringify(status0))
 
     const listen = await json(await fetch(`${BASE}/dsh-reverse-proxy/listen`, {
       method: 'POST', headers: { ...CONTROL, 'content-type': 'application/json' },

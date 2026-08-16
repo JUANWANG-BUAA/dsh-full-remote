@@ -68,6 +68,7 @@ export const Config = Schema.object({
   tlsCertFile: Schema.string().default('').description('Optional PEM certificate path for local TLS on the proxy listen port (pair with tlsKeyFile). Empty = plain HTTP.'),
   tlsKeyFile: Schema.string().default('').description('Optional PEM private key path for local TLS (pair with tlsCertFile).'),
   trustForwardedProto: Schema.boolean().default(false).description('When true, trust inbound X-Forwarded-Proto from a reverse-edge for Secure cookies and upstream proto. Leave false unless a trusted TLS terminator sits in front.'),
+  trustForwardedFor: Schema.boolean().default(false).description('When true and the direct peer is loopback, use the first X-Forwarded-For value as the remote client IP for CIDR / rate limiting / audit. Only enable behind a trusted local tunnel/edge; do not enable for LAN direct access.'),
 })
 
 /** Validated plugin config: every field carries its Schema default. */
@@ -99,6 +100,7 @@ interface RuntimeConfig {
   tlsCertFile: string
   tlsKeyFile: string
   trustForwardedProto: boolean
+  trustForwardedFor: boolean
 }
 
 /** Runtime state once `load()` has regenerated the access token when missing. */
@@ -140,6 +142,7 @@ interface RuntimeStatus {
   approvalMode: boolean
   tls: boolean
   auditLog: boolean
+  trustForwardedFor: boolean
   authenticated: boolean
   reason?: string
 }
@@ -309,6 +312,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
       approvalMode: config.approvalMode,
       tls: scheme() === 'https',
       auditLog: audit.enabled,
+      trustForwardedFor: config.trustForwardedFor === true,
       authenticated: true,
       ...(reason !== undefined ? { reason } : {}),
     }
@@ -395,6 +399,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
         audit: (event, fields) => { void audit.record(event, fields) },
         tls,
         trustForwardedProto: config.trustForwardedProto === true,
+        trustForwardedFor: config.trustForwardedFor === true,
         log: config.logRequests
           ? entry => { ctx.logger.debug(`reverse-proxy: ${entry.remote ?? '-'} ${entry.method} ${entry.path} -> ${entry.status}`) }
           : undefined,
@@ -500,6 +505,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
       tls: scheme() === 'https',
       auditLog: audit.enabled,
       allowTokenRead: config.allowTokenRead !== false,
+      trustForwardedFor: config.trustForwardedFor === true,
     }
   }
 

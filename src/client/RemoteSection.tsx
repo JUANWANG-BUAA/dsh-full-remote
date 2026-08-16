@@ -393,6 +393,7 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
           )}
           <p className={css.hint}>{check.tls ? t('check.tlsOn') : t('check.tlsOff')}</p>
           <p className={css.hint}>{check.auditLog ? t('check.auditOn') : t('check.auditOff')}</p>
+          <p className={css.hint}>{check.trustForwardedFor ? t('check.trustForwardedForOn') : t('check.trustForwardedForOff')}</p>
           {check.allowTokenRead !== true && <p className={css.hint}>{t('check.tokenReadOff')}</p>}
           {proxyStoppedHint && <p className={css.hint}>{t('check.proxyStopped')}</p>}
         </section>
