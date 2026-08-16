@@ -439,8 +439,8 @@ P0-2（通配地址）与上面三条无依赖，可随时插入。
 - [ ] **把 `randomUUID` polyfill 拆成独立极小包** —— 本轮只把 `AbortSignal.any` 并进现有注入，不新开一个包。拆包是新产品，不是这个仓库的优化。
 - [x] 侧边栏 DOM 推断失败时打 console 警告，让降级可见
 - [ ] 评估砍掉部分 UI（488 行 CSS + 334 行 Overlay 是腐烂最快的部分，且与核心价值无关）—— 本轮不动：面板是用户抄地址、抄令牌、踢设备的唯一界面，砍掉等于砍掉被发现之后的可用性。
-- [ ] 只读路径旁路串行锁 / 改读写锁 —— 慢 bind 堵住轮询是正确行为（不该在 bind 中途报告「未运行」）。
-- [ ] `handle()` 里的 `actions` Map 提到模块作用域
+- [x] 只读路径旁路串行锁 / 改读写锁 —— 0.3.0 已实现读写门拆分（`exclusive` / `shared`，见 `src/index.ts` 与 CHANGELOG 0.3.0 Changed）：读等待当前写完成后并发执行，慢 bind 期间轮询仍会短暂等待，但不再与所有读串行。
+- [x] `handle()` 里的 `actions` Map 提到模块作用域 —— 已提升到 `createRuntime` 作用域（`src/index.ts`，随 runtime 创建一次），因条目值是 start/stop/rotateToken 的运行时闭包，无法提到真正的模块作用域；行为不变。
 - [ ] `exports['./client']` 补 `types`；统一 ESM；`files` 补齐产物清单 —— client 产物是 ModuleLoader CJS 闭包，补一个会 404 的 `types` 字段比缺字段更糟。
 - [ ] `disabled` + `!!js` 让插件在 headless profile 下无害跳过 —— 本轮不做：`disabled: !!js ctx.get('webServer') === undefined` 在并发挂载时可能先于 webServer 求值，会在 web profile 里把自己关掉。没有稳定的 profile-name 信号之前，错误的 disabled 比 README 里那句「别装进 headless」更危险。
 

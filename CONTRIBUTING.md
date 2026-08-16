@@ -23,6 +23,9 @@ pnpm run check       # lint + typecheck (real harness types) + tests + build
 pnpm run check:ci    # lint + typecheck with the CI fallback declarations + tests + build
 ```
 
+Host sources are fully type-annotated and compiled with `noImplicitAny`
+enabled. Keep new parameters and fields typed rather than adding `any`.
+
 CI runs `pnpm run check:ci` on every push and pull request, plus a real-boot
 smoke job (`scripts/smoke.mjs`) that installs the bundle through
 `dsh plugin add` and exercises it against a live harness composition.
@@ -55,4 +58,4 @@ or English describing the change, e.g. `修复 …` / `Add …`.
 ## Release notes
 
 Unreleased changes go under an Unreleased heading of `CHANGELOG.md`
-until the next version is cut. The current release is `0.2.2`.
+until the next version is cut. The current release is `0.3.0`.
