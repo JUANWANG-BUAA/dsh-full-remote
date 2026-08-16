@@ -45,6 +45,7 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
   const [audit, setAudit] = useState<AuditResult>()
   const [auditLoading, setAuditLoading] = useState(false)
   const [auditFilter, setAuditFilter] = useState('')
+  const [auditLimit, setAuditLimit] = useState('50')
   const toastSeq = useRef(0)
   const mounted = useRef(true)
   const sessionsEpoch = useRef(0)
@@ -313,7 +314,9 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
     if (auditLoading) return
     setAuditLoading(true)
     try {
-      const result = await api.audit(50, auditFilter.trim() || undefined)
+      const rawLimit = Number(auditLimit)
+      const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(rawLimit, 1), 200) : 50
+      const result = await api.audit(limit, auditFilter.trim() || undefined)
       if (mounted.current) setAudit(result)
     } catch (reason) {
       showToast(toastFromCaught(reason, t))
@@ -561,6 +564,16 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
+          />
+        </label>
+        <label className={css.field}>
+          <span>{t('audit.limit')}</span>
+          <input
+            className={css.input}
+            value={auditLimit}
+            onChange={event => { setAuditLimit(event.target.value.replace(/[^0-9]/g, '')) }}
+            inputMode="numeric"
+            placeholder="50"
           />
         </label>
         <button
