@@ -87,6 +87,7 @@ flowchart LR
 
 - 通过隧道域名打开设置页时，改动正常持久化
 - 「添加工作区」使用应用内目录浏览，不会在宿主机显示器上弹出系统对话框
+- 想要手机友好的布局（会话区全宽、目录改抽屉、弹窗适配），建议搭配移动端布局插件使用，例如 [dsh-web-mobile](https://github.com/mexiaosqwq/dsh-web-mobile)
 
 ## 环境要求
 

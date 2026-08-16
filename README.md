@@ -118,6 +118,9 @@ flowchart LR
 - Settings edits persist when the page is opened through a tunnel hostname
 - Add workspace uses the in-app directory browser; no native dialog
   appears on the host display
+- For a phone-friendly layout (full-width session area, directory drawer,
+  adapted dialogs), pair it with a mobile-layout plugin such as
+  [dsh-web-mobile](https://github.com/mexiaosqwq/dsh-web-mobile)
 
 ## Requirements
 
