@@ -137,7 +137,7 @@ async function main() {
 
     phase = 'step4-status/listen/start'
     // 4. Control surface: status, listen, start.
-    const status0 = await json(await fetchWithGrace(`${BASE}/dsh-reverse-proxy/status`, undefined, 'status'), 'status')
+    const status0 = await json(await fetchWithGrace(`${BASE}/dsh-reverse-proxy/status`, { headers: CONTROL }, 'status'), 'status')
     assert(status0?.authenticated === true && status0?.running === false, 'status snapshot', JSON.stringify(status0))
 
     const listen = await json(await fetch(`${BASE}/dsh-reverse-proxy/listen`, {
@@ -202,8 +202,9 @@ async function main() {
     phase = 'step9-stop'
     // 9. Per-device sessions: the login created one device; kicking it must
     // revoke the cookie immediately.
-    const listed = await json(await fetch(`${BASE}/dsh-reverse-proxy/sessions`), 'sessions list')
+    const listed = await json(await fetch(`${BASE}/dsh-reverse-proxy/sessions`, { headers: CONTROL }), 'sessions list')
     assert(Array.isArray(listed?.sessions) && listed.sessions.length >= 1, 'device session listed', JSON.stringify(listed))
+    if (listed === undefined) return
     const deviceId = listed.sessions[0].id
     const revoked = await json(await fetch(`${BASE}/dsh-reverse-proxy/sessions/revoke`, {
       method: 'POST', headers: { ...CONTROL, 'content-type': 'application/json' },
