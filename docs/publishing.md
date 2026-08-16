@@ -56,6 +56,7 @@ package is a different product.
 - [x] Tag `v0.2.2` (README screenshots for Settings → Reverse proxy), let CI publish, verify `npm view dsh-full-remote version`.
 - [x] `dsh-full-remote@0.2.3` is on npm (2026-08-16); GitHub `v0.2.3` tag was skipped.
 - [x] Tag `v0.2.4` (invite Origin / reachable-URL README, screenshot recapture).
+- [x] Tag `v0.2.5` (fix trust-bootstrap `ctx.provide` overwrite, GitHub #9).
 - [ ] `npm deprecate dsh-reverse-proxy "Package renamed to dsh-full-remote."` (blocked until `npm login`).
 - [x] Apply GitHub topics from `docs/github-metadata.md` (applied 2026-08-16).
 - [x] PR the plugin into `awesome-dsh-plugin` as `dsh-full-remote` ([#833](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/833), updated 2026-08-16).

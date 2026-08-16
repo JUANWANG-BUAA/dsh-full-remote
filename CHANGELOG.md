@@ -5,6 +5,8 @@ documented in this file.
 
 ## Unreleased
 
+## 0.2.5 (2026-08-16)
+
 ### Added
 
 - Config `trustForwardedFor`: when enabled and the direct peer is loopback,

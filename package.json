@@ -1,6 +1,6 @@
 {
   "name": "dsh-full-remote",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Remote DeepSeek Harness with full server-side API access: Host/Origin rewrite restores settings.*, credentials.*, and host.listDirectory that other tunnels 403. Token-gated reverse proxy plus mobile control UI.",
   "type": "module",
   "main": "lib/index.js",
