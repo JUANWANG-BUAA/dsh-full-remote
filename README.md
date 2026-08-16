@@ -170,16 +170,26 @@ The listen address can be changed at runtime and persists across restarts.
 If a new address fails to bind, the proxy rolls back to the previous
 working address.
 
+The copyable **tunnel target** (and any extra reachable URL the panel
+lists) is what a remote client should open. Binding `0.0.0.0` only
+listens; it is not a URL.
+
 `backendHost` is the address the proxy connects to, not the address it
 listens on. Keep it at `127.0.0.1`.
 
 ### Phone invite
 
-In the **Phone invite** section, enter the public Origin (leave empty for
-LAN use), then press **Generate invite**. The panel shows a QR code and a
-one-time link; the login page submits automatically after a scan. The link
-expires after 15 minutes, works once, and does not contain the standing
-token.
+The QR encodes a one-time login URL. **Public / reachable Origin** is the
+host the *scanning device* will request: the tunnel's `https://…`, or the
+LAN URL from the panel. Leave it empty only when the tunnel target above
+is already that address.
+
+Do not put `127.0.0.1` in Origin. That address is the Harness machine; a
+phone would open its own loopback and never reach the proxy.
+
+Then press **Generate invite**. After a scan (or opening the link) the
+login page submits once. The invite expires in 15 minutes, works once, and
+does not contain the standing token.
 
 ### Upgrade
 
@@ -276,7 +286,7 @@ side of the tunnel. For LAN use without a tunnel, set
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.2.3.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.2.4.tgz
 ```
 
 Git installs run the `prepare` build. On pnpm ≥ 10 allow it:

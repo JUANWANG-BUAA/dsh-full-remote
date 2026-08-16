@@ -5,6 +5,21 @@ documented in this file.
 
 ## Unreleased
 
+## 0.2.4 (2026-08-16)
+
+### Changed
+
+- Login and wait pages: product kicker and slightly clearer card chrome.
+
+### Documentation
+
+- README: the copyable tunnel target (and extra reachable URLs) is what a
+  remote client opens; binding `0.0.0.0` is not a URL.
+- Phone invite: Origin must be reachable from the scanning device. Encoding
+  `127.0.0.1` makes a phone hit its own loopback.
+- Screenshot gallery recaptured; README notes pairing with a mobile-layout
+  plugin such as dsh-web-mobile.
+
 ## 0.2.3 (2026-08-16)
 
 ### Added
