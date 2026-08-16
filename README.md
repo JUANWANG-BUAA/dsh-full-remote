@@ -21,6 +21,10 @@ so the Web UI can be used through a public tunnel or from a device on the
 local network while privileged APIs such as settings, credentials, and
 directory browsing remain available.
 
+| Desktop control panel | Mobile workspace |
+|---|---|
+| ![Desktop control panel](./docs/screenshots/preview-desktop.png) | ![Mobile workspace](./docs/screenshots/preview-mobile.png) |
+
 ## Problem
 
 DeepSeek Harness binds its Web server to a loopback address and only
@@ -202,16 +206,27 @@ a pinned version.
 
 ## Screenshots
 
-| | |
+### Desktop
+
+| Control panel | Fence self-check |
 |---|---|
-| Control panel | ![Control panel](./docs/rp-demo-panel.png) |
-| Fence self-check | ![Fence self-check](./docs/rp-demo-self-check.png) |
-| Phone invite (QR) | ![Phone invite](./docs/rp-demo-invite.png) |
-| Access token | ![Access token](./docs/rp-demo-token.png) |
-| Listen address | ![Listen address](./docs/rp-demo-listen-address.png) |
-| Login page (desktop) | ![Login page](./docs/rp-demo-login.png) |
-| Login page (phone) | ![Mobile login](./docs/rp-demo-mobile-login.png) |
-| Add workspace on phone | ![Mobile workspace](./docs/rp-demo-mobile-workspace.png) |
+| ![Control panel](./docs/screenshots/preview-desktop.png) | ![Fence self-check](./docs/screenshots/preview-self-check.png) |
+
+| Phone invite (QR) | Access token | Listen address |
+|---|---|---|
+| ![Phone invite](./docs/screenshots/preview-invite.png) | ![Access token](./docs/screenshots/preview-token.png) | ![Listen address](./docs/screenshots/preview-listen-address.png) |
+
+### Mobile
+
+| Login page (phone) | Add workspace on phone | Mobile control panel |
+|---|---|---|
+| ![Mobile login](./docs/screenshots/preview-mobile-login.png) | ![Mobile workspace](./docs/screenshots/preview-mobile.png) | ![Mobile panel](./docs/screenshots/preview-mobile-panel.png) |
+
+### Responsive
+
+| Small phone | Phone landscape | Tablet |
+|---|---|---|
+| ![Phone small](./docs/screenshots/preview-phone-small.png) | ![Phone landscape](./docs/screenshots/preview-phone-landscape.png) | ![Tablet](./docs/screenshots/preview-tablet.png) |
 
 ## Configuration
 

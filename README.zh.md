@@ -16,6 +16,10 @@
 
 `dsh-full-remote` 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的一个插件：它在 Harness Web 服务前放置一层带鉴权的反向代理，使 Web 界面可以通过公网隧道或局域网设备访问，同时保持设置、凭据、目录浏览等特权接口可用。
 
+| 桌面控制面板 | 手机工作区 |
+|---|---|
+| ![桌面控制面板](./docs/screenshots/preview-desktop.png) | ![手机工作区](./docs/screenshots/preview-mobile.png) |
+
 ## 问题
 
 DeepSeek Harness 的 Web 服务只绑定回环地址，且仅当请求的 `Host`、`Origin` 头指向回环地址时才放行特权接口。经通用隧道访问时，这两个头携带的是公网域名，无法通过信任校验。页面可以加载，但以下接口返回 403：
@@ -154,16 +158,27 @@ dsh plugin --profile web update dsh-full-remote
 
 ## 截图
 
-| | |
+### 桌面端
+
+| 控制面板 | 栅栏自检 |
 |---|---|
-| 控制面板 | ![控制面板](./docs/rp-demo-panel.png) |
-| 栅栏自检 | ![栅栏自检](./docs/rp-demo-self-check.png) |
-| 手机邀请（二维码） | ![手机邀请](./docs/rp-demo-invite.png) |
-| 访问令牌 | ![访问令牌](./docs/rp-demo-token.png) |
-| 监听地址 | ![监听地址](./docs/rp-demo-listen-address.png) |
-| 登录页（桌面） | ![登录页](./docs/rp-demo-login.png) |
-| 登录页（手机） | ![移动端登录](./docs/rp-demo-mobile-login.png) |
-| 手机添加工作区 | ![手机工作区](./docs/rp-demo-mobile-workspace.png) |
+| ![控制面板](./docs/screenshots/preview-desktop.png) | ![栅栏自检](./docs/screenshots/preview-self-check.png) |
+
+| 手机邀请（二维码） | 访问令牌 | 监听地址 |
+|---|---|---|
+| ![手机邀请](./docs/screenshots/preview-invite.png) | ![访问令牌](./docs/screenshots/preview-token.png) | ![监听地址](./docs/screenshots/preview-listen-address.png) |
+
+### 移动端
+
+| 手机登录页 | 手机添加工作区 | 移动控制面板 |
+|---|---|---|
+| ![移动端登录](./docs/screenshots/preview-mobile-login.png) | ![手机工作区](./docs/screenshots/preview-mobile.png) | ![移动面板](./docs/screenshots/preview-mobile-panel.png) |
+
+### 响应式
+
+| 小屏手机 | 手机横屏 | 平板 |
+|---|---|---|
+| ![小屏手机](./docs/screenshots/preview-phone-small.png) | ![手机横屏](./docs/screenshots/preview-phone-landscape.png) | ![平板](./docs/screenshots/preview-tablet.png) |
 
 ## 常用配置
 
