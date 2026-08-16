@@ -82,10 +82,11 @@ flowchart LR
 ### 运维
 
 - 栅栏自检：使用与代理相同的 Host/Origin 改写探测 `settings.describe`
-- 结构化 JSONL 审计日志（登录、审批、撤销、令牌轮换、启动、停止、WebSocket 打开/拒绝/拒绝），并支持在面板内查看最近事件
+- 结构化 JSONL 审计日志（登录、审批、撤销、令牌轮换、启动、停止、WebSocket 打开/拒绝），并支持在面板内查看最近事件与导出 JSON
 - 监听地址可在运行时修改，绑定失败自动回滚
 - 可选本地 TLS（`tlsCertFile` / `tlsKeyFile`）
 - 健康检查接口 `/_dsh_reverse_proxy/healthz`
+- WebSocket 升级限流：同一远程 IP 反复升级失败后会进入锁定
 - 请求体大小在流层面受限；剥离逐跳与可伪造头部；清除上游 `set-cookie`
 
 ### 移动端
@@ -186,6 +187,8 @@ dsh plugin --profile web update dsh-full-remote
     approvalMode: false          # true：新设备需要本机批准
     allowedCidrs: []             # 例如 ["192.168.1.0/24"]；留空 = 登录后不限 IP
     trustForwardedFor: false     # true：信任可信本地隧道传来的 X-Forwarded-For
+    upgradeMaxAttempts: 10       # WebSocket 升级失败多少次后锁定
+    upgradeLockoutSeconds: 300   # WebSocket 升级频繁失败的锁定秒数
     sessionIdleSeconds: 0        # 0 = 关闭；否则按空闲秒数过期
     auditLog: true
     allowTokenRead: true         # false：令牌只在轮换时返回

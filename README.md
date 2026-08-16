@@ -113,10 +113,12 @@ flowchart LR
   rewrite the proxy uses
 - Structured JSONL audit log (login, approval, revocation, token rotation,
   start, stop, WebSocket open/deny/reject) with an in-panel viewer for
-  recent events
+  recent events and JSON export
 - Runtime listen-address changes with automatic rollback when a bind fails
 - Optional local TLS (`tlsCertFile` / `tlsKeyFile`)
 - Health endpoint at `/_dsh_reverse_proxy/healthz`
+- WebSocket upgrade rate limiting: repeated failed upgrades are locked out
+  per remote IP
 - Stream-level request body limit; hop-by-hop and spoofable headers are
   stripped; upstream `set-cookie` is removed
 
@@ -238,6 +240,8 @@ Common options:
     approvalMode: false          # true: approve each new device locally
     allowedCidrs: []             # e.g. ["192.168.1.0/24"]; empty: any IP after login
     trustForwardedFor: false     # true: trust X-Forwarded-For from a trusted local tunnel
+    upgradeMaxAttempts: 10       # failed WebSocket upgrades before lockout
+    upgradeLockoutSeconds: 300   # lockout for repeated failed WebSocket upgrades
     sessionIdleSeconds: 0        # 0: off; otherwise idle timeout in seconds
     auditLog: true
     allowTokenRead: true         # false: token only returned on rotation

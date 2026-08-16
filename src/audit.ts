@@ -4,7 +4,7 @@
  * Failures to write never throw into the request path; they warn through
  * the supplied logger. Disabled when auditLog is empty/false.
  */
-import { appendFile, mkdir, open } from 'node:fs/promises'
+import { appendFile, mkdir, open, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 /**
@@ -100,5 +100,36 @@ export async function readAuditLog(
     return []
   } finally {
     await handle?.close().catch(() => {})
+  }
+}
+
+/**
+ * Read the full audit log for export.
+ *
+ * This is an explicit user action (download), so it is allowed to read the
+ * whole file. Malformed lines are skipped and an optional event filter is
+ * applied.
+ */
+export async function readAuditLogAll(
+  path: string | undefined,
+  event?: string,
+): Promise<unknown[]> {
+  if (path === undefined || path === '') return []
+  try {
+    const text = await readFile(path, 'utf8')
+    const events: unknown[] = []
+    for (const line of text.split('\n')) {
+      if (line.trim() === '') continue
+      try {
+        const parsed = JSON.parse(line) as { event?: unknown }
+        if (event !== undefined && parsed.event !== event) continue
+        events.push(parsed)
+      } catch {
+        // Skip malformed lines; the audit log is append-only and best-effort.
+      }
+    }
+    return events
+  } catch {
+    return []
   }
 }

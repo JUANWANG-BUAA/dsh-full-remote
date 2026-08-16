@@ -30,7 +30,7 @@ import {
   reachableHosts,
 } from './http-util.ts'
 import { PAGE_BOOTSTRAP_SOURCE } from './page-bootstrap.ts'
-import { createAuditLog, defaultAuditPath, readAuditLog } from './audit.ts'
+import { createAuditLog, defaultAuditPath, readAuditLog, readAuditLogAll } from './audit.ts'
 import { compileCidrList, ipAllowed, parseCidr } from './cidr.ts'
 import { createInviteStore } from './invites.ts'
 import { probeFence } from './self-check.ts'
@@ -58,6 +58,8 @@ export const Config = Schema.object({
   loginDelayMs: Schema.number().min(0).max(10_000).default(250).description('Fixed delay after a failed login, slowing token guessing.'),
   loginMaxAttempts: Schema.number().min(1).default(5).description('Failed login attempts per remote IP before that IP is locked out.'),
   loginLockoutSeconds: Schema.number().min(10).default(300).description('Lockout duration for a remote IP that exceeded loginMaxAttempts.'),
+  upgradeMaxAttempts: Schema.number().min(1).default(10).description('Failed WebSocket upgrade attempts per remote IP before that IP is locked out.'),
+  upgradeLockoutSeconds: Schema.number().min(10).default(300).description('Lockout duration for a remote IP that exceeded upgradeMaxAttempts.'),
   approvalMode: Schema.boolean().default(false).description('Require local approval for every new device before it can reach DeepSeek Harness.'),
   maxSessions: Schema.number().min(1).max(64).default(16).description('Maximum concurrent device sessions; the stalest session is evicted past this cap.'),
   logRequests: Schema.boolean().default(false).description('Log every proxied request at debug level.'),
@@ -90,6 +92,8 @@ interface RuntimeConfig {
   loginDelayMs: number
   loginMaxAttempts: number
   loginLockoutSeconds: number
+  upgradeMaxAttempts: number
+  upgradeLockoutSeconds: number
   approvalMode: boolean
   maxSessions: number
   logRequests: boolean
@@ -393,6 +397,8 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
         loginDelayMs: config.loginDelayMs,
         loginMaxAttempts: config.loginMaxAttempts,
         loginLockoutMs: config.loginLockoutSeconds * 1000,
+        upgradeMaxAttempts: config.upgradeMaxAttempts,
+        upgradeLockoutMs: config.upgradeLockoutSeconds * 1000,
         sessionStore,
         inviteStore,
         ipAllowed: address => ipAllowed(address, cidrRules),
@@ -598,6 +604,23 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
         enabled: audit.enabled,
         events: await readAuditLog(audit.path, limit, event),
       })))
+      return
+    }
+    if (path === `${CONTROL_PREFIX}/audit/export` && req.method === 'GET') {
+      if (!allowed) {
+        sendJson(res, 403, { error: 'forbidden' })
+        return
+      }
+      const auditUrl = new URL(req.url ?? '/', 'http://localhost')
+      const event = auditUrl.searchParams.get('event')?.trim() || undefined
+      const events = await shared(() => readAuditLogAll(audit.path, event))
+      res.writeHead(200, {
+        'content-type': 'application/json; charset=utf-8',
+        'cache-control': 'no-store',
+        'content-disposition': 'attachment; filename="dsh-reverse-proxy-audit.json"',
+        'x-content-type-options': 'nosniff',
+      })
+      res.end(JSON.stringify(events, null, 2))
       return
     }
     const sessionAction = path.match(/^\/dsh-reverse-proxy\/sessions\/(approve|revoke|rename)$/)

@@ -55,6 +55,8 @@ export interface ProxySpec {
   loginDelayMs?: number
   loginMaxAttempts?: number
   loginLockoutMs?: number
+  upgradeMaxAttempts?: number
+  upgradeLockoutMs?: number
   sessionStore?: ReturnType<typeof createSessionStore>
   ipAllowed?: (address: string) => boolean
   audit?: (event: string, fields?: Record<string, unknown>) => void
@@ -259,8 +261,8 @@ function writeRawHead(socket: Duplex, statusCode: number, statusMessage: string,
   socket.write(`${lines.join('\r\n')}\r\n\r\n`)
 }
 
-function denySocket(socket: Duplex, status = '403 Forbidden') {
-  socket.write(`HTTP/1.1 ${status}\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\nforbidden\n`)
+function denySocket(socket: Duplex, status = '403 Forbidden', body = 'forbidden\n') {
+  socket.write(`HTTP/1.1 ${status}\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\n${body}`)
   socket.destroy()
 }
 
@@ -462,6 +464,10 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     loginTracker: createLoginTracker(spec),
     sessionStore: spec.sessionStore ?? createSessionStore({ maxAgeSeconds: spec.sessionMaxAgeSeconds }),
   }
+  const upgradeTracker = createLoginTracker({
+    loginMaxAttempts: spec.upgradeMaxAttempts ?? 10,
+    loginLockoutMs: spec.upgradeLockoutMs ?? 300_000,
+  })
   const denyCidr = (req: IncomingMessage, res: ServerResponse): boolean => {
     const remote = effectiveRemoteAddress(req, runtimeSpec)
     if (spec.ipAllowed === undefined || spec.ipAllowed(remote)) return false
@@ -558,9 +564,16 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
       spec.audit?.('access.denied', { reason: 'cidr', remote: upgradeRemote, path: req.url ?? '/', upgrade: true })
       return
     }
+    const upgradeRetryAfter = upgradeTracker.check(upgradeRemote)
+    if (upgradeRetryAfter > 0) {
+      denySocket(socket, '429 Too Many Requests', 'too many requests\n')
+      spec.audit?.('upgrade.locked', { remote: upgradeRemote, retryAfter: upgradeRetryAfter, path: req.url ?? '/', upgrade: true })
+      return
+    }
     const path = pathnameOf(req.url)
     const cookie = parseCookies(req.headers.cookie)[spec.cookieName]
     if (path.startsWith(spec.controlPrefix) || runtimeSpec.sessionStore.validate(cookie) === undefined) {
+      upgradeTracker.fail(upgradeRemote)
       denySocket(socket, '401 Unauthorized')
       spec.audit?.('access.denied', { reason: 'auth', remote: upgradeRemote, path: req.url ?? '/', upgrade: true })
       spec.log?.({ method: req.method, path: req.url ?? '/', status: 401, remote: upgradeRemote })
@@ -586,6 +599,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
       // After a successful upgrade Node detaches the socket from the request,
       // so req.destroy() would leave it open — track the socket itself too.
       trackUpstream(upSocket)
+      upgradeTracker.success(upgradeRemote)
       spec.audit?.('ws.open', { remote: upgradeRemote, path: req.url ?? '/', status: upRes.statusCode ?? 101 })
       spec.log?.({ method: req.method, path: req.url ?? '/', status: upRes.statusCode ?? 101, remote: upgradeRemote })
       writeRawHead(

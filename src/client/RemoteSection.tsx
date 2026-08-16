@@ -325,6 +325,23 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
     }
   }
 
+  const exportAudit = async () => {
+    try {
+      const blob = await api.exportAudit(auditFilter.trim() || undefined)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'dsh-reverse-proxy-audit.json'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+      showToast({ kind: 'success', text: t('audit.exported') })
+    } catch (reason) {
+      showToast(toastFromCaught(reason, t))
+    }
+  }
+
   const running = status?.running === true
   const statusReady = status !== undefined
   const wildcard = isWildcardListen(listenHost.trim())
@@ -583,6 +600,14 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
           onClick={() => { void loadAudit() }}
         >
           {auditLoading ? t('busy') : t('audit.load')}
+        </button>
+        <button
+          className={css.secondaryButton}
+          type="button"
+          disabled={busy || auditLoading}
+          onClick={() => { void exportAudit() }}
+        >
+          {t('audit.export')}
         </button>
         {audit !== undefined && !audit.enabled && <p className={css.warn}>{t('audit.disabled')}</p>}
         {audit !== undefined && audit.enabled && audit.events.length === 0 && (

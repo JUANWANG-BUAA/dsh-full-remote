@@ -1121,6 +1121,38 @@ describe('websocket upgrade', () => {
     assert.match(attempt.status, /^HTTP\/1\.1 401/)
   })
 
+  it('locks out repeated unauthenticated upgrade attempts', async () => {
+    const backend = await echoBackend()
+    const token = generateAccessToken()
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: portOf(backend),
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 1024,
+      upstreamTimeoutMs: 2000,
+      loginDelayMs: 0,
+      upgradeMaxAttempts: 2,
+      upgradeLockoutMs: 60_000,
+    })
+    cleanups.push(proxy.close)
+
+    const first = await wsHandshake({ port: proxy.port, path: '/ws' })
+    first.socket.destroy()
+    assert.match(first.status, /^HTTP\/1\.1 401/)
+
+    const second = await wsHandshake({ port: proxy.port, path: '/ws' })
+    second.socket.destroy()
+    assert.match(second.status, /^HTTP\/1\.1 401/)
+
+    const third = await wsHandshake({ port: proxy.port, path: '/ws' })
+    third.socket.destroy()
+    assert.match(third.status, /^HTTP\/1\.1 429/)
+  })
+
   it('records WebSocket audit events for denials and opens', async () => {
     const backend = await echoBackend()
     const token = generateAccessToken()

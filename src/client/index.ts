@@ -100,6 +100,20 @@ function createApi(): ProxyApi {
       const query = params.toString()
       return request<AuditResult>(`/audit${query === '' ? '' : `?${query}`}`)
     },
+    exportAudit: async (event) => {
+      const params = new URLSearchParams()
+      if (event !== undefined && event !== '') params.set('event', event)
+      const query = params.toString()
+      const response = await fetch(`/dsh-reverse-proxy/audit/export${query === '' ? '' : `?${query}`}`, {
+        credentials: 'same-origin',
+        headers: { 'x-dsh-reverse-proxy-control': '1' },
+      })
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { error?: string }
+        throw errorFromControlResponse(response.status, body)
+      }
+      return response.blob()
+    },
   }
 }
 

@@ -490,6 +490,29 @@ describe('audit log viewer', () => {
     assert.deepEqual(res.body, { enabled: false, events: [] })
   })
 
+  it('exports audit events as a JSON download', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-audit-export-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const stateFile = join(dir, 'state.json')
+    const auditFile = join(dir, 'audit.jsonl')
+    await writeFile(auditFile, [
+      JSON.stringify({ ts: '2026-01-01T00:00:00.000Z', event: 'login.ok' }),
+      JSON.stringify({ ts: '2026-01-01T00:00:01.000Z', event: 'proxy.start' }),
+    ].join('\n') + '\n')
+    const runtime = createRuntime(makeContext(), makeConfig(stateFile, {
+      auditLog: true,
+      auditLogFile: auditFile,
+    }))
+    cleanups.push(() => runtime.dispose())
+
+    const res = await call(runtime, { path: '/dsh-reverse-proxy/audit/export', headers: CONTROL })
+    assert.equal(res.status, 200)
+    const events = res.body as Array<{ event: string }>
+    assert.equal(events.length, 2)
+    assert.equal(events[0].event, 'login.ok')
+    assert.equal(events[1].event, 'proxy.start')
+  })
+
   it('filters and limits audit events through query parameters', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-audit-filter-'))
     cleanups.push(() => rm(dir, { recursive: true, force: true }))

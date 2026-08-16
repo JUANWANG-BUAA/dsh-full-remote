@@ -78,4 +78,5 @@ export type ProxyApi = {
   selfCheck: () => Promise<SelfCheckResult>
   invite: (publicBase?: string) => Promise<InviteResult>
   audit: (limit?: number, event?: string) => Promise<AuditResult>
+  exportAudit: (event?: string) => Promise<Blob>
 }

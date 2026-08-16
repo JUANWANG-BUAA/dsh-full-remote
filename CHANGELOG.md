@@ -16,9 +16,13 @@ documented in this file.
   active, so operators can see the tunnel IP behavior from the panel.
 - In-panel audit log viewer: Settings → Reverse proxy can load the most
   recent JSONL audit events through a loopback-only control route. The
-  viewer supports an event-name filter and a bounded result limit.
+  viewer supports an event-name filter, a bounded result limit, and JSON
+  export/download.
 - WebSocket upgrades now emit audit events for auth denials, successful
   opens, and non-101 rejections (`access.denied`, `ws.open`, `ws.reject`).
+- WebSocket upgrade rate limiting: config `upgradeMaxAttempts` and
+  `upgradeLockoutSeconds` lock out a remote IP after repeated failed
+  upgrade attempts.
 
 ### Fixed
 

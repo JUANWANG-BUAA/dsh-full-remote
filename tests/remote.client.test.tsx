@@ -47,6 +47,7 @@ function api(overrides: Partial<ProxyApi> = {}): ProxyApi {
       qrSvg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
     }),
     audit: vi.fn().mockResolvedValue({ enabled: true, events: [] }),
+    exportAudit: vi.fn().mockResolvedValue(new Blob(['[]'], { type: 'application/json' })),
     ...overrides,
   }
 }
@@ -345,6 +346,25 @@ describe('remote settings section', () => {
     await waitFor(() => expect(audit).toHaveBeenCalledWith(10, 'login.ok'))
     expect(await screen.findByText('login.ok')).toBeTruthy()
     expect(screen.getByText(/1\.2\.3\.4/)).toBeTruthy()
+  })
+
+  it('exports audit events as a download', async () => {
+    const exportAudit = vi.fn().mockResolvedValue(new Blob(['[]'], { type: 'application/json' }))
+    const service = api({ exportAudit })
+    const originalCreate = URL.createObjectURL
+    const originalRevoke = URL.revokeObjectURL
+    URL.createObjectURL = vi.fn().mockReturnValue('blob:test') as unknown as typeof URL.createObjectURL
+    URL.revokeObjectURL = vi.fn() as unknown as typeof URL.revokeObjectURL
+    try {
+      render(<RemoteSection {...sectionProps(service)} />)
+      expect(await screen.findByText('代理尚未运行')).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: '导出审计日志' }))
+      await waitFor(() => expect(exportAudit).toHaveBeenCalled())
+      expect(await screen.findByText('审计日志已导出。')).toBeTruthy()
+    } finally {
+      URL.createObjectURL = originalCreate
+      URL.revokeObjectURL = originalRevoke
+    }
   })
 
   it('copies the tunnel target via execCommand when the async Clipboard API is unavailable', async () => {
