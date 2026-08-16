@@ -154,6 +154,14 @@ describe('settings persistence trust', () => {
     trustSettingsPersistence(binder, () => connection, { hostname: '127.0.0.1', trusted: 1 })
     expect(binder.bind).toBe(original)
   })
+
+  it('does not wrap bind when the handle is already pinned', () => {
+    const connection = { isLoopback: true }
+    const binder = { bind: vi.fn((spec: unknown) => spec) }
+    const original = binder.bind
+    trustSettingsPersistence(binder, () => connection, { hostname: 'tunnel.example', trusted: 1 })
+    expect(binder.bind).toBe(original)
+  })
 })
 
 describe('remote settings section', () => {

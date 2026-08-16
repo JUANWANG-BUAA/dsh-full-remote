@@ -1,13 +1,16 @@
 /**
- * trust-settings — backup wrap if connection.provide was not intercepted.
+ * Backup wrap if the index-tap pin of `connection.isLoopback` did not run.
  *
- * The index-tap IIFE wraps `__ModuleLoader__` so official settings plugins
- * see `connection.isLoopback === true` at provide time. This module still
- * wraps `settingsScope.bind` for any consumer that binds later. When the
- * handle is already trusted, wrap is a no-op.
+ * Official settings plugins bind during their own apply, which is earlier
+ * than this client plugin. After a successful pin, `getConnection()` already
+ * reports `isLoopback === true` and this function returns without assigning
+ * `binder.bind` (settingsScope is a Cordis Service proxy; assigning methods
+ * on it has the same class of bug as assigning `ctx.provide` — issue #9).
  *
+ * When the pin missed, wrap `bind` for any consumer that binds later.
  * The durable declaration is `__DSH_FULL_REMOTE_TRUSTED__` (stand-in until
- * upstream `__DSH_BOOT__` grows a trust field).
+ * upstream `__DSH_BOOT__` grows a trust field). That flag means the
+ * ModuleLoader wrap installed, not that every mixin method is healthy.
  */
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
@@ -31,7 +34,8 @@ export function pageNeedsHostSettingsPersistence(
 /**
  * Wrap `binder.bind` so a remote, plugin-trusted page persists settings to
  * the host document. No-op when the page is already loopback, when the tap
- * flag is missing, or when bind was already wrapped.
+ * flag is missing, when the handle is already pinned, or when bind was
+ * already wrapped.
  */
 export function trustSettingsPersistence(
   binder: SettingsBinder,
@@ -41,6 +45,7 @@ export function trustSettingsPersistence(
   if (!pageNeedsHostSettingsPersistence(options?.hostname, options?.trusted)) return
   if (typeof binder.bind !== 'function') return
   if ((binder.bind as { __dshFullRemoteTrusted?: boolean }).__dshFullRemoteTrusted === true) return
+  if (getConnection()?.isLoopback === true) return
   const original = binder.bind
   const wrapped = function wrapped(this: SettingsBinder, spec: unknown) {
     const connection = getConnection()

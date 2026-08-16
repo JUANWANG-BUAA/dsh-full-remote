@@ -1,11 +1,18 @@
 /**
- * Head IIFE injected by tapIndex. Runs before the web shell installs
- * `window.__ModuleLoader__`, so it can wrap connection.provide and force
- * `isLoopback` on a page this plugin already authenticated.
+ * Head IIFE injected by tapIndex into the official web index HTML.
+ * It runs on every page that loads that index, including local
+ * `127.0.0.1` — tapIndex is not an authentication gate. The proxy
+ * authenticates separately at its own listen port.
  *
- * Official settings / models / locale bind during their own apply, which
- * is earlier than any third-party client plugin. Wrapping `settingsScope.bind`
- * later cannot rewrite scopes that already chose `persistence: 'memory'`.
+ * Official settings / models / locale bind during their own apply,
+ * which is earlier than any third-party client plugin. Wrapping
+ * `settingsScope.bind` later cannot rewrite scopes that already chose
+ * `persistence: 'memory'`. This IIFE wraps `__ModuleLoader__` so the
+ * official connection plugin's `apply()` is followed by a pin of
+ * `connection.isLoopback` on the handle (`ctx.get('connection', false)`).
+ * It must not assign `ctx.provide` or other Cordis mixin accessors:
+ * Context is a Proxy and those writes replace the shared ReflectService
+ * method table (GitHub issue #9).
  *
  * Kept as an ES5 string so tests can eval it and the HTML injector can
  * splice it verbatim. Do not put `</script>` in this source.
@@ -25,25 +32,29 @@ export const PAGE_BOOTSTRAP_SOURCE = '(function(){'
   + 'if(AS&&typeof AS.any!=="function"){AS.any=function(ss){var x=new AbortController();'
   + 'function a(){x.abort()};for(var i=0;i<ss.length;i++){if(ss[i].aborted){x.abort();return x.signal}'
   + 'ss[i].addEventListener("abort",a,{once:true})}return x.signal}}'
-  + 'try{Object.defineProperty(globalThis,"__DSH_FULL_REMOTE_TRUSTED__",{value:1,configurable:true})}'
-  + 'catch(e3){try{globalThis.__DSH_FULL_REMOTE_TRUSTED__=1}catch(e4){}}'
   + 'var CONN=' + JSON.stringify(CONNECTION_CLIENT_ID) + ';'
-  + 'function wrapApply(fn){return function(ctx){'
-  + 'if(!ctx||typeof ctx.provide!=="function")return fn.apply(this,arguments);'
-  + 'var orig=ctx.provide;'
-  + 'ctx.provide=function(key,value){'
-  + 'if(key==="connection"&&value&&typeof value==="object"&&globalThis.__DSH_FULL_REMOTE_TRUSTED__===1){'
-  + 'try{Object.defineProperty(value,"isLoopback",{value:true,configurable:true,enumerable:true,writable:true})}catch(e5){'
-  + 'try{console.warn("[dsh-full-remote] could not pin connection.isLoopback",e5)}catch(e5b){}}'
+  + 'function wrapApply(fn){'
+  + 'if(fn&&fn.__dshFullRemoteApply)return fn;'
+  + 'function wrapped(ctx){'
+  + 'var result=fn.apply(this,arguments);'
+  + 'function pin(){'
+  + 'if(!ctx||typeof ctx.get!=="function"||globalThis.__DSH_FULL_REMOTE_TRUSTED__!==1)return;'
+  + 'try{var connection=ctx.get("connection",false);'
+  + 'if(connection&&typeof connection==="object"){'
+  + 'Object.defineProperty(connection,"isLoopback",{value:true,configurable:true,enumerable:true,writable:true})}'
+  + '}catch(e5){try{console.warn("[dsh-full-remote] could not pin connection.isLoopback",e5)}catch(e5b){}}'
   + '}'
-  + 'return orig.apply(this,arguments)};'
-  + 'try{return fn.apply(this,arguments)}'
-  + 'finally{try{delete ctx.provide}catch(e6){try{ctx.provide=orig}catch(e7){}}}'
-  + '}}'
+  + 'if(result&&typeof result.then==="function")return result.then(function(v){pin();return v});'
+  + 'pin();'
+  + 'return result'
+  + '}'
+  + 'try{Object.defineProperty(wrapped,"__dshFullRemoteApply",{value:true})}catch(eW){wrapped.__dshFullRemoteApply=true}'
+  + 'return wrapped}'
   + 'function wrapExports(mod){if(!mod)return mod;'
   + 'try{if(typeof mod.apply==="function")mod.apply=wrapApply(mod.apply);'
   + 'if(mod.default&&typeof mod.default.apply==="function")mod.default.apply=wrapApply(mod.default.apply)}catch(e8){'
-  + 'try{console.warn("[dsh-full-remote] ModuleLoader export wrap failed",e8)}catch(e8b){}}'
+  + 'try{console.warn("[dsh-full-remote] ModuleLoader export wrap failed",e8);'
+  + 'globalThis.__DSH_FULL_REMOTE_BOOTSTRAP_FAILED__=1}catch(e8b){}}'
   + 'return mod}'
   + 'function wrapLoader(loader){'
   + 'if(!loader||typeof loader.load!=="function"||loader.__dshFullRemoteTrusted)return loader;'
@@ -63,7 +74,10 @@ export const PAGE_BOOTSTRAP_SOURCE = '(function(){'
   + 'get:function(){return current},'
   + 'set:function(v){current=wrapLoader(v)}'
   + '});'
-  + 'if(current)current=wrapLoader(current)}catch(e10){'
+  + 'if(current)current=wrapLoader(current);'
+  + 'try{Object.defineProperty(globalThis,"__DSH_FULL_REMOTE_TRUSTED__",{value:1,configurable:true})}'
+  + 'catch(e3){try{globalThis.__DSH_FULL_REMOTE_TRUSTED__=1}catch(e4){}}'
+  + '}catch(e10){'
   + 'try{console.warn("[dsh-full-remote] __ModuleLoader__ wrap failed — settings may stay memory-scoped",e10);'
   + 'globalThis.__DSH_FULL_REMOTE_BOOTSTRAP_FAILED__=1}catch(e10b){}}'
   + '})();'

@@ -43,8 +43,9 @@ export type SelfCheckResult = {
   auditLog: boolean
   allowTokenRead: boolean
   trustForwardedFor: boolean
-  /** Filled on the client from `window.__DSH_FULL_REMOTE_TRUSTED__`. */
+  /** True when the index-tap ModuleLoader wrap installed (`__DSH_FULL_REMOTE_TRUSTED__`). Not a guarantee that mixin methods are healthy — pair with `bootstrapFailed`. */
   trustBootstrap?: boolean
+  /** True when ModuleLoader or export wrap threw (`__DSH_FULL_REMOTE_BOOTSTRAP_FAILED__`). */
   bootstrapFailed?: boolean
 }
 

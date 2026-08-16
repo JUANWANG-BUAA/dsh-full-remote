@@ -119,8 +119,10 @@ function createApi(): ProxyApi {
 
 export function apply(ctx: ClientContext): void {
   // Backup: official locale / theme / models bind during their own apply,
-  // which is earlier than this plugin. The index-tap ModuleLoader wrap is
-  // the path that actually reaches those consumers.
+  // which is earlier than this plugin. The index-tap pin of
+  // connection.isLoopback is the path that reaches those consumers. If
+  // that pin already succeeded, trustSettingsPersistence does not assign
+  // through the settingsScope Service proxy (same class of bug as #9).
   ctx.inject(['settingsScope'], (scope: ClientContext) => {
     const binder = scope.get('settingsScope') as { bind: (spec: unknown) => unknown }
     trustSettingsPersistence(binder, () => scope.get('connection') as { isLoopback?: boolean } | undefined)

@@ -30,6 +30,13 @@ documented in this file.
 
 ### Fixed
 
+- Index-tap bootstrap no longer assigns `ctx.provide` (GitHub #9). Cordis 4
+  Context is a Proxy; replacing that mixin registered later plugins onto
+  the connection fiber and broke `ctx.<ownService>` reads such as Better
+  Sidebar. After the official connection `apply()` returns, pin
+  `isLoopback` on the handle via `ctx.get('connection', false)`.
+  `__DSH_FULL_REMOTE_TRUSTED__` is set only after the `__ModuleLoader__`
+  wrap succeeds; export-wrap failure now sets `BOOTSTRAP_FAILED`.
 - Add an end-to-end TLS proxy test with a self-signed fixture certificate.
 - Audit log reads now use a bounded tail window instead of loading the whole
   JSONL file into memory.

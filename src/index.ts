@@ -173,9 +173,16 @@ export function injectViewport(html: string) {
  * files — on a proxied page that call throws and breaks attachments. This
  * guarded shim restores it from `crypto.getRandomValues`, which remains
  * available in insecure contexts. The same IIFE also wraps
- * `window.__ModuleLoader__` so `connection.isLoopback` is true before
- * official settings plugins bind (a late `settingsScope.bind` wrap cannot
- * rewrite scopes that already chose memory persistence).
+ * `window.__ModuleLoader__` so that after the official connection plugin
+ * `apply()` returns, `connection.isLoopback` is true on the handle.
+ * Official settings plugins then bind against a trusted loopback handle.
+ * A late `settingsScope.bind` wrap cannot rewrite scopes that already
+ * chose memory persistence.
+ *
+ * tapIndex is not authentication: the script is injected into the host
+ * index for every visitor of that page, including local `127.0.0.1`.
+ * The proxy authenticates separately at its own listen port. Do not
+ * assign Cordis mixin methods (`ctx.provide`) from this script.
  */
 const INDEX_BOOTSTRAP = `<script data-plugin="dsh-reverse-proxy">${PAGE_BOOTSTRAP_SOURCE}</script>`
 
