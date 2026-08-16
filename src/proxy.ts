@@ -562,6 +562,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     const cookie = parseCookies(req.headers.cookie)[spec.cookieName]
     if (path.startsWith(spec.controlPrefix) || runtimeSpec.sessionStore.validate(cookie) === undefined) {
       denySocket(socket, '401 Unauthorized')
+      spec.audit?.('access.denied', { reason: 'auth', remote: upgradeRemote, path: req.url ?? '/', upgrade: true })
       spec.log?.({ method: req.method, path: req.url ?? '/', status: 401, remote: upgradeRemote })
       return
     }
@@ -585,6 +586,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
       // After a successful upgrade Node detaches the socket from the request,
       // so req.destroy() would leave it open — track the socket itself too.
       trackUpstream(upSocket)
+      spec.audit?.('ws.open', { remote: upgradeRemote, path: req.url ?? '/', status: upRes.statusCode ?? 101 })
       spec.log?.({ method: req.method, path: req.url ?? '/', status: upRes.statusCode ?? 101, remote: upgradeRemote })
       writeRawHead(
         socket,
@@ -600,6 +602,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     // Upstream answered without upgrading (non-101): relay the status line
     // and close instead of leaving the client socket hanging.
     up.on('response', (upRes) => {
+      spec.audit?.('ws.reject', { remote: upgradeRemote, path: req.url ?? '/', status: upRes.statusCode ?? 502 })
       writeRawHead(socket, upRes.statusCode ?? 502, upRes.statusMessage ?? 'Bad Gateway', {
         ...sanitizeResponseHeaders(upRes.headers),
         Connection: 'close',

@@ -1121,6 +1121,42 @@ describe('websocket upgrade', () => {
     assert.match(attempt.status, /^HTTP\/1\.1 401/)
   })
 
+  it('records WebSocket audit events for denials and opens', async () => {
+    const backend = await echoBackend()
+    const token = generateAccessToken()
+    const events: Array<{ event: string, reason?: string }> = []
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: portOf(backend),
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 1024,
+      upstreamTimeoutMs: 2000,
+      loginDelayMs: 0,
+      audit: (event, fields) => { events.push({ event, ...fields } as { event: string, reason?: string }) },
+    })
+    cleanups.push(proxy.close)
+
+    const denied = await wsHandshake({ port: proxy.port, path: '/ws' })
+    denied.socket.destroy()
+    assert.equal(events.some(event => event.event === 'access.denied' && event.reason === 'auth'), true)
+
+    const login = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    const cookie = login.headers['set-cookie']![0].split(';', 1)[0]
+    const opened = await wsHandshake({ port: proxy.port, path: '/ws', cookie })
+    cleanups.push(() => opened.socket.destroy())
+    assert.equal(events.some(event => event.event === 'ws.open'), true)
+  })
+
   it('relays an authenticated upgrade and forwards frames both ways', async () => {
     const { proxy, cookie } = await proxyWithCookie()
     const { socket, status, headers } = await wsHandshake({ port: proxy.port, path: '/ws', cookie })

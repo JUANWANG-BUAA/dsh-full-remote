@@ -17,6 +17,8 @@ documented in this file.
 - In-panel audit log viewer: Settings → Reverse proxy can load the most
   recent JSONL audit events through a loopback-only control route. The
   viewer supports an event-name filter and a bounded result limit.
+- WebSocket upgrades now emit audit events for auth denials, successful
+  opens, and non-101 rejections (`access.denied`, `ws.open`, `ws.reject`).
 
 ### Fixed
 
