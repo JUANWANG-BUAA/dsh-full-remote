@@ -192,8 +192,10 @@ a pinned version.
 | | |
 |---|---|
 | Control panel | ![Control panel](./docs/rp-demo-panel.png) |
-| Listen address | ![Listen address](./docs/rp-demo-listen-address.png) |
+| Fence self-check | ![Fence self-check](./docs/rp-demo-self-check.png) |
+| Phone invite (QR) | ![Phone invite](./docs/rp-demo-invite.png) |
 | Access token | ![Access token](./docs/rp-demo-token.png) |
+| Listen address | ![Listen address](./docs/rp-demo-listen-address.png) |
 | Login page (desktop) | ![Login page](./docs/rp-demo-login.png) |
 | Login page (phone) | ![Mobile login](./docs/rp-demo-mobile-login.png) |
 | Add workspace on phone | ![Mobile workspace](./docs/rp-demo-mobile-workspace.png) |

@@ -150,8 +150,10 @@ dsh plugin --profile web update dsh-full-remote
 | | |
 |---|---|
 | 控制面板 | ![控制面板](./docs/rp-demo-panel.png) |
-| 监听地址 | ![监听地址](./docs/rp-demo-listen-address.png) |
+| 栅栏自检 | ![栅栏自检](./docs/rp-demo-self-check.png) |
+| 手机邀请（二维码） | ![手机邀请](./docs/rp-demo-invite.png) |
 | 访问令牌 | ![访问令牌](./docs/rp-demo-token.png) |
+| 监听地址 | ![监听地址](./docs/rp-demo-listen-address.png) |
 | 登录页（桌面） | ![登录页](./docs/rp-demo-login.png) |
 | 登录页（手机） | ![移动端登录](./docs/rp-demo-mobile-login.png) |
 | 手机添加工作区 | ![手机工作区](./docs/rp-demo-mobile-workspace.png) |

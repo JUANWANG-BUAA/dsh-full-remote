@@ -65,6 +65,12 @@ documented in this file.
 - `src/index.ts`: the control-action dispatch map is built once per
   runtime instead of once per request.
 
+### Documentation
+
+- README screenshot gallery recaptured against the 0.2.3 panel; new
+  phone-invite QR and fence self-check shots (`docs/rp-demo-*.png`), both
+  READMEs updated.
+
 ## 0.2.2 (2026-08-16)
 
 ### Documentation
