@@ -15,7 +15,8 @@ documented in this file.
 - The reverse-proxy self-check now reports whether `trustForwardedFor` is
   active, so operators can see the tunnel IP behavior from the panel.
 - In-panel audit log viewer: Settings → Reverse proxy can load the most
-  recent JSONL audit events through a loopback-only control route.
+  recent JSONL audit events through a loopback-only control route. The
+  viewer supports an event-name filter and a bounded result limit.
 
 ### Fixed
 

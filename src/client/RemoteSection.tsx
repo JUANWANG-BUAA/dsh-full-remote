@@ -44,6 +44,7 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
   const [invite, setInvite] = useState<InviteResult>()
   const [audit, setAudit] = useState<AuditResult>()
   const [auditLoading, setAuditLoading] = useState(false)
+  const [auditFilter, setAuditFilter] = useState('')
   const toastSeq = useRef(0)
   const mounted = useRef(true)
   const sessionsEpoch = useRef(0)
@@ -312,7 +313,7 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
     if (auditLoading) return
     setAuditLoading(true)
     try {
-      const result = await api.audit()
+      const result = await api.audit(50, auditFilter.trim() || undefined)
       if (mounted.current) setAudit(result)
     } catch (reason) {
       showToast(toastFromCaught(reason, t))
@@ -550,6 +551,18 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
       <section className={css.group}>
         <h3 className={css.groupHead}>{t('audit.label')}</h3>
         <p className={css.hint}>{t('audit.description')}</p>
+        <label className={css.field}>
+          <span>{t('audit.filter')}</span>
+          <input
+            className={css.input}
+            value={auditFilter}
+            onChange={event => { setAuditFilter(event.target.value) }}
+            placeholder={t('audit.filterPlaceholder')}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+        </label>
         <button
           className={css.secondaryButton}
           type="button"

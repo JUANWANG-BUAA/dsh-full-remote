@@ -93,7 +93,13 @@ function createApi(): ProxyApi {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(publicBase === undefined ? {} : { publicBase }),
     }),
-    audit: () => request<AuditResult>('/audit'),
+    audit: (limit, event) => {
+      const params = new URLSearchParams()
+      if (limit !== undefined) params.set('limit', String(limit))
+      if (event !== undefined && event !== '') params.set('event', event)
+      const query = params.toString()
+      return request<AuditResult>(`/audit${query === '' ? '' : `?${query}`}`)
+    },
   }
 }
 

@@ -489,4 +489,40 @@ describe('audit log viewer', () => {
     assert.equal(res.status, 200)
     assert.deepEqual(res.body, { enabled: false, events: [] })
   })
+
+  it('filters and limits audit events through query parameters', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-audit-filter-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const stateFile = join(dir, 'state.json')
+    const auditFile = join(dir, 'audit.jsonl')
+    await writeFile(auditFile, [
+      JSON.stringify({ ts: '2026-01-01T00:00:00.000Z', event: 'login.ok', remote: '1.2.3.4' }),
+      JSON.stringify({ ts: '2026-01-01T00:00:01.000Z', event: 'proxy.start' }),
+      JSON.stringify({ ts: '2026-01-01T00:00:02.000Z', event: 'login.ok', remote: '5.6.7.8' }),
+    ].join('\n') + '\n')
+    const runtime = createRuntime(makeContext(), makeConfig(stateFile, {
+      auditLog: true,
+      auditLogFile: auditFile,
+    }))
+    cleanups.push(() => runtime.dispose())
+
+    const filtered = await call(runtime, {
+      path: '/dsh-reverse-proxy/audit?event=login.ok',
+      headers: CONTROL,
+    })
+    assert.equal(filtered.status, 200)
+    const filteredBody = filtered.body as { events: Array<{ event: string }> }
+    assert.equal(filteredBody.events.length, 2)
+    assert.equal(filteredBody.events[0].event, 'login.ok')
+    assert.equal(filteredBody.events[1].event, 'login.ok')
+
+    const limited = await call(runtime, {
+      path: '/dsh-reverse-proxy/audit?limit=1',
+      headers: CONTROL,
+    })
+    assert.equal(limited.status, 200)
+    const limitedBody = limited.body as { events: Array<{ event: string }> }
+    assert.equal(limitedBody.events.length, 1)
+    assert.equal(limitedBody.events[0].event, 'login.ok')
+  })
 })

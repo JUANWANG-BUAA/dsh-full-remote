@@ -590,9 +590,13 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
         sendJson(res, 403, { error: 'forbidden' })
         return
       }
+      const auditUrl = new URL(req.url ?? '/', 'http://localhost')
+      const rawLimit = Number(auditUrl.searchParams.get('limit') ?? 50)
+      const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(rawLimit, 1), 200) : 50
+      const event = auditUrl.searchParams.get('event')?.trim() || undefined
       sendJson(res, 200, await shared(async () => ({
         enabled: audit.enabled,
-        events: await readAuditLog(audit.path, 50),
+        events: await readAuditLog(audit.path, limit, event),
       })))
       return
     }

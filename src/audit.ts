@@ -62,7 +62,11 @@ const TAIL_READ_BYTES = 64 * 1024
  * partially written line never breaks the control panel. A missing/unreadable
  * file is treated as an empty log.
  */
-export async function readAuditLog(path: string | undefined, limit = 50): Promise<unknown[]> {
+export async function readAuditLog(
+  path: string | undefined,
+  limit = 50,
+  event?: string,
+): Promise<unknown[]> {
   if (path === undefined || path === '') return []
   let handle: Awaited<ReturnType<typeof open>> | undefined
   try {
@@ -84,7 +88,9 @@ export async function readAuditLog(path: string | undefined, limit = 50): Promis
     const events: unknown[] = []
     for (const line of lines.slice(-limit)) {
       try {
-        events.push(JSON.parse(line))
+        const parsed = JSON.parse(line) as { event?: unknown }
+        if (event !== undefined && parsed.event !== event) continue
+        events.push(parsed)
       } catch {
         // Skip malformed lines; the audit log is append-only and best-effort.
       }

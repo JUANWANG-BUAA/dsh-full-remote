@@ -141,6 +141,9 @@ async function main() {
     assert(status0?.authenticated === true && status0?.running === false, 'status snapshot', JSON.stringify(status0))
     assert(status0?.trustForwardedFor === false, 'default trustForwardedFor', JSON.stringify(status0))
 
+    const audit0 = await json(await fetch(`${BASE}/dsh-reverse-proxy/audit`, { headers: CONTROL }), 'audit viewer')
+    assert(audit0?.enabled === true && Array.isArray(audit0?.events), 'audit viewer', JSON.stringify(audit0))
+
     const listen = await json(await fetch(`${BASE}/dsh-reverse-proxy/listen`, {
       method: 'POST', headers: { ...CONTROL, 'content-type': 'application/json' },
       body: JSON.stringify({ host: '127.0.0.1', port: 0 }),

@@ -77,5 +77,5 @@ export type ProxyApi = {
   renameSession: (id: string, label: string) => Promise<{ ok: boolean }>
   selfCheck: () => Promise<SelfCheckResult>
   invite: (publicBase?: string) => Promise<InviteResult>
-  audit: () => Promise<AuditResult>
+  audit: (limit?: number, event?: string) => Promise<AuditResult>
 }
