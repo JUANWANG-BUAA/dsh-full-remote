@@ -8,7 +8,7 @@ import {
   hashSessionSecret,
   newSessionId,
   newSessionSecret,
-} from '../src/sessions.js'
+} from '../src/sessions.ts'
 
 describe('session primitives', () => {
   it('round-trips cookie encoding and hashes secrets', () => {
@@ -70,7 +70,9 @@ describe('session store', () => {
 
     const other = store.login({ userAgent: 'Safari/604' })
     assert.equal(store.revoke(other.id), true)
+    assert.equal(store.pending(encodeSessionCookie(other.id, other.secret), other.id)?.status, 'rejected')
     assert.equal(store.validate(encodeSessionCookie(other.id, other.secret)), undefined)
+    assert.equal(store.list().some(s => s.id === other.id), false)
   })
 
   it('evicts the stalest session past the cap', () => {
@@ -93,6 +95,18 @@ describe('session store', () => {
     await new Promise(resolve => setTimeout(resolve, 80))
     assert.equal(store.validate(cookie), undefined)
     assert.equal(store.list().length, 0)
+  })
+
+  it('refreshes lastSeen under short idle windows so active traffic survives', async () => {
+    const store = createSessionStore({ maxAgeSeconds: 3600, idleSeconds: 1 })
+    const session = store.login({ userAgent: 'Chrome/126' })
+    const cookie = encodeSessionCookie(session.id, session.secret)
+    await new Promise(resolve => setTimeout(resolve, 400))
+    assert.equal(store.validate(cookie)?.id, session.id)
+    await new Promise(resolve => setTimeout(resolve, 400))
+    assert.equal(store.validate(cookie)?.id, session.id)
+    await new Promise(resolve => setTimeout(resolve, 1100))
+    assert.equal(store.validate(cookie), undefined)
   })
 
   it('hydrates persisted data and drops malformed entries', () => {

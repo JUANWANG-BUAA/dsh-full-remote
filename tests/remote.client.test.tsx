@@ -32,6 +32,19 @@ function api(overrides: Partial<ProxyApi> = {}): ProxyApi {
     sessions: vi.fn().mockResolvedValue([]),
     approveSession: vi.fn().mockResolvedValue({ ok: true }),
     revokeSession: vi.fn().mockResolvedValue({ ok: true }),
+    renameSession: vi.fn().mockResolvedValue({ ok: true }),
+    selfCheck: vi.fn().mockResolvedValue({
+      running: false,
+      fence: { ok: true, method: 'settings.describe', status: 200, rewriteAuthority: '127.0.0.1:3080' },
+      tls: false,
+      auditLog: true,
+      allowTokenRead: true,
+      trustBootstrap: true,
+    }),
+    invite: vi.fn().mockResolvedValue({
+      inviteUrl: 'http://127.0.0.1:3081/_dsh_reverse_proxy/login?invite=one-time',
+      qrSvg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+    }),
     ...overrides,
   }
 }
@@ -82,6 +95,21 @@ describe('toast mapping', () => {
 
   it('maps forbidden control errors to the local-window copy', () => {
     expect(toastFromCaught(new Error('forbidden'), t).text).toMatch(/127\.0\.0\.1/)
+  })
+
+  it('maps invalid-base invite errors to a dedicated message', () => {
+    expect(toastFromCaught(new Error('invalid-base'), t).text).toMatch(/Origin/)
+  })
+
+  it('keeps rotate success even when restart reports listen-failed', () => {
+    const toast = toastFromStatus(
+      { ...stopped, listen: { host: '127.0.0.1', port: 3081 }, reason: 'listen-failed', accessToken: 'x' },
+      t,
+      'rotate',
+    )
+    expect(toast.kind).toBe('warn')
+    expect(toast.text).toMatch(/已轮换/)
+    expect(toast.text).toMatch(/3081/)
   })
 
   it('maps a proxy 403 with no JSON body to forbidden, not a locale-stuck HTTP blurb', () => {
@@ -219,6 +247,21 @@ describe('remote settings section', () => {
     expect(await screen.findByText(/已轮换/)).toBeTruthy()
   })
 
+  it('clears a generated invite after rotating the token', async () => {
+    const service = api()
+    render(<RemoteSection {...sectionProps(service)} />)
+    await waitFor(() => expect(service.status).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('button', { name: '生成邀请' }))
+    expect(await screen.findByText(/login\?invite=one-time/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '显示访问令牌' }))
+    await screen.findByText('secret-token')
+    fireEvent.click(screen.getByRole('button', { name: '轮换令牌' }))
+    await waitFor(() => expect(service.rotateToken).toHaveBeenCalledOnce())
+    await waitFor(() => {
+      expect(screen.queryByText(/login\?invite=one-time/)).toBeNull()
+    })
+  })
+
   it('applies a custom listen address and warns about wildcard binds', async () => {
     const service = api({
       setListen: vi.fn().mockResolvedValue({ ...stopped, listen: { host: '0.0.0.0', port: 9081 }, wildcard: true, target: 'http://127.0.0.1:9081' }),
@@ -257,7 +300,7 @@ describe('remote settings section', () => {
     render(<RemoteSection {...sectionProps(service)} />)
     expect(await screen.findByText('Chrome on macOS')).toBeTruthy()
     expect(screen.getByText('在线')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '踢出' }))
+    fireEvent.click(screen.getByRole('button', { name: /踢出/ }))
     await waitFor(() => expect(service.revokeSession).toHaveBeenCalledWith('s1'))
     expect(await screen.findByText('已踢出该设备。')).toBeTruthy()
   })
@@ -269,7 +312,7 @@ describe('remote settings section', () => {
     render(<RemoteSection {...sectionProps(service)} />)
     expect(await screen.findByText('Safari on iOS')).toBeTruthy()
     expect(screen.getByText('待审批')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: '批准' }))
+    fireEvent.click(screen.getByRole('button', { name: /批准/ }))
     await waitFor(() => expect(service.approveSession).toHaveBeenCalledWith('p1'))
     expect(await screen.findByText('已批准该设备。')).toBeTruthy()
   })

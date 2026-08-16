@@ -38,16 +38,30 @@ export function toastFromReason(
       return { kind: 'error', text: t('error.invalidListenServer') }
     case 'listen-failed-restored':
       return { kind: 'warn', text: t('error.listenRestored', { bind }) }
+    case 'tls-failed':
+      return { kind: 'error', text: t('error.tlsFailed') }
     default:
       return { kind: 'error', text: t('error.unknownReason', { reason }) }
   }
 }
 
 export function toastFromStatus(
-  status: ProxyStatus,
+  status: ProxyStatus & { accessToken?: string },
   t: ReverseProxyTranslate,
   intent: ToastIntent,
 ): PanelToastModel {
+  if (intent === 'rotate') {
+    // rotateToken always mutates the token/sessions before optional restart.
+    if (status.reason !== undefined && status.reason !== '') {
+      return {
+        kind: 'warn',
+        text: t('toast.tokenRotatedWithIssue', {
+          detail: toastFromReason(status.reason, status, t, intent).text,
+        }),
+      }
+    }
+    return { kind: 'success', text: t('toast.tokenRotated') }
+  }
   if (status.reason !== undefined && status.reason !== '') {
     return toastFromReason(status.reason, status, t, intent)
   }
@@ -65,6 +79,9 @@ export function toastFromCaught(error: unknown, t: ReverseProxyTranslate): Panel
   const message = error instanceof Error ? error.message : ''
   if (message === 'forbidden') return { kind: 'error', text: t('error.forbidden') }
   if (message === 'loopback-required') return { kind: 'error', text: t('error.loopbackRequired') }
+  if (message === 'token-read-disabled') return { kind: 'error', text: t('error.tokenReadDisabled') }
+  if (message === 'invalid-request') return { kind: 'error', text: t('error.invalidRequest') }
+  if (message === 'invalid-base') return { kind: 'error', text: t('error.invalidInviteBase') }
   if (message !== '') return { kind: 'error', text: t('error.network', { detail: message }) }
   return { kind: 'error', text: t('error.generic') }
 }

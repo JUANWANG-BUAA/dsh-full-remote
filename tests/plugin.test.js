@@ -5,12 +5,14 @@ import { createConnection } from 'node:net'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { injectIndexEnhancements, injectViewport } from '../src/index.js'
-import { readState, writeState } from '../src/persist.js'
-import { forwardHeaders, listenProxy } from '../src/proxy.js'
-import { formatAuthority, formatHttpUrl, isSelfLoop, isWildcardHost, publishHost, rewriteLoopbackAuthority } from '../src/http-util.js'
-import { generateAccessToken, safeEqual } from '../src/security.js'
-import { createSessionStore, encodeSessionCookie, hashSessionSecret, newSessionId, newSessionSecret } from '../src/sessions.js'
+import { injectIndexEnhancements, injectViewport } from '../src/index.ts'
+import { readState, writeState } from '../src/persist.ts'
+import { forwardHeaders, listenProxy, sanitizeResponseHeaders, sanitizeUpgradeResponseHeaders } from '../src/proxy.ts'
+import { formatAuthority, formatHttpUrl, isSelfLoop, isWildcardHost, publishHost, rewriteLoopbackAuthority } from '../src/http-util.ts'
+import { generateAccessToken, safeEqual } from '../src/security.ts'
+import { createInviteStore } from '../src/invites.ts'
+import { createSessionStore, encodeSessionCookie, hashSessionSecret, newSessionId, newSessionSecret } from '../src/sessions.ts'
+
 
 const cleanups = []
 afterEach(async () => {
@@ -301,6 +303,7 @@ describe('listen address formatting', () => {
     }, rewriteLoopbackAuthority(62468))
     assert.equal(headers.host, '127.0.0.1:62468')
     assert.equal(headers.origin, 'http://127.0.0.1:62468')
+    assert.equal(headers['sec-fetch-site'], 'same-origin')
   })
 })
 
@@ -314,17 +317,57 @@ describe('header forwarding', () => {
         'x-forwarded-for': 'attacker',
         'x-real-ip': 'attacker',
         cookie: 'dsh_reverse_proxy_session=secret',
+        referer: 'http://evil.example/_dsh_reverse_proxy/login?token=leak',
         authorization: 'Bearer ok',
+        'x-forwarded-proto': 'https',
       },
       socket: { remoteAddress: '127.0.0.1' },
     }, '127.0.0.1:3080')
     assert.equal(headers.host, '127.0.0.1:3080')
     assert.equal(headers.authorization, 'Bearer ok')
     assert.equal(headers['x-forwarded-for'], '127.0.0.1')
+    assert.equal(headers['x-forwarded-proto'], 'http')
     assert.equal(headers.forwarded, undefined)
     assert.equal(headers.connection, undefined)
     assert.equal(headers.cookie, undefined)
+    assert.equal(headers.referer, undefined)
     assert.equal(headers['x-dsh-reverse-proxy'], '1')
+  })
+
+  it('trusts X-Forwarded-Proto only when opted in', () => {
+    const trusted = forwardHeaders({
+      headers: { host: 'public.example', 'x-forwarded-proto': 'https' },
+      socket: { remoteAddress: '10.0.0.1' },
+    }, '127.0.0.1:3080', { trustForwardedProto: true })
+    assert.equal(trusted['x-forwarded-proto'], 'https')
+  })
+
+  it('strips hop-by-hop headers from upstream responses', () => {
+    const cleaned = sanitizeResponseHeaders({
+      'content-type': 'text/plain',
+      'transfer-encoding': 'chunked',
+      connection: 'keep-alive',
+      'set-cookie': 'a=1',
+      'x-custom': 'ok',
+    })
+    assert.equal(cleaned['content-type'], 'text/plain')
+    assert.equal(cleaned['x-custom'], 'ok')
+    assert.equal(cleaned['transfer-encoding'], undefined)
+    assert.equal(cleaned.connection, undefined)
+    assert.equal(cleaned['set-cookie'], undefined)
+  })
+
+  it('keeps Connection/Upgrade on websocket responses but drops Set-Cookie', () => {
+    const cleaned = sanitizeUpgradeResponseHeaders({
+      connection: 'Upgrade',
+      upgrade: 'websocket',
+      'set-cookie': 'backend=leak',
+      'sec-websocket-accept': 'abc',
+    })
+    assert.equal(cleaned.connection, 'Upgrade')
+    assert.equal(cleaned.upgrade, 'websocket')
+    assert.equal(cleaned['sec-websocket-accept'], 'abc')
+    assert.equal(cleaned['set-cookie'], undefined)
   })
 })
 
@@ -610,11 +653,36 @@ describe('device sessions', () => {
     const cookie = cookieOf(loginRes)
     const [device] = sessionStore.list()
     sessionStore.revoke(device.id)
+    assert.equal(sessionStore.list().length, 0)
     const status = await http({ port: proxy.port, path: `${waitPath}/status`, headers: { cookie } })
-    assert.deepEqual(JSON.parse(status.body), { status: 'unknown' })
+    assert.deepEqual(JSON.parse(status.body), { status: 'rejected' })
     const unknown = await http({ port: proxy.port, path: '/_dsh_reverse_proxy/wait/not-a-session', headers: { cookie } })
     assert.equal(unknown.status, 303)
     assert.equal(unknown.headers.location, '/_dsh_reverse_proxy/login')
+  })
+
+  it('accepts a one-time invite code exactly once', async () => {
+    const inviteStore = createInviteStore()
+    const code = inviteStore.issue()
+    const { proxy } = await proxyWith({}, { inviteStore })
+    const ok = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `invite=${encodeURIComponent(code)}`,
+    })
+    assert.equal(ok.status, 303)
+    assert.equal(ok.headers.location, '/')
+    const reuse = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `invite=${encodeURIComponent(code)}`,
+    })
+    assert.equal(reuse.status, 401)
+    assert.match(reuse.body, /邀请已失效|invite expired/i)
   })
 
   it('escapes hostile labels from the persisted state file on the wait page', async () => {
@@ -730,6 +798,20 @@ describe('login rate limiting', () => {
     const zh = await http({ port: proxy.port, path: '/_dsh_reverse_proxy/login' })
     assert.match(zh.body, /远程访问/)
   })
+
+  it('allows invite auto-submit via CSP and sets Referrer-Policy', async () => {
+    const proxy = await proxyWith()
+    const page = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login?invite=invite-prefill',
+    })
+    assert.equal(page.status, 200)
+    assert.match(page.headers['content-security-policy'] ?? '', /script-src 'unsafe-inline'/)
+    assert.equal(page.headers['referrer-policy'], 'no-referrer')
+    assert.match(page.body, /requestSubmit/)
+    assert.match(page.body, /name="invite"/)
+    assert.match(page.body, /value="invite-prefill"/)
+  })
 })
 
 describe('websocket upgrade', () => {
@@ -811,6 +893,61 @@ describe('websocket upgrade', () => {
     socket.write(frame)
     const echoed = await readSocket(socket)
     assert.deepEqual(echoed, frame)
+  })
+
+  it('strips Set-Cookie from upstream websocket upgrade responses', async () => {
+    const upgraded = new Set()
+    const backend = createServer((_req, res) => {
+      res.writeHead(200)
+      res.end('ok')
+    })
+    backend.on('upgrade', (_req, socket) => {
+      upgraded.add(socket)
+      socket.once('close', () => upgraded.delete(socket))
+      socket.write([
+        'HTTP/1.1 101 Switching Protocols',
+        'Connection: Upgrade',
+        'Upgrade: websocket',
+        'Set-Cookie: backend_session=should-not-leak; Path=/',
+        '',
+        '',
+      ].join('\r\n'))
+    })
+    await new Promise((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise(resolve => {
+      for (const socket of upgraded) socket.destroy()
+      backend.close(resolve)
+    }))
+    const token = generateAccessToken()
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: backend.address().port,
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 1024,
+      upstreamTimeoutMs: 2000,
+      loginDelayMs: 0,
+    })
+    cleanups.push(proxy.close)
+    const login = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    const cookie = login.headers['set-cookie'][0].split(';', 1)[0]
+    const { socket, status, headers } = await wsHandshake({ port: proxy.port, path: '/ws', cookie })
+    cleanups.push(() => socket.destroy())
+    assert.match(status, /^HTTP\/1\.1 101/)
+    assert.equal(headers.some(line => /^set-cookie:/i.test(line)), false)
+    assert.equal(headers.some(line => /^upgrade: websocket$/i.test(line)), true)
   })
 
   it('propagates FIN to the backend socket when the proxy closes an upgraded session', async () => {
@@ -903,5 +1040,46 @@ describe('proxy teardown', () => {
       proxy.close(),
       new Promise((_, reject) => setTimeout(() => reject(new Error('proxy.close hung')), 3000)),
     ])
+  })
+
+  it('close() releases the listen port so a second bind can succeed', async () => {
+    const backend = createServer((_req, res) => {
+      res.writeHead(200)
+      res.end('ok')
+    })
+    await new Promise((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise(resolve => backend.close(resolve)))
+    const token = generateAccessToken()
+    const first = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: backend.address().port,
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 1024,
+      upstreamTimeoutMs: 2000,
+      loginDelayMs: 0,
+    })
+    const port = first.port
+    await first.close()
+    const second = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: port,
+      backendHost: '127.0.0.1',
+      backendPort: backend.address().port,
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 1024,
+      upstreamTimeoutMs: 2000,
+      loginDelayMs: 0,
+    })
+    cleanups.push(second.close)
+    assert.equal(second.port, port)
   })
 })

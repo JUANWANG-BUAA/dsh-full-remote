@@ -10,7 +10,7 @@ import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { RemoteSection } from './RemoteSection.tsx'
 import { bindTranslate } from './i18n.ts'
 import { trustSettingsPersistence } from './trust-settings.ts'
-import type { ProxyApi, ProxyStatus, SessionInfo } from './types.ts'
+import type { InviteResult, ProxyApi, ProxyStatus, SelfCheckResult, SessionInfo } from './types.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -66,7 +66,7 @@ function createApi(): ProxyApi {
     token: async () => (await request<{ accessToken: string }>('/token')).accessToken,
     rotateToken: () => request<ProxyStatus & { accessToken: string }>('/rotate-token', { method: 'POST' }),
     setListen: (host, port) => post('/listen', { host, port }),
-    sessions: async () => (await request<{ sessions: SessionInfo[] }>('/sessions')).sessions,
+    sessions: async () => (await request<{ sessions: SessionInfo[] }>('/sessions')).sessions ?? [],
     approveSession: id => request<{ ok: boolean }>(`/sessions/approve`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -76,6 +76,22 @@ function createApi(): ProxyApi {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id }),
+    }),
+    renameSession: (id, label) => request<{ ok: boolean }>(`/sessions/rename`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, label }),
+    }),
+    selfCheck: async () => {
+      const result = await request<SelfCheckResult>('/self-check', { method: 'POST' })
+      const trusted = (globalThis as { __DSH_FULL_REMOTE_TRUSTED__?: number }).__DSH_FULL_REMOTE_TRUSTED__ === 1
+      const failed = (globalThis as { __DSH_FULL_REMOTE_BOOTSTRAP_FAILED__?: number }).__DSH_FULL_REMOTE_BOOTSTRAP_FAILED__ === 1
+      return { ...result, trustBootstrap: trusted, bootstrapFailed: failed }
+    },
+    invite: (publicBase) => request<InviteResult>('/invite', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(publicBase === undefined ? {} : { publicBase }),
     }),
   }
 }

@@ -7,7 +7,11 @@
  * the harness fallback locale). Page functions are pure: inputs in, HTML
  * string out — nothing touches sockets or stores.
  */
-import { escapeHtml } from './http-util.js'
+import type { IncomingMessage } from 'node:http'
+import { escapeHtml } from './http-util.ts'
+
+/** Page locale: zh is the default, 'en' for explicit non-zh headers. */
+export type PageLocale = 'zh' | 'en'
 
 /** Proxy-internal route prefix (underscored so it cannot collide with the
  *  host's control surface). */
@@ -25,17 +29,21 @@ export const LOGIN_COPY = {
   zh: {
     title: 'DeepSeek Harness 远程访问',
     intro: '此入口由通用反向代理保护。请输入本机控制面显示的访问令牌。',
+    inviteHint: '正在使用一次性邀请登录…',
     label: '访问令牌',
     submit: '进入 DeepSeek Harness',
     invalidToken: '令牌无效，请重试。',
+    invalidInvite: '邀请已失效或已使用，请重新生成。',
     invalidRequest: '请求无效，请重试。',
   },
   en: {
     title: 'DeepSeek Harness remote access',
     intro: 'This entry is protected by a reverse proxy. Enter the access token shown in the local control panel.',
+    inviteHint: 'Signing in with a one-time invite…',
     label: 'Access token',
     submit: 'Enter DeepSeek Harness',
     invalidToken: 'Invalid token, please retry.',
+    invalidInvite: 'This invite expired or was already used. Generate a new one.',
     invalidRequest: 'Invalid request, please retry.',
   },
 }
@@ -46,39 +54,57 @@ export const WAIT_COPY = {
     intro: '此设备已提交访问请求，请在本机控制面板中批准。',
     pending: '等待批准中…',
     rejected: '访问请求被拒绝。',
+    expired: '会话已失效，请重新登录。',
   },
   en: {
     title: 'Waiting for approval',
     intro: 'This device has requested access. Approve it from the local control panel.',
     pending: 'Waiting for approval…',
     rejected: 'Access request was rejected.',
+    expired: 'This session expired. Please sign in again.',
   },
 }
 
 /** Pick the page locale: zh default, 'en' for explicit non-zh headers. */
-export function loginLocale(req) {
+export function loginLocale(req: IncomingMessage): PageLocale {
   const header = String(req.headers['accept-language'] ?? '').toLowerCase()
   if (header !== '' && !header.startsWith('zh')) return 'en'
   return 'zh'
 }
 
-function shell(locale, title) {
+function shell(locale: PageLocale, title: string) {
   return `<!doctype html><html lang="${locale === 'en' ? 'en' : 'zh-CN'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${title}</title><style>${CARD_CSS}`
 }
 
-/** Token login gate. `error` is always one of our own copy tokens. */
-export function loginPage(locale, error = '') {
+/** Token login gate. `error` is always one of our own copy tokens.
+ *  Prefill comes from invite links (`?invite=`) or legacy `?token=` bookmarks. */
+export function loginPage(locale: PageLocale, error = '', prefill: string | { invite?: string, token?: string } = {}) {
   const copy = LOGIN_COPY[locale] ?? LOGIN_COPY.zh
   const message = error === '' ? '' : `<p role="alert">${error}</p>`
-  return `${shell(locale, copy.title)}${LOGIN_EXTRA_CSS}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.intro}</p>${message}<form method="post" action="${LOGIN_PATH}"><label for="token">${copy.label}</label><input id="token" name="token" type="password" autocomplete="current-password" required autofocus><button type="submit">${copy.submit}</button></form></main></body></html>`
+  const invite = typeof prefill === 'string' ? '' : String(prefill.invite ?? '')
+  const token = typeof prefill === 'string'
+    ? String(prefill)
+    : String(prefill.token ?? '')
+  const safeInvite = escapeHtml(invite.slice(0, 128))
+  const safeToken = escapeHtml(token.slice(0, 128))
+  const useInvite = safeInvite !== ''
+  const autoSubmit = useInvite || safeToken !== ''
+    ? `<script>document.addEventListener('DOMContentLoaded',function(){var f=document.getElementById('login');if(f)f.requestSubmit()})</script>`
+    : ''
+  const fields = useInvite
+    ? `<input type="hidden" name="invite" value="${safeInvite}"><p>${copy.inviteHint}</p><button type="submit">${copy.submit}</button>`
+    : `<label for="token">${copy.label}</label><input id="token" name="token" type="password" autocomplete="current-password" required autofocus value="${safeToken}"><button type="submit">${copy.submit}</button>`
+  return `${shell(locale, copy.title)}${LOGIN_EXTRA_CSS}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.intro}</p>${message}<form id="login" method="post" action="${LOGIN_PATH}">${fields}</form>${autoSubmit}</main></body></html>`
 }
 
+
 /** First-visit approval waiting page: polls its own session status. */
-export function waitPage(locale, id, label) {
+export function waitPage(locale: PageLocale, id: string, label: string) {
   const copy = WAIT_COPY[locale] ?? WAIT_COPY.zh
   const safeId = escapeHtml(id)
   const safeLabel = escapeHtml(label)
   const rejected = copy.rejected.replaceAll("'", "\\'")
-  const poll = `fetch('/_dsh_reverse_proxy/wait/${safeId}/status',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.json()}).then(function(d){if(d.status==='active'){location.href='/'}else if(d.status==='rejected'||d.status==='unknown'){clearInterval(t);document.getElementById('state').textContent='${rejected}'}},function(){})`
+  const expired = copy.expired.replaceAll("'", "\\'")
+  const poll = `fetch('/_dsh_reverse_proxy/wait/${safeId}/status',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.json()}).then(function(d){if(d.status==='active'){location.href='/'}else if(d.status==='rejected'){clearInterval(t);document.getElementById('state').textContent='${rejected}'}else if(d.status==='unknown'){clearInterval(t);document.getElementById('state').textContent='${expired}'}},function(){})`
   return `${shell(locale, copy.title)}${WAIT_EXTRA_CSS}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.intro}</p><p class="device">${safeLabel}</p><div class="spinner" aria-hidden="true"></div><p id="state">${copy.pending}</p><script>var t=setInterval(function(){${poll}},2000)</script></main></body></html>`
 }

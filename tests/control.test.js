@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createRuntime } from '../src/index.js'
+import { createRuntime } from '../src/index.ts'
+import { writeState } from '../src/persist.ts'
 import { request } from 'node:http'
 import { createServer } from 'node:net'
 
@@ -131,7 +132,7 @@ describe('device session control', () => {
     assert.match(login.headers.location, /^\/_dsh_reverse_proxy\/wait\//)
 
     // The control surface lists the pending device.
-    const listed = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET' })
+    const listed = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET', headers: CONTROL })
     assert.equal(listed.status, 200)
     assert.equal(listed.body.sessions.length, 1)
     assert.equal(listed.body.sessions[0].status, 'pending')
@@ -155,7 +156,7 @@ describe('device session control', () => {
       body: JSON.stringify({ id }),
     })
     assert.deepEqual(approved.body, { ok: true })
-    const afterApprove = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET' })
+    const afterApprove = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET', headers: CONTROL })
     assert.equal(afterApprove.body.sessions[0].status, 'active')
 
     // Revoke; the list drains.
@@ -166,7 +167,7 @@ describe('device session control', () => {
       body: JSON.stringify({ id }),
     })
     assert.deepEqual(revoked.body, { ok: true })
-    const afterRevoke = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET' })
+    const afterRevoke = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET', headers: CONTROL })
     assert.deepEqual(afterRevoke.body.sessions, [])
   })
 })
@@ -230,6 +231,31 @@ describe('runtime control surface', () => {
     assert.notEqual(rotated.body.accessToken, before)
     assert.equal(rotated.body.running, true)
     assert.equal(await runtime.token(), rotated.body.accessToken)
+  })
+
+  it('does not hydrate sessions when a short access token forces regeneration', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-regen-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const stateFile = join(dir, 'state.json')
+    const now = Date.now()
+    await writeState(stateFile, {
+      enabled: false,
+      accessToken: 'too-short',
+      sessions: [{
+        id: 'device1',
+        secretHash: 'hash',
+        label: 'Phone',
+        status: 'active',
+        createdAt: now,
+        lastSeenAt: now,
+      }],
+    })
+    const runtime = createRuntime(makeContext(), makeConfig(stateFile))
+    cleanups.push(() => runtime.dispose())
+    const token = await runtime.token()
+    assert.match(token, /^[A-Za-z0-9_-]{32}$/)
+    const listed = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET', headers: CONTROL })
+    assert.deepEqual(listed.body.sessions, [])
   })
 
   it('refuses to start when listen is a wildcard covering the backend port', async () => {
@@ -306,7 +332,10 @@ describe('runtime control surface', () => {
 
   it('serves status and applies listen changes over the control route', async () => {
     const { runtime } = await makeRuntime()
-    const status = await call(runtime, { path: '/dsh-reverse-proxy/status' })
+    const bare = await call(runtime, { path: '/dsh-reverse-proxy/status' })
+    assert.equal(bare.status, 403)
+
+    const status = await call(runtime, { path: '/dsh-reverse-proxy/status', headers: CONTROL })
     assert.equal(status.status, 200)
     assert.equal(status.body.running, false)
 

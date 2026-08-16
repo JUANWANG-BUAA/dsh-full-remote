@@ -37,7 +37,7 @@ export function PanelToast({ toast, t, onDismiss }: PanelToastProps) {
   return (
     <div
       className={`${css.toast} ${KIND_CLASS[toast.kind]}`}
-      role={toast.kind === 'error' ? 'alert' : 'status'}
+      role={toast.kind === 'success' ? 'status' : 'alert'}
     >
       <div className={css.toastBody}>
         <strong>{t(KIND_LABEL[toast.kind])}</strong>

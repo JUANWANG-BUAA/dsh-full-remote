@@ -18,7 +18,7 @@ const EXTERNALS = [
 export default defineConfig([
   {
     name: ID,
-    entry: { index: 'src/index.js' },
+    entry: { index: 'src/index.ts' },
     outDir: 'lib',
     format: 'esm',
     platform: 'node',

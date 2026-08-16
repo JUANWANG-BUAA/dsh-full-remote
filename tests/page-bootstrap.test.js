@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import vm from 'node:vm'
-import { CONNECTION_CLIENT_ID, PAGE_BOOTSTRAP_SOURCE } from '../src/page-bootstrap.js'
+import { CONNECTION_CLIENT_ID, PAGE_BOOTSTRAP_SOURCE } from '../src/page-bootstrap.ts'
 
 function bootPage() {
   const env = { Object, Function, Error, TypeError, console }

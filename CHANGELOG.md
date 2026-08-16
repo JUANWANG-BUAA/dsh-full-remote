@@ -5,6 +5,68 @@ documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- Strip hop-by-hop headers from upstream responses; reject non-loopback
+  `backendHost`; expire pending wait-page sessions; serialize state saves
+  through the write gate; drain unauthenticated bodies; default
+  `requestTimeout` 120s; require control header for status/sessions reads.
+- Do not trust client `X-Forwarded-Proto` unless `trustForwardedProto: true`.
+- Warn on invalid `allowedCidrs` entries.
+- Panel: reject empty listen port; honor `{ ok: false }` on device actions;
+  map `tls-failed` / `token-read-disabled`; per-action busy labels; show
+  reachables + self-check tls/audit; unmount-safe async updates.
+- Invite login CSP allows auto-submit; `Referrer-Policy: no-referrer`;
+  strip `Referer` before upstream; drain lockout/early login bodies;
+  sanitize WebSocket upgrade headers (drop `Set-Cookie`); equal login
+  delay on success/failure; regenerate short tokens without hydrating
+  stale sessions; `close()` only succeeds when the listener is gone.
+- Panel: clear invite QR on rotate/listen change; rotate toast when
+  restart fails; sessions epoch to avoid poll races; loading status;
+  `invalid-base` toast; listen description; safer QR SVG gate.
+- Only clear `bound` after `close()` succeeds; scale session touch
+  throttle for short idle windows; mark pending revoke as `rejected`
+  so the wait page shows the rejection copy.
+
+### Changed
+
+- Phone invite URLs use single-use `?invite=` codes (15 min TTL); the
+  standing access token is no longer embedded in QR / invite links.
+- Host sources migrated from `.js` to `.ts`; `noImplicitAny` is now
+  enabled and all host parameters are annotated. Unit tests still run as
+  plain JS through `node --experimental-strip-types`.
+
+### Refactoring
+
+- `src/index.ts`: the control-action dispatch map is built once per
+  runtime instead of once per request.
+
+## 0.3.0 (2026-08-16)
+
+### Added
+
+- **Fence self-check** in Settings → Reverse proxy: probes
+  `settings.describe` against the backend with the same Host/Origin rewrite
+  the proxy uses, and reports client trust-bootstrap status.
+- **Phone invite**: tokenized login URL (`/_dsh_reverse_proxy/login?token=…`)
+  with QR (via `uqr`) and one-click auto-submit on the login page.
+- **Structured audit log** (JSONL beside the state file; default on): login,
+  approve/revoke/rename, rotate, token reveal, start/stop.
+- **CIDR allowlist** (`allowedCidrs`), **session idle timeout**
+  (`sessionIdleSeconds`), and **device rename**.
+- **Optional local TLS** (`tlsCertFile` / `tlsKeyFile`) for LAN plaintext
+  mitigation; Cookie `Secure` when TLS or `x-forwarded-proto: https`.
+- Config `allowTokenRead` to disable standing `GET /token` (token only from
+  rotate).
+- Persist now **rehydrates sessions** across restarts.
+
+### Changed
+
+- Split control-plane **read/write gates** so status/session polls no longer
+  queue behind a slow bind.
+- Forwarded requests normalize `sec-fetch-site` to `same-origin`.
+- ModuleLoader trust wrap **warns on failure** instead of failing silently.
+
 ## 0.2.2 (2026-08-16)
 
 ### Documentation

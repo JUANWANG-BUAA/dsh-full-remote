@@ -12,6 +12,8 @@ export type ProxyStatus = {
   reachables?: string[]
   wildcard?: boolean
   approvalMode?: boolean
+  tls?: boolean
+  auditLog?: boolean
   reason?: string
 }
 
@@ -25,6 +27,30 @@ export type SessionInfo = {
   lastSeenAt: number
 }
 
+export type FenceCheck = {
+  ok: boolean
+  method: string
+  status: number
+  rewriteAuthority: string
+  detail?: string
+}
+
+export type SelfCheckResult = {
+  running: boolean
+  fence: FenceCheck
+  tls: boolean
+  auditLog: boolean
+  allowTokenRead: boolean
+  /** Filled on the client from `window.__DSH_FULL_REMOTE_TRUSTED__`. */
+  trustBootstrap?: boolean
+  bootstrapFailed?: boolean
+}
+
+export type InviteResult = {
+  inviteUrl: string
+  qrSvg?: string
+}
+
 export type ProxyApi = {
   status: () => Promise<ProxyStatus>
   start: () => Promise<ProxyStatus>
@@ -35,4 +61,7 @@ export type ProxyApi = {
   sessions: () => Promise<SessionInfo[]>
   approveSession: (id: string) => Promise<{ ok: boolean }>
   revokeSession: (id: string) => Promise<{ ok: boolean }>
+  renameSession: (id: string, label: string) => Promise<{ ok: boolean }>
+  selfCheck: () => Promise<SelfCheckResult>
+  invite: (publicBase?: string) => Promise<InviteResult>
 }

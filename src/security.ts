@@ -14,7 +14,7 @@ export function generateAccessToken() {
 }
 
 /** Compare secrets without leaking a useful length or prefix timing signal. */
-export function safeEqual(actual, expected) {
+export function safeEqual(actual: string, expected: string) {
   const left = Buffer.from(String(actual))
   const right = Buffer.from(String(expected))
   if (left.length !== right.length) {
@@ -24,8 +24,8 @@ export function safeEqual(actual, expected) {
   return timingSafeEqual(left, right)
 }
 
-export function parseCookies(header) {
-  const cookies = {}
+export function parseCookies(header: string | undefined): Record<string, string> {
+  const cookies: Record<string, string> = {}
   for (const field of String(header ?? '').split(';')) {
     const at = field.indexOf('=')
     if (at < 1) continue

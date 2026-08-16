@@ -8,6 +8,15 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
+/** Durable plugin state, as read from and written to the state file. */
+export interface PersistedState {
+  enabled: boolean
+  accessToken?: string
+  listenHost?: string
+  listenPort?: number
+  sessions?: unknown[]
+}
+
 /** Default durable state location. */
 export function defaultStateFile() {
   return join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'reverse-proxy.json')
@@ -23,9 +32,10 @@ export function defaultStateFile() {
  *   accessToken?: string,
  *   listenHost?: string,
  *   listenPort?: number,
+ *   sessions?: unknown[],
  * }>}
  */
-export async function readState(path = defaultStateFile()) {
+export async function readState(path: string = defaultStateFile()): Promise<PersistedState> {
   try {
     const parsed = JSON.parse(await readFile(path, 'utf8'))
     return {
@@ -42,6 +52,7 @@ export async function readState(path = defaultStateFile()) {
       ...(Number.isInteger(parsed?.listenPort) && parsed.listenPort >= 0 && parsed.listenPort <= 65535
         ? { listenPort: parsed.listenPort }
         : {}),
+      ...(Array.isArray(parsed?.sessions) ? { sessions: parsed.sessions } : {}),
     }
   } catch {
     return { enabled: false }
@@ -51,10 +62,16 @@ export async function readState(path = defaultStateFile()) {
 /**
  * Write atomically so a terminated process cannot leave truncated JSON.
  * @param {string} path
- * @param {{ enabled: boolean, accessToken: string, listenHost?: string, listenPort?: number }} state
+ * @param {{
+ *   enabled: boolean,
+ *   accessToken: string,
+ *   listenHost?: string,
+ *   listenPort?: number,
+ *   sessions?: unknown[],
+ * }} state
  * @returns {Promise<void>}
  */
-export async function writeState(path, state) {
+export async function writeState(path: string, state: PersistedState): Promise<void> {
   await mkdir(dirname(path), { recursive: true })
   const temporary = `${path}.${process.pid}.${Date.now()}.tmp`
   await writeFile(temporary, `${JSON.stringify(state, null, 2)}\n`, {

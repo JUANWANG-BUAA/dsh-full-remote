@@ -6,8 +6,6 @@
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "strict": true,
-    "allowJs": true,
-    "checkJs": false,
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -17,5 +15,5 @@
       "@deepseek-ai/dsh-client-ui-slots": ["../deepseek-harness/packages/client/ui-slots/lib/types/index.d.ts"]
     }
   },
-  "include": ["src/**/*.js", "src/**/*.ts", "src/**/*.tsx", "tests/**/*.js", "tests/**/*.tsx", "tsdown.config.ts", "vitest.config.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.tsx", "tsdown.config.ts", "vitest.config.ts"]
 }

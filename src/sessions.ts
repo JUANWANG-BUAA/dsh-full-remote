@@ -7,7 +7,7 @@
  * serialize()/hydrate() and the onChange callback.
  */
 import { createHash, randomBytes } from 'node:crypto'
-import { safeEqual } from './security.js'
+import { safeEqual } from './security.ts'
 
 /**
  * Per-device session store for the reverse proxy.
@@ -27,6 +27,16 @@ import { safeEqual } from './security.js'
 const ID_BYTES = 16
 const SECRET_BYTES = 24
 
+/** One in-memory device session record. */
+export interface SessionRecord {
+  id: string
+  secretHash: string
+  label: string
+  status: 'active' | 'pending' | 'rejected'
+  createdAt: number
+  lastSeenAt: number
+}
+
 export function newSessionSecret() {
   return randomBytes(SECRET_BYTES).toString('base64url')
 }
@@ -35,30 +45,30 @@ export function newSessionId() {
   return randomBytes(ID_BYTES).toString('base64url')
 }
 
-export function hashSessionSecret(secret) {
+export function hashSessionSecret(secret: string) {
   return createHash('sha256').update(`dsh-reverse-proxy/session-secret/v1\0${secret}`).digest('base64url')
 }
 
-export function encodeSessionCookie(id, secret) {
+export function encodeSessionCookie(id: string, secret: string) {
   return `${id}.${secret}`
 }
 
 /** Split a cookie value; returns undefined for malformed input. */
-export function decodeSessionCookie(value) {
+export function decodeSessionCookie(value: string | undefined) {
   const text = String(value ?? '')
   const at = text.indexOf('.')
   if (at < 1 || at === text.length - 1) return undefined
   return { id: text.slice(0, at), secret: text.slice(at + 1) }
 }
 
-const BROWSERS = [
+const BROWSERS: Array<[RegExp, string]> = [
   [/Edg\//, 'Edge'],
   [/OPR\/|\bOpera\b/i, 'Opera'],
   [/Firefox\//, 'Firefox'],
   [/Chrome\//, 'Chrome'],
   [/Safari\//, 'Safari'],
 ]
-const OSES = [
+const OSES: Array<[RegExp, string]> = [
   [/iPhone|iPad|iPod/, 'iOS'],
   [/Android/, 'Android'],
   [/Mac OS X|Macintosh/, 'macOS'],
@@ -67,7 +77,7 @@ const OSES = [
 ]
 
 /** Derive a short human label from a User-Agent string. */
-export function deviceLabel(userAgent, fallback = 'Unknown device') {
+export function deviceLabel(userAgent: string | undefined, fallback = 'Unknown device') {
   const ua = String(userAgent ?? '').slice(0, 256)
   if (ua === '') return fallback
   const browser = BROWSERS.find(([pattern]) => pattern.test(ua))?.[1]
@@ -80,29 +90,48 @@ export function deviceLabel(userAgent, fallback = 'Unknown device') {
  * @param {{
  *   maxSessions?: number,
  *   maxAgeSeconds?: number,
+ *   idleSeconds?: number,
  *   approvalRequired?: boolean,
  *   onChange?: () => void,
  * }} options
  */
-export function createSessionStore(options = {}) {
+export function createSessionStore(options: {
+  maxSessions?: number
+  maxAgeSeconds?: number
+  idleSeconds?: number
+  approvalRequired?: boolean
+  onChange?: () => void
+} = {}) {
   const maxSessions = options.maxSessions ?? 16
   const maxAgeSeconds = options.maxAgeSeconds ?? 30 * 24 * 3600
+  // 0 = disabled (only absolute maxAge applies via lastSeen historically;
+  // when idleSeconds > 0 it is an independent inactivity window).
+  const idleSeconds = options.idleSeconds ?? 0
   const approvalRequired = options.approvalRequired === true
   const onChange = options.onChange
   const maxAgeMs = maxAgeSeconds * 1000
-  /** @type {Map<string, { id: string, secretHash: string, label: string, status: 'active'|'pending', createdAt: number, lastSeenAt: number }>} */
-  const sessions = new Map()
+  const idleMs = idleSeconds > 0 ? idleSeconds * 1000 : 0
+  /** @type {Map<string, { id: string, secretHash: string, label: string, status: 'active'|'pending'|'rejected', createdAt: number, lastSeenAt: number }>} */
+  const sessions = new Map<string, SessionRecord>()
 
   const changed = () => { onChange?.() }
 
+  const expired = (session: SessionRecord, now = Date.now()) => {
+    if (now - session.createdAt > maxAgeMs) return true
+    if (idleMs > 0 && now - session.lastSeenAt > idleMs) return true
+    // Back-compat: when idle is unset, keep prior "maxAge from lastSeen" behaviour.
+    if (idleMs === 0 && now - session.lastSeenAt > maxAgeMs) return true
+    return false
+  }
+
   const sweep = (now = Date.now()) => {
     for (const [id, session] of sessions) {
-      if (now - session.lastSeenAt > maxAgeMs) sessions.delete(id)
+      if (expired(session, now)) sessions.delete(id)
     }
   }
 
   /** Evict the entry with the oldest lastSeenAt, never the protected id. */
-  const evictOldest = (exceptId) => {
+  const evictOldest = (exceptId: string) => {
     let oldest
     for (const entry of sessions) {
       if (entry[0] === exceptId) continue
@@ -111,7 +140,7 @@ export function createSessionStore(options = {}) {
     if (oldest !== undefined) sessions.delete(oldest[0])
   }
 
-  const publicShape = session => ({
+  const publicShape = (session: SessionRecord) => ({
     id: session.id,
     label: session.label,
     status: session.status,
@@ -119,15 +148,21 @@ export function createSessionStore(options = {}) {
     lastSeenAt: session.lastSeenAt,
   })
 
-  const touch = (session, now = Date.now()) => {
+  // Keep lastSeen fresh enough for short idle windows (default 60s throttle
+  // would otherwise outlive sessionIdleSeconds < 60).
+  const touchThrottleMs = idleMs > 0
+    ? Math.min(60_000, Math.max(1_000, Math.floor(idleMs / 3)))
+    : 60_000
+
+  const touch = (session: SessionRecord, now = Date.now()) => {
     // Throttle: lastSeen is persisted and displayed, not an audit trail.
-    if (now - session.lastSeenAt > 60_000) {
+    if (now - session.lastSeenAt > touchThrottleMs) {
       session.lastSeenAt = now
       changed()
     }
   }
 
-  const find = (cookieValue) => {
+  const find = (cookieValue: string | undefined) => {
     const decoded = decodeSessionCookie(cookieValue)
     if (decoded === undefined) return undefined
     const session = sessions.get(decoded.id)
@@ -138,12 +173,12 @@ export function createSessionStore(options = {}) {
 
   return {
     /** Login a new device after the access token already checked out. */
-    login({ userAgent }) {
+    login({ userAgent }: { userAgent: string | undefined }) {
       const now = Date.now()
       sweep(now)
       const secret = newSessionSecret()
       const id = newSessionId()
-      const record = {
+      const record: SessionRecord = {
         id,
         secretHash: hashSessionSecret(secret),
         label: deviceLabel(userAgent),
@@ -165,10 +200,10 @@ export function createSessionStore(options = {}) {
     },
 
     /** Validate a device cookie; undefined when unknown, revoked, or expired. */
-    validate(cookieValue) {
+    validate(cookieValue: string | undefined) {
       const session = find(cookieValue)
       if (session === undefined) return undefined
-      if (Date.now() - session.lastSeenAt > maxAgeMs) {
+      if (expired(session)) {
         sessions.delete(session.id)
         changed()
         return undefined
@@ -179,28 +214,63 @@ export function createSessionStore(options = {}) {
     },
 
     /** Resolve a session regardless of status (wait-page status endpoint). */
-    pending(cookieValue, id) {
+    pending(cookieValue: string | undefined, id: string) {
       const decoded = decodeSessionCookie(cookieValue)
       if (decoded === undefined || decoded.id !== id) return undefined
-      return find(cookieValue)
+      const session = find(cookieValue)
+      if (session === undefined) return undefined
+      if (expired(session)) {
+        sessions.delete(session.id)
+        changed()
+        return undefined
+      }
+      return session
     },
 
     list() {
       sweep()
-      return [...sessions.values()].map(publicShape).sort((a, b) => b.lastSeenAt - a.lastSeenAt)
+      return [...sessions.values()]
+        .filter(session => session.status !== 'rejected')
+        .map(publicShape)
+        .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
     },
 
-    revoke(id) {
-      const existed = sessions.delete(id)
-      if (existed) changed()
-      return existed
+    revoke(id: string) {
+      const session = sessions.get(id)
+      if (session === undefined) return false
+      // Pending devices stay briefly as `rejected` so the wait page can show
+      // the rejection copy instead of a generic "expired" unknown.
+      if (session.status === 'pending') {
+        session.status = 'rejected'
+        session.lastSeenAt = Date.now()
+        changed()
+        return true
+      }
+      sessions.delete(id)
+      changed()
+      return true
     },
 
-    approve(id) {
+    approve(id: string) {
       const session = sessions.get(id)
       if (session === undefined || session.status !== 'pending') return false
       session.status = 'active'
       session.lastSeenAt = Date.now()
+      changed()
+      return true
+    },
+
+    /**
+     * Rename a device label (1–64 chars after trim). Returns false when the
+     * id is unknown or the label is empty / too long.
+     */
+    rename(id: string, label: string | undefined) {
+      const session = sessions.get(id)
+      if (session === undefined) return false
+      const next = String(label ?? '').trim()
+      if (next.length === 0 || next.length > 64) return false
+      if (session.label === next) return true
+      session.label = next
       changed()
       return true
     },
@@ -214,35 +284,38 @@ export function createSessionStore(options = {}) {
     },
 
     /** Rebuild the store from persisted data; malformed entries are dropped. */
-    hydrate(data) {
+    hydrate(data: unknown[] | undefined) {
       sessions.clear()
       const list = Array.isArray(data) ? data : []
       for (const raw of list.slice(0, maxSessions)) {
-        if (typeof raw?.id !== 'string' || typeof raw?.secretHash !== 'string') continue
-        if (typeof raw?.label !== 'string' || raw.label.length > 128) continue
-        if (raw.status !== 'active' && raw.status !== 'pending') continue
-        if (!Number.isFinite(raw.createdAt) || !Number.isFinite(raw.lastSeenAt)) continue
-        sessions.set(raw.id, {
-          id: raw.id,
-          secretHash: raw.secretHash,
-          label: raw.label,
-          status: raw.status,
-          createdAt: raw.createdAt,
-          lastSeenAt: raw.lastSeenAt,
+        const entry = raw as Partial<SessionRecord> | undefined
+        if (typeof entry?.id !== 'string' || typeof entry?.secretHash !== 'string') continue
+        if (typeof entry?.label !== 'string' || entry.label.length > 128) continue
+        if (entry.status !== 'active' && entry.status !== 'pending') continue
+        if (!Number.isFinite(entry.createdAt) || !Number.isFinite(entry.lastSeenAt)) continue
+        sessions.set(entry.id, {
+          id: entry.id,
+          secretHash: entry.secretHash,
+          label: entry.label,
+          status: entry.status,
+          createdAt: entry.createdAt as number,
+          lastSeenAt: entry.lastSeenAt as number,
         })
       }
     },
 
     serialize() {
       sweep()
-      return [...sessions.values()].map(session => ({
-        id: session.id,
-        secretHash: session.secretHash,
-        label: session.label,
-        status: session.status,
-        createdAt: session.createdAt,
-        lastSeenAt: session.lastSeenAt,
-      }))
+      return [...sessions.values()]
+        .filter(session => session.status !== 'rejected')
+        .map(session => ({
+          id: session.id,
+          secretHash: session.secretHash,
+          label: session.label,
+          status: session.status,
+          createdAt: session.createdAt,
+          lastSeenAt: session.lastSeenAt,
+        }))
     },
   }
 }

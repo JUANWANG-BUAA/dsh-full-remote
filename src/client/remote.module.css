@@ -78,9 +78,38 @@
 }
 
 .hero > .primaryButton,
-.hero > .dangerButton {
+.hero > .dangerButton,
+.heroActions .primaryButton,
+.heroActions .dangerButton,
+.heroActions .secondaryButton {
   align-self: center;
   flex: none;
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.qr {
+  width: min(100%, 180px);
+  margin-top: 8px;
+}
+
+.qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+}
+
+.inviteUrl {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 12px;
 }
 
 .group {

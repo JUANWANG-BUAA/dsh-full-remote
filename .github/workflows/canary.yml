@@ -1,0 +1,48 @@
+name: Upstream canary
+
+# Weekly smoke against deepseek-harness default branch tip.
+# Catches ModuleLoader / trust-fence drift that unit tests cannot see.
+on:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install plugin dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Fetch DeepSeek Harness tip
+        uses: actions/checkout@v4
+        with:
+          repository: deepseek-ai/deepseek-harness
+          ref: main
+          path: .harness
+          filter: blob:none
+
+      - name: Install harness
+        run: |
+          corepack enable
+          corepack pnpm install --frozen-lockfile
+        working-directory: .harness
+
+      - name: Build harness
+        run: corepack pnpm run build
+        working-directory: .harness
+
+      - name: Real-boot smoke against tip
+        run: node scripts/smoke.mjs
+        env:
+          HARNESS_DIR: ${{ github.workspace }}/.harness

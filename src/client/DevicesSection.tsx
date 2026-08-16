@@ -16,9 +16,12 @@ export type DevicesSectionProps = {
   t: ReverseProxyTranslate
   onKick: (id: string) => void
   onDecide: (id: string, approve: boolean) => void
+  onRename: (id: string, label: string) => void
 }
 
-export function DevicesSection({ sessions, approvalMode, busy, t, onKick, onDecide }: DevicesSectionProps) {
+export function DevicesSection({
+  sessions, approvalMode, busy, t, onKick, onDecide, onRename,
+}: DevicesSectionProps) {
   return (
     <section className={css.group}>
       <h3 className={css.groupHead}>{t('devices.title')}</h3>
@@ -41,11 +44,42 @@ export function DevicesSection({ sessions, approvalMode, busy, t, onKick, onDeci
               <div className={css.deviceActions}>
                 {session.status === 'pending' ? (
                   <>
-                    <button className={css.textButton} type="button" disabled={busy} onClick={() => { onDecide(session.id, true) }}>{t('devices.approve')}</button>
-                    <button className={css.textButton} type="button" disabled={busy} onClick={() => { onDecide(session.id, false) }}>{t('devices.reject')}</button>
+                    <button
+                      className={css.textButton}
+                      type="button"
+                      disabled={busy}
+                      aria-label={`${t('devices.approve')}: ${session.label}`}
+                      onClick={() => { onDecide(session.id, true) }}
+                    >{t('devices.approve')}</button>
+                    <button
+                      className={css.textButton}
+                      type="button"
+                      disabled={busy}
+                      aria-label={`${t('devices.reject')}: ${session.label}`}
+                      onClick={() => { onDecide(session.id, false) }}
+                    >{t('devices.reject')}</button>
                   </>
                 ) : (
-                  <button className={css.textButton} type="button" disabled={busy} onClick={() => { onKick(session.id) }}>{t('devices.kick')}</button>
+                  <>
+                    <button
+                      className={css.textButton}
+                      type="button"
+                      disabled={busy}
+                      aria-label={`${t('devices.rename')}: ${session.label}`}
+                      onClick={() => {
+                        const next = window.prompt(t('devices.renamePrompt'), session.label)
+                        if (next === null) return
+                        onRename(session.id, next)
+                      }}
+                    >{t('devices.rename')}</button>
+                    <button
+                      className={css.textButton}
+                      type="button"
+                      disabled={busy}
+                      aria-label={`${t('devices.kick')}: ${session.label}`}
+                      onClick={() => { onKick(session.id) }}
+                    >{t('devices.kick')}</button>
+                  </>
                 )}
               </div>
             </li>

@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context, Service } from '@deepseek-ai/cordis'
-import * as plugin from '../src/index.js'
+import * as plugin from '../src/index.ts'
 
 class TestWebServer extends Service {
   port = 3080
@@ -91,6 +91,32 @@ describe('Cordis lifecycle', () => {
           })
         },
         /wildcard/,
+      )
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects a non-loopback backendHost at apply()', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-backend-lan-'))
+    try {
+      const ctx = new Context()
+      await ctx.plugin(TestWebServer)
+      await assert.rejects(
+        async () => {
+          await ctx.plugin(plugin, {
+            listenHost: '127.0.0.1',
+            listenPort: 0,
+            backendHost: '192.168.1.10',
+            backendPort: 3080,
+            stateFile: join(dir, 'state.json'),
+            autoRestore: false,
+            maxRequestBytes: 1024,
+            upstreamTimeoutMs: 1000,
+            cookieName: 'test_session',
+          })
+        },
+        /loopback/,
       )
     } finally {
       await rm(dir, { recursive: true, force: true })
