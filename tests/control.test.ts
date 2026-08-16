@@ -1,6 +1,6 @@
 import { afterEach, describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, stat } from 'node:fs/promises'
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRuntime } from '../src/index.ts'
@@ -455,5 +455,38 @@ describe('runtime control surface', () => {
     const retried = await runtime.start()
     assert.equal(retried.running, true)
     assert.equal(retried.reason, undefined)
+  })
+})
+
+describe('audit log viewer', () => {
+  it('returns recent audit events through the control route', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-audit-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const stateFile = join(dir, 'state.json')
+    const auditFile = join(dir, 'audit.jsonl')
+    await writeFile(auditFile, [
+      JSON.stringify({ ts: '2026-01-01T00:00:00.000Z', event: 'login.ok', remote: '1.2.3.4' }),
+      JSON.stringify({ ts: '2026-01-01T00:00:01.000Z', event: 'proxy.start' }),
+    ].join('\n') + '\n')
+    const runtime = createRuntime(makeContext(), makeConfig(stateFile, {
+      auditLog: true,
+      auditLogFile: auditFile,
+    }))
+    cleanups.push(() => runtime.dispose())
+
+    const res = await call(runtime, { path: '/dsh-reverse-proxy/audit', headers: CONTROL })
+    assert.equal(res.status, 200)
+    const body = res.body as { enabled: boolean, events: Array<{ event: string }> }
+    assert.equal(body.enabled, true)
+    assert.equal(body.events.length, 2)
+    assert.equal(body.events[0].event, 'login.ok')
+    assert.equal(body.events[1].event, 'proxy.start')
+  })
+
+  it('returns disabled state when audit logging is off', async () => {
+    const { runtime } = await makeRuntime()
+    const res = await call(runtime, { path: '/dsh-reverse-proxy/audit', headers: CONTROL })
+    assert.equal(res.status, 200)
+    assert.deepEqual(res.body, { enabled: false, events: [] })
   })
 })

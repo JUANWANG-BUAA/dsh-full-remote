@@ -30,7 +30,7 @@ import {
   reachableHosts,
 } from './http-util.ts'
 import { PAGE_BOOTSTRAP_SOURCE } from './page-bootstrap.ts'
-import { createAuditLog, defaultAuditPath } from './audit.ts'
+import { createAuditLog, defaultAuditPath, readAuditLog } from './audit.ts'
 import { compileCidrList, ipAllowed, parseCidr } from './cidr.ts'
 import { createInviteStore } from './invites.ts'
 import { probeFence } from './self-check.ts'
@@ -583,6 +583,17 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
         await load()
         return sessionStore!.list()
       }) })
+      return
+    }
+    if (path === `${CONTROL_PREFIX}/audit` && req.method === 'GET') {
+      if (!allowed) {
+        sendJson(res, 403, { error: 'forbidden' })
+        return
+      }
+      sendJson(res, 200, await shared(async () => ({
+        enabled: audit.enabled,
+        events: await readAuditLog(audit.path, 50),
+      })))
       return
     }
     const sessionAction = path.match(/^\/dsh-reverse-proxy\/sessions\/(approve|revoke|rename)$/)

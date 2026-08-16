@@ -14,8 +14,12 @@ documented in this file.
   of treating them all as `127.0.0.1`. Keep disabled for LAN direct access.
 - The reverse-proxy self-check now reports whether `trustForwardedFor` is
   active, so operators can see the tunnel IP behavior from the panel.
+- In-panel audit log viewer: Settings → Reverse proxy can load the most
+  recent JSONL audit events through a loopback-only control route.
 
 ### Fixed
+
+- Add an end-to-end TLS proxy test with a self-signed fixture certificate.
 
 - Document the tunnel IP limitation and the new opt-in in both READMEs.
 

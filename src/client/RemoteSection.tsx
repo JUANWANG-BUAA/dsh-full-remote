@@ -6,7 +6,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { InviteResult, ProxyApi, ProxyStatus, SelfCheckResult, SessionInfo } from './types.ts'
+import type { AuditResult, InviteResult, ProxyApi, ProxyStatus, SelfCheckResult, SessionInfo } from './types.ts'
 import { DevicesSection } from './DevicesSection.tsx'
 import type { ReverseProxyTranslate } from './i18n.ts'
 import { PanelToast } from './PanelToast.tsx'
@@ -42,6 +42,8 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
   const [check, setCheck] = useState<SelfCheckResult>()
   const [inviteBase, setInviteBase] = useState('')
   const [invite, setInvite] = useState<InviteResult>()
+  const [audit, setAudit] = useState<AuditResult>()
+  const [auditLoading, setAuditLoading] = useState(false)
   const toastSeq = useRef(0)
   const mounted = useRef(true)
   const sessionsEpoch = useRef(0)
@@ -306,6 +308,19 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
     }
   }
 
+  const loadAudit = async () => {
+    if (auditLoading) return
+    setAuditLoading(true)
+    try {
+      const result = await api.audit()
+      if (mounted.current) setAudit(result)
+    } catch (reason) {
+      showToast(toastFromCaught(reason, t))
+    } finally {
+      if (mounted.current) setAuditLoading(false)
+    }
+  }
+
   const running = status?.running === true
   const statusReady = status !== undefined
   const wildcard = isWildcardListen(listenHost.trim())
@@ -531,6 +546,34 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
         onDecide={(id, approve) => { void decide(id, approve) }}
         onRename={(id, label) => { void rename(id, label) }}
       />
+
+      <section className={css.group}>
+        <h3 className={css.groupHead}>{t('audit.label')}</h3>
+        <p className={css.hint}>{t('audit.description')}</p>
+        <button
+          className={css.secondaryButton}
+          type="button"
+          disabled={busy || auditLoading}
+          onClick={() => { void loadAudit() }}
+        >
+          {auditLoading ? t('busy') : t('audit.load')}
+        </button>
+        {audit !== undefined && !audit.enabled && <p className={css.warn}>{t('audit.disabled')}</p>}
+        {audit !== undefined && audit.enabled && audit.events.length === 0 && (
+          <p className={css.hint}>{t('audit.empty')}</p>
+        )}
+        {audit !== undefined && audit.events.length > 0 && (
+          <ul className={css.auditList}>
+            {audit.events.map((event, index) => (
+              <li key={`${event.ts}-${index}`} className={css.auditItem}>
+                <code>{event.ts}</code>
+                <strong>{event.event}</strong>
+                <pre className={css.auditDetail}>{JSON.stringify(event, null, 2)}</pre>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { afterEach, describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer, request } from 'node:http'
+import { request as httpsRequest } from 'node:https'
 import type { IncomingHttpHeaders, IncomingMessage, Server } from 'node:http'
 import { createConnection } from 'node:net'
 import type { Socket } from 'node:net'
@@ -53,6 +54,37 @@ function http(options: {
   const { port, path = '/', method = 'GET', headers = {}, body } = options
   return new Promise((resolve, reject) => {
     const req = request({ hostname: '127.0.0.1', port, path, method, headers }, (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', chunk => chunks.push(chunk))
+      res.on('end', () => resolve({
+        status: res.statusCode,
+        headers: res.headers,
+        body: Buffer.concat(chunks).toString('utf8'),
+      }))
+    })
+    req.on('error', reject)
+    if (body !== undefined) req.end(body)
+    else req.end()
+  })
+}
+
+function https(options: {
+  port: number
+  path?: string
+  method?: string
+  headers?: Record<string, string>
+  body?: string
+}): Promise<HttpResponse> {
+  const { port, path = '/', method = 'GET', headers = {}, body } = options
+  return new Promise((resolve, reject) => {
+    const req = httpsRequest({
+      hostname: '127.0.0.1',
+      port,
+      path,
+      method,
+      headers,
+      rejectUnauthorized: false,
+    }, (res) => {
       const chunks: Buffer[] = []
       res.on('data', chunk => chunks.push(chunk))
       res.on('end', () => resolve({
@@ -603,6 +635,60 @@ describe('authenticated reverse proxy', () => {
     })
     assert.equal(under.status, 200)
   })
+
+  it('serves HTTPS with local TLS and still rewrites Host/Origin', async () => {
+    const seen: Array<{ host: string | undefined, origin: string | undefined }> = []
+    const backend = createServer((req, res) => {
+      seen.push({ host: req.headers.host, origin: req.headers.origin })
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ ok: true }))
+    })
+    await new Promise<void>((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
+    const backendPort = portOf(backend)
+    const token = generateAccessToken()
+    const [cert, key] = await Promise.all([
+      readFile(join('tests', 'fixtures', 'tls-cert.pem')),
+      readFile(join('tests', 'fixtures', 'tls-key.pem')),
+    ])
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort,
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 1024,
+      upstreamTimeoutMs: 2000,
+      tls: { cert, key },
+    })
+    cleanups.push(proxy.close)
+
+    const login = await https({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    assert.equal(login.status, 303)
+    assert.match(login.headers['set-cookie']![0], /Secure/)
+    const cookie = login.headers['set-cookie']![0].split(';', 1)[0]
+
+    const proxied = await https({
+      port: proxy.port,
+      path: '/api/example',
+      headers: { cookie },
+    })
+    assert.equal(proxied.status, 200)
+    assert.deepEqual(JSON.parse(proxied.body), { ok: true })
+    assert.equal(seen[0].host, `127.0.0.1:${backendPort}`)
+    assert.equal(seen[0].origin, `http://127.0.0.1:${backendPort}`)
+  })
 })
 
 describe('device sessions', () => {
@@ -906,6 +992,15 @@ describe('trustForwardedFor', () => {
     } as unknown as IncomingMessage
     const spec = { trustForwardedFor: true } as Parameters<typeof effectiveRemoteAddress>[1]
     assert.equal(effectiveRemoteAddress(req, spec), '127.0.0.1')
+  })
+
+  it('uses the first address in a forwarded chain', () => {
+    const req = {
+      headers: { 'x-forwarded-for': '203.0.113.5, 10.0.0.1' },
+      socket: { remoteAddress: '127.0.0.1' },
+    } as unknown as IncomingMessage
+    const spec = { trustForwardedFor: true } as Parameters<typeof effectiveRemoteAddress>[1]
+    assert.equal(effectiveRemoteAddress(req, spec), '203.0.113.5')
   })
 
   it('only trusts X-Forwarded-For from a loopback peer when enabled', async () => {

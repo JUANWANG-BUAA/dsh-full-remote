@@ -53,6 +53,17 @@ export type InviteResult = {
   qrSvg?: string
 }
 
+export type AuditEvent = {
+  ts: string
+  event: string
+  [key: string]: unknown
+}
+
+export type AuditResult = {
+  enabled: boolean
+  events: AuditEvent[]
+}
+
 export type ProxyApi = {
   status: () => Promise<ProxyStatus>
   start: () => Promise<ProxyStatus>
@@ -66,4 +77,5 @@ export type ProxyApi = {
   renameSession: (id: string, label: string) => Promise<{ ok: boolean }>
   selfCheck: () => Promise<SelfCheckResult>
   invite: (publicBase?: string) => Promise<InviteResult>
+  audit: () => Promise<AuditResult>
 }

@@ -4,7 +4,7 @@
  * Failures to write never throw into the request path; they warn through
  * the supplied logger. Disabled when auditLog is empty/false.
  */
-import { appendFile, mkdir } from 'node:fs/promises'
+import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 /**
@@ -50,4 +50,29 @@ export function createAuditLog(options: {
 /** Default audit path beside the state file. */
 export function defaultAuditPath(statePath: string) {
   return `${String(statePath).replace(/\.json$/i, '')}.audit.jsonl`
+}
+
+/**
+ * Read the most recent audit events from a JSONL audit file.
+ *
+ * Malformed lines are skipped so a partially written line never breaks the
+ * control panel. A missing/unreadable file is treated as an empty log.
+ */
+export async function readAuditLog(path: string | undefined, limit = 50): Promise<unknown[]> {
+  if (path === undefined || path === '') return []
+  try {
+    const text = await readFile(path, 'utf8')
+    const lines = text.split('\n').filter(line => line.trim() !== '')
+    const events: unknown[] = []
+    for (const line of lines.slice(-limit)) {
+      try {
+        events.push(JSON.parse(line))
+      } catch {
+        // Skip malformed lines; the audit log is append-only and best-effort.
+      }
+    }
+    return events
+  } catch {
+    return []
+  }
 }

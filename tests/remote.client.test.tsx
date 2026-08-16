@@ -39,12 +39,14 @@ function api(overrides: Partial<ProxyApi> = {}): ProxyApi {
       tls: false,
       auditLog: true,
       allowTokenRead: true,
+      trustForwardedFor: false,
       trustBootstrap: true,
     }),
     invite: vi.fn().mockResolvedValue({
       inviteUrl: 'http://127.0.0.1:3081/_dsh_reverse_proxy/login?invite=one-time',
       qrSvg: '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
     }),
+    audit: vi.fn().mockResolvedValue({ enabled: true, events: [] }),
     ...overrides,
   }
 }
@@ -325,6 +327,22 @@ describe('remote settings section', () => {
     render(<RemoteSection {...sectionProps(service)} />)
     expect(await screen.findByText('暂无设备。远程浏览器登录后会显示在这里。')).toBeTruthy()
     expect(await screen.findByText(/审批模式已开启/)).toBeTruthy()
+  })
+
+  it('loads and displays audit events', async () => {
+    const audit = vi.fn().mockResolvedValue({
+      enabled: true,
+      events: [
+        { ts: '2026-01-01T00:00:00.000Z', event: 'login.ok', remote: '1.2.3.4' },
+      ],
+    })
+    const service = api({ audit })
+    render(<RemoteSection {...sectionProps(service)} />)
+    expect(await screen.findByText('代理尚未运行')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '加载审计日志' }))
+    await waitFor(() => expect(audit).toHaveBeenCalledOnce())
+    expect(await screen.findByText('login.ok')).toBeTruthy()
+    expect(screen.getByText(/1\.2\.3\.4/)).toBeTruthy()
   })
 
   it('copies the tunnel target via execCommand when the async Clipboard API is unavailable', async () => {

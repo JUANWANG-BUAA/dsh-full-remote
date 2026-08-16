@@ -10,7 +10,7 @@ import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { RemoteSection } from './RemoteSection.tsx'
 import { bindTranslate } from './i18n.ts'
 import { trustSettingsPersistence } from './trust-settings.ts'
-import type { InviteResult, ProxyApi, ProxyStatus, SelfCheckResult, SessionInfo } from './types.ts'
+import type { AuditResult, InviteResult, ProxyApi, ProxyStatus, SelfCheckResult, SessionInfo } from './types.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -93,6 +93,7 @@ function createApi(): ProxyApi {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(publicBase === undefined ? {} : { publicBase }),
     }),
+    audit: () => request<AuditResult>('/audit'),
   }
 }
 
