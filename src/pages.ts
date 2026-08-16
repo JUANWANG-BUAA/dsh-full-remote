@@ -19,7 +19,18 @@ export const LOGIN_PATH = '/_dsh_reverse_proxy/login'
 
 /** Shared card chrome for both pages (light + dark). */
 const CARD_CSS = `
-  :root{color-scheme:light dark;font-family:ui-sans-serif,system-ui,sans-serif}body{min-height:100dvh;margin:0;display:grid;place-items:center;background:#f4f6f8;color:#15171a}.card{box-sizing:border-box;width:min(92vw,420px);padding:28px;border:1px solid #d9dde3;border-radius:20px;background:#fff;box-shadow:0 16px 48px #0002}h1{font-size:22px;margin:0 0 8px}p{font-size:14px;line-height:1.6;color:#5b6470}@media(prefers-color-scheme:dark){body{background:#111418;color:#f7f8fa}.card{background:#1b1f24;border-color:#343a43}p{color:#aeb6c2}}`
+  :root{color-scheme:light dark;font-family:ui-sans-serif,system-ui,sans-serif}
+  body{min-height:100dvh;margin:0;display:grid;place-items:center;padding:24px;
+    background:radial-gradient(70% 46% at 50% -8%,#d7e4f4 0%,transparent 64%),#eef2f6;color:#15171a}
+  .card{box-sizing:border-box;width:min(92vw,400px);padding:28px 28px 24px;border:1px solid #d5dbe3;border-radius:20px;background:#fff;box-shadow:0 18px 50px #1220331f}
+  .kicker{margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#6a7380}
+  h1{font-size:22px;margin:0 0 8px;letter-spacing:-.02em}
+  p{font-size:14px;line-height:1.6;color:#5b6470}
+  @media(prefers-color-scheme:dark){
+    body{background:radial-gradient(70% 46% at 50% -8%,#243044 0%,transparent 64%),#111418;color:#f7f8fa}
+    .card{background:#1b1f24;border-color:#343a43;box-shadow:0 18px 50px #0008}
+    .kicker{color:#8b95a3}p{color:#aeb6c2}
+  }`
 
 const LOGIN_EXTRA_CSS = `label{display:block;font-size:13px;font-weight:600;margin:22px 0 8px}input,button{box-sizing:border-box;width:100%;min-height:48px;border-radius:12px;font:inherit}input{padding:0 14px;border:1px solid #c8ced7;background:transparent;color:inherit}button{margin-top:14px;border:0;background:#111;color:#fff;font-weight:650;cursor:pointer}@media(prefers-color-scheme:dark){input{border-color:#4b535e}button{background:#f7f8fa;color:#111}}@media(prefers-reduced-motion:no-preference){button{transition:transform .15s ease}button:active{transform:scale(.98)}}`
 
@@ -94,7 +105,7 @@ export function loginPage(locale: PageLocale, error = '', prefill: string | { in
   const fields = useInvite
     ? `<input type="hidden" name="invite" value="${safeInvite}"><p>${copy.inviteHint}</p><button type="submit">${copy.submit}</button>`
     : `<label for="token">${copy.label}</label><input id="token" name="token" type="password" autocomplete="current-password" required autofocus value="${safeToken}"><button type="submit">${copy.submit}</button>`
-  return `${shell(locale, copy.title)}${LOGIN_EXTRA_CSS}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.intro}</p>${message}<form id="login" method="post" action="${LOGIN_PATH}">${fields}</form>${autoSubmit}</main></body></html>`
+  return `${shell(locale, copy.title)}${LOGIN_EXTRA_CSS}</style></head><body><main class="card"><p class="kicker">dsh-full-remote</p><h1>${copy.title}</h1><p>${copy.intro}</p>${message}<form id="login" method="post" action="${LOGIN_PATH}">${fields}</form>${autoSubmit}</main></body></html>`
 }
 
 
@@ -106,5 +117,5 @@ export function waitPage(locale: PageLocale, id: string, label: string) {
   const rejected = copy.rejected.replaceAll("'", "\\'")
   const expired = copy.expired.replaceAll("'", "\\'")
   const poll = `fetch('/_dsh_reverse_proxy/wait/${safeId}/status',{credentials:'same-origin',cache:'no-store'}).then(function(r){return r.json()}).then(function(d){if(d.status==='active'){location.href='/'}else if(d.status==='rejected'){clearInterval(t);document.getElementById('state').textContent='${rejected}'}else if(d.status==='unknown'){clearInterval(t);document.getElementById('state').textContent='${expired}'}},function(){})`
-  return `${shell(locale, copy.title)}${WAIT_EXTRA_CSS}</style></head><body><main class="card"><h1>${copy.title}</h1><p>${copy.intro}</p><p class="device">${safeLabel}</p><div class="spinner" aria-hidden="true"></div><p id="state">${copy.pending}</p><script>var t=setInterval(function(){${poll}},2000)</script></main></body></html>`
+  return `${shell(locale, copy.title)}${WAIT_EXTRA_CSS}</style></head><body><main class="card"><p class="kicker">dsh-full-remote</p><h1>${copy.title}</h1><p>${copy.intro}</p><p class="device">${safeLabel}</p><div class="spinner" aria-hidden="true"></div><p id="state">${copy.pending}</p><script>var t=setInterval(function(){${poll}},2000)</script></main></body></html>`
 }
