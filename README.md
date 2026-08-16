@@ -203,12 +203,18 @@ does not contain the standing token.
 
 ### Upgrade
 
+`dsh plugin` forwards to pnpm. If you installed with an exact pin such as
+`add dsh-full-remote@0.2.4`, a bare `update dsh-full-remote` reports
+Already up to date and stays on the old version. To jump to the latest npm
+release:
+
 ```sh
-dsh plugin --profile web update dsh-full-remote
+dsh plugin --profile web update --latest dsh-full-remote
 ```
 
-Restart `dsh web` afterwards. Running `add` again does not reliably update
-a pinned version.
+Then restart `dsh web`. `--latest` ignores the current range, installs the
+newest version, and rewrites `package.json`. For a specific version use
+`dsh plugin --profile web update dsh-full-remote@0.2.5`.
 
 ## Screenshots
 

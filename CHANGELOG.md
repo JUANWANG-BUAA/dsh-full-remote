@@ -5,6 +5,11 @@ documented in this file.
 
 ## Unreleased
 
+### Documentation
+
+- Upgrade path: use `dsh plugin --profile web update --latest dsh-full-remote`.
+  A bare `update` stays on an exact pin (`add …@0.2.4`).
+
 ## 0.2.5 (2026-08-16)
 
 ### Added

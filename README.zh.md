@@ -152,11 +152,13 @@ ngrok http 3081
 
 ### 升级
 
+`dsh plugin` 只是把参数转给 pnpm。若当初用 `add dsh-full-remote@0.2.4` 这类精确版本安装，裸 `update dsh-full-remote` 会显示 Already up to date，实际停在旧版。要无痛升到 npm 最新版：
+
 ```sh
-dsh plugin --profile web update dsh-full-remote
+dsh plugin --profile web update --latest dsh-full-remote
 ```
 
-之后重启 `dsh web`。再次执行 `add` 不一定会更新已锁定的版本。
+然后重启 `dsh web`。`--latest` 会忽略现有版本范围，装上最新版并改写 `package.json`。指定某一版用 `dsh plugin --profile web update dsh-full-remote@0.2.5`。
 
 ## 截图
 

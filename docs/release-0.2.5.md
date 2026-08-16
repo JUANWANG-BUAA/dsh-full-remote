@@ -22,10 +22,11 @@ Already installed profiles do **not** pick up a new version when `dsh web`
 starts:
 
 ```bash
-dsh plugin --profile web update dsh-full-remote
+dsh plugin --profile web update --latest dsh-full-remote
 ```
 
-Then restart `dsh web`. First install remains:
+Then restart `dsh web`. A bare `update dsh-full-remote` does **not** move
+an exact pin such as `0.2.4`. First install remains:
 
 ```bash
 dsh plugin --profile web add dsh-full-remote
