@@ -19,7 +19,9 @@ export function createAuditLog(options: {
   enabled?: boolean
   warn?: (error: Error) => void
 } = {}) {
-  const enabled = options.enabled === true && typeof options.path === 'string' && options.path !== ''
+  const enabled = options.enabled === true
+    && typeof options.path === 'string'
+    && options.path !== ''
   const path = options.path
   const warn = options.warn
 

@@ -32,7 +32,9 @@ export function isLoopbackHost(host: string) {
 /** Bracket IPv6 literals so `host:port` is a legal authority. */
 export function formatAuthority(host: string, port: number) {
   const hostname = String(host ?? '')
-  const authorityHost = hostname.includes(':') && !hostname.startsWith('[') ? `[${hostname}]` : hostname
+  const authorityHost = hostname.includes(':') && !hostname.startsWith('[')
+    ? `[${hostname}]`
+    : hostname
   return `${authorityHost}:${port}`
 }
 
@@ -50,7 +52,12 @@ export function rewriteLoopbackAuthority(port: number) {
  * Wildcard listen includes every interface (including the backend);
  * two loopback spellings of the same port also collide.
  */
-export function isSelfLoop(listenHost: string, listenPort: number, backendHost: string, backendPort: number) {
+export function isSelfLoop(
+  listenHost: string,
+  listenPort: number,
+  backendHost: string,
+  backendPort: number,
+) {
   if (Number(listenPort) !== Number(backendPort)) return false
   if (listenHost === backendHost) return true
   if (isWildcardHost(listenHost)) return true

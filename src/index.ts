@@ -18,7 +18,17 @@ import { listenProxy, type ProxyServer } from './proxy.ts'
 import { defaultStateFile, readState, writeState, type PersistedState } from './persist.ts'
 import { generateAccessToken } from './security.ts'
 import { createSessionStore } from './sessions.ts'
-import { pathnameOf, readJson, sendJson, formatHttpUrl, isSelfLoop, isWildcardHost, isLoopbackHost, publishHost, reachableHosts } from './http-util.ts'
+import {
+  pathnameOf,
+  readJson,
+  sendJson,
+  formatHttpUrl,
+  isSelfLoop,
+  isWildcardHost,
+  isLoopbackHost,
+  publishHost,
+  reachableHosts,
+} from './http-util.ts'
 import { PAGE_BOOTSTRAP_SOURCE } from './page-bootstrap.ts'
 import { createAuditLog, defaultAuditPath } from './audit.ts'
 import { compileCidrList, ipAllowed, parseCidr } from './cidr.ts'
