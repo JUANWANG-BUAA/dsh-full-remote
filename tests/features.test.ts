@@ -83,6 +83,23 @@ describe('audit log', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('filters events by name', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-audit-filter-'))
+    const path = join(dir, 'events.jsonl')
+    try {
+      await writeFile(path, [
+        JSON.stringify({ event: 'login.ok' }),
+        JSON.stringify({ event: 'proxy.start' }),
+        JSON.stringify({ event: 'login.ok' }),
+      ].join('\n') + '\n')
+      const events = await readAuditLog(path, 50, 'login.ok') as Array<{ event: string }>
+      assert.equal(events.length, 2)
+      assert.equal(events.every(event => event.event === 'login.ok'), true)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('qr invite', () => {

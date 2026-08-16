@@ -246,7 +246,7 @@ pnpm run check:ci
 
 `check:ci` 包含 lint、类型检查、单元与客户端测试、构建；CI 另含一次针对真实 Harness 组合的 `dsh plugin add` 冒烟测试。`.github/workflows/canary.yml` 每周针对 harness 默认分支 tip 运行一次冒烟测试。
 
-本机控制面 API 位于 `/dsh-reverse-proxy/*`，不会被公网代理转发。设置页是预期入口，一般无需直接调用这些接口。
+本机控制面 API 位于 `/dsh-reverse-proxy/*`，不会被公网代理转发。设置页是预期入口，一般无需直接调用这些接口。例如可用 `GET /dsh-reverse-proxy/audit?limit=50&event=login.ok` 在本机读取最近的审计事件。
 
 ## 贡献 · 安全 · 许可证
 

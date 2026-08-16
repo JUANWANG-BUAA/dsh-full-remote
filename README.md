@@ -329,7 +329,9 @@ against the harness default-branch tip.
 
 The loopback control API lives at `/dsh-reverse-proxy/*` and is never
 forwarded through the public proxy. The settings page is the intended
-interface; the raw routes are rarely needed.
+interface; the raw routes are rarely needed. For example, recent audit
+events can be read with `GET /dsh-reverse-proxy/audit?limit=50&event=login.ok`
+from the local control surface.
 
 ## Contributing · Security · License
 
