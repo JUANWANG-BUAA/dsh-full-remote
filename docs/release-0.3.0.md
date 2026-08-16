@@ -11,7 +11,7 @@ dsh plugin --profile web add dsh-full-remote@0.3.0
 ### Highlights
 
 - Settings → Reverse proxy **Fence self-check** (`settings.describe` + trust bootstrap).
-- **Phone invite**: QR + `login?token=` auto-submit.
+- **Phone invite**: QR + one-time `?invite=` link (single use, 15 min TTL; the standing token never appears in the URL).
 - JSONL **audit log** (default on), **CIDR allowlist**, **idle timeout**, **device rename**.
 - Optional **local TLS** (`tlsCertFile` / `tlsKeyFile`).
 - Split read/write control gates; `sec-fetch-site` normalized; ModuleLoader wrap warns on failure.

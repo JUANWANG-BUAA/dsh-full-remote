@@ -402,13 +402,13 @@ P0-2（通配地址）与上面三条无依赖，可随时插入。
 
 ### P0-1 · 发行与被发现
 
-- [ ] **给仓库打 topics**（30 秒，全项目投产比最高）—— 命令已写入 `docs/github-metadata.md`，需本机 `gh` 鉴权执行。
+- [x] **给仓库打 topics**（30 秒，全项目投产比最高）—— 2026-08-16 已通过 `gh api` 应用：`dsh-plugin deepseek-harness dsh reverse-proxy remote-access tunnel mobile websocket security`。
   值：`dsh-plugin deepseek-harness dsh reverse-proxy remote-access tunnel mobile websocket security`。`dsh-plugin` 必须在第一位。
 - [x] **改名为 `dsh-full-remote`**（npm / patch / README 安装命令）。第 2–4 类标识符全部冻结。GitHub 仓库已改名为 `dsh-full-remote`。`npm deprecate` 待发布新包后执行。
 - [x] **修正 README 的安装段**：主路径改为钉版本的 `dsh plugin --profile web add @deepseek-ai/dsh-web-app@0.1.0-rc.6`。
 - [ ] **上传 social preview**（`Settings → General → Social preview`，用 `docs/rp-demo-panel.png`）。
-- [ ] **提交 awesome 列表收录 PR**：草稿在 `docs/release-0.1.0.md`，条目需改成 `dsh-full-remote` 后再提。
-- [ ] **发一篇 dist-tag 的 Discussion** + 向上游报问题（见 §5）。
+- [x] **提交 awesome 列表收录 PR**：PR [#833](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/833)（收录条目原为 #554），2026-08-16 已把 EN/ZH 条目更新为 0.3.x 口径（invite QR、栅栏自检、CIDR/空闲/TLS）并合并上游 main，待维护者合入。
+- [x] **发一篇 dist-tag 的 Discussion** + 向上游报问题（见 §5）—— 已发 [#2233](https://github.com/deepseek-ai/deepseek-harness/discussions/2233)（实测最新：rc.1 有 9 个不可解析依赖，`latest` 各包均停在 0.0.1-rc.x）。
 
 ### P0-2 · 通配监听地址四缺陷
 
@@ -429,7 +429,7 @@ P0-2（通配地址）与上面三条无依赖，可随时插入。
 
 ### P1 · 护城河与安全披露
 
-- [ ] **向上游提 Discussion**（Issues 已关）：`isLoopback` 应可由部署经 `__DSH_BOOT__` 通道声明，`location` 推断仅作默认值（§3.2 路径 E）
+- [x] **向上游提 Discussion**（Issues 已关）：`isLoopback` 应可由部署经 `__DSH_BOOT__` 通道声明，`location` 推断仅作默认值（§3.2 路径 E）—— 已发 [#2234](https://github.com/deepseek-ai/deepseek-harness/discussions/2234)。
 - [x] 视上游反馈决定是否接受路径 C 的猴子补丁作为过渡 —— **默认不接受**
 - [x] `GET /token` 写进 Known Limitations；加固为与写操作同样要求控制头（未取消常驻读取端点：面板「显示令牌」是主路径，取消会伤 UX；回环 HTTP 没有调用者身份，取消端点也挡不住本机进程）
 - [x] 披露 Origin 改写的爆炸半径（配置面而非仅会话面），与 §3.3 的因果叙事写在一起

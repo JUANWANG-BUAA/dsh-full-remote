@@ -32,7 +32,8 @@ smoke job (`scripts/smoke.mjs`) that installs the bundle through
 
 ## Tests
 
-- `tests/*.test.js` — unit/integration tests via `node:test` (proxy behavior,
+- `tests/*.test.ts` — unit/integration tests via `node:test` (run as plain
+  TypeScript through `node --experimental-strip-types`; proxy behavior,
   security primitives, control surface, Cordis lifecycle, WebSocket upgrade,
   index bootstrap).
 - `tests/remote.client.test.tsx` — client UI tests via `vitest` +
