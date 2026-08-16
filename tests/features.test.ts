@@ -1,12 +1,12 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import { compileCidrList, ipAllowed, normalizeRemoteIp, parseCidr } from '../src/cidr.ts'
-import { createAuditLog } from '../src/audit.ts'
+import { createAuditLog, readAuditLog } from '../src/audit.ts'
 import { qrToSvg } from '../src/qr-svg.ts'
 import { probeFence } from '../src/self-check.ts'
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInviteStore } from '../src/invites.ts'
@@ -48,6 +48,37 @@ describe('audit log', () => {
       assert.equal(line.event, 'login.ok')
       assert.equal(line.remote, '1.2.3.4')
       assert.equal(typeof line.ts, 'string')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('reads only the tail of a large audit file', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-audit-tail-'))
+    const path = join(dir, 'events.jsonl')
+    try {
+      const lines = Array.from({ length: 200 }, (_, index) => JSON.stringify({
+        ts: `2026-01-01T00:00:${String(index).padStart(2, '0')}.000Z`,
+        event: `event-${index}`,
+      }))
+      await writeFile(path, `${lines.join('\n')}\n`)
+      const events = await readAuditLog(path, 5) as Array<{ event: string }>
+      assert.equal(events.length, 5)
+      assert.equal(events[0].event, 'event-195')
+      assert.equal(events[4].event, 'event-199')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('skips a partial first line when reading from the tail window', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-audit-partial-'))
+    const path = join(dir, 'events.jsonl')
+    try {
+      await writeFile(path, `${'x'.repeat(70 * 1024)}not-json\n${JSON.stringify({ event: 'ok' })}\n`)
+      const events = await readAuditLog(path) as Array<{ event: string }>
+      assert.equal(events.length, 1)
+      assert.equal(events[0].event, 'ok')
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

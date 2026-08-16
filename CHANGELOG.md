@@ -20,6 +20,8 @@ documented in this file.
 ### Fixed
 
 - Add an end-to-end TLS proxy test with a self-signed fixture certificate.
+- Audit log reads now use a bounded tail window instead of loading the whole
+  JSONL file into memory.
 
 - Document the tunnel IP limitation and the new opt-in in both READMEs.
 
