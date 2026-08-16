@@ -77,7 +77,7 @@ flowchart LR
 - 手机邀请：二维码或一次性链接（单次有效，15 分钟过期），链接中不含长期令牌
 - 登录失败计入固定延时，并按 IP 累计锁定
 - 可选 CIDR 白名单，限制远程 IP
-- 可选 `trustForwardedFor`：在可信本地隧道后使用真实客户端 IP 进行 CIDR / 限流 / 审计
+- 可选 `trustForwardedFor`：在可信本地隧道后使用真实客户端 IP 进行 CIDR / 限流 / 审计，优先 `CF-Connecting-IP`，否则取 `X-Forwarded-For` 最右值
 
 ### 运维
 
@@ -186,9 +186,11 @@ dsh plugin --profile web update dsh-full-remote
     listenPort: 3081
     approvalMode: false          # true：新设备需要本机批准
     allowedCidrs: []             # 例如 ["192.168.1.0/24"]；留空 = 登录后不限 IP
-    trustForwardedFor: false     # true：信任可信本地隧道传来的 X-Forwarded-For
+    trustForwardedFor: false     # true：信任可信本地隧道传来的 CF-Connecting-IP / X-Forwarded-For 最右值
     upgradeMaxAttempts: 10       # WebSocket 升级失败多少次后锁定
     upgradeLockoutSeconds: 300   # WebSocket 升级频繁失败的锁定秒数
+    headersTimeoutMs: 15000      # 请求头超时
+    requestTimeoutMs: 120000     # 完整请求超时；实际值不会小于 headersTimeoutMs
     sessionIdleSeconds: 0        # 0 = 关闭；否则按空闲秒数过期
     auditLog: true
     allowTokenRead: true         # false：令牌只在轮换时返回
@@ -212,7 +214,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 - 登录失败计入固定延时，并按 IP 返回 `429` 锁定；
 - 控制接口（`/dsh-reverse-proxy/*`）仅限回环地址访问，需要控制头，且永远不会被公网代理转发；
 - 剥离可伪造的转发头与逐跳头，代理自身的 Cookie 不会到达后端；
-- 可选 `trustForwardedFor`：开启后仅信任回环对端传来的 `X-Forwarded-For`，用于 CIDR / 限流 / 审计，使本地隧道能识别真实客户端 IP。局域网直连请保持关闭。
+- 可选 `trustForwardedFor`：开启后仅信任回环对端传来的转发头，用于 CIDR / 限流 / 审计，使本地隧道能识别真实客户端 IP。优先 `CF-Connecting-IP`，否则取 `X-Forwarded-For` 最右值，避免客户端伪造前缀。局域网直连请保持关闭。
 
 访问令牌须按机密保管。公网侧应终止 TLS。局域网直连可配置 `tlsCertFile` / `tlsKeyFile`（例如用 [mkcert](https://github.com/FiloSottile/mkcert) 生成）。
 

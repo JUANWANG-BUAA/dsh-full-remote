@@ -105,7 +105,8 @@ flowchart LR
 - Fixed delay and per-IP lockout on failed logins
 - Optional CIDR allowlist for remote IPs
 - Optional `trustForwardedFor` to use real client IPs from a trusted local
-  tunnel in CIDR / rate-limit / audit
+  tunnel in CIDR / rate-limit / audit, preferring `CF-Connecting-IP` and
+  otherwise using the rightmost `X-Forwarded-For` value
 
 ### Operation
 
@@ -239,9 +240,11 @@ Common options:
     listenPort: 3081
     approvalMode: false          # true: approve each new device locally
     allowedCidrs: []             # e.g. ["192.168.1.0/24"]; empty: any IP after login
-    trustForwardedFor: false     # true: trust X-Forwarded-For from a trusted local tunnel
+    trustForwardedFor: false     # true: trust CF-Connecting-IP / rightmost X-Forwarded-For from a trusted local tunnel
     upgradeMaxAttempts: 10       # failed WebSocket upgrades before lockout
     upgradeLockoutSeconds: 300   # lockout for repeated failed WebSocket upgrades
+    headersTimeoutMs: 15000      # timeout for request headers
+    requestTimeoutMs: 120000     # timeout for the complete request; effective value is >= headersTimeoutMs
     sessionIdleSeconds: 0        # 0: off; otherwise idle timeout in seconds
     auditLog: true
     allowTokenRead: true         # false: token only returned on rotation
@@ -275,8 +278,10 @@ access-control layer provided by this plugin consists of:
 - removal of spoofable forwarding and hop-by-hop headers, so the proxy's
   own cookie never reaches the backend;
 - optional `trustForwardedFor`: when enabled, only a loopback peer's
-  `X-Forwarded-For` is trusted for CIDR / rate-limit / audit, so a local
-  tunnel can see real client IPs. Keep it disabled for direct LAN access.
+  forwarding headers are trusted for CIDR / rate-limit / audit, so a local
+  tunnel can see real client IPs. It prefers `CF-Connecting-IP` and
+  otherwise uses the rightmost `X-Forwarded-For` value to avoid client-side
+  spoofing. Keep it disabled for direct LAN access.
 
 The access token must be treated as a secret. Terminate TLS on the public
 side of the tunnel. For LAN use without a tunnel, set

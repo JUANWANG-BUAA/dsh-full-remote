@@ -33,6 +33,20 @@ describe('cidr allowlist', () => {
     assert.equal(ipAllowed('10.1.2.3', rules), true)
     assert.equal(ipAllowed('11.0.0.1', rules), false)
   })
+
+  it('parses IPv6 CIDR and bare addresses', () => {
+    assert.deepEqual(parseCidr('2001:db8::/32'), { kind: 'v6', network: [0x2001, 0x0db8, 0, 0, 0, 0, 0, 0], prefix: 32 })
+    assert.deepEqual(parseCidr('::1'), { kind: 'v6', network: [0, 0, 0, 0, 0, 0, 0, 1], prefix: 128 })
+    assert.equal(parseCidr('not-an-ip'), undefined)
+  })
+
+  it('matches IPv6 CIDR rules', () => {
+    const rules = compileCidrList(['2001:db8::/32'])
+    assert.equal(ipAllowed('2001:db8::1', rules), true)
+    assert.equal(ipAllowed('2001:db8:ffff::abcd', rules), true)
+    assert.equal(ipAllowed('2001:db9::1', rules), false)
+    assert.equal(ipAllowed('::1', rules), true) // loopback always allowed
+  })
 })
 
 describe('audit log', () => {

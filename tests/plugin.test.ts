@@ -636,6 +636,32 @@ describe('authenticated reverse proxy', () => {
     assert.equal(under.status, 200)
   })
 
+  it('allows headersTimeoutMs larger than the default request timeout', async () => {
+    const backend = createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      res.end('ok')
+    })
+    await new Promise<void>((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: portOf(backend),
+      accessToken: generateAccessToken(),
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 1024,
+      upstreamTimeoutMs: 2000,
+      headersTimeoutMs: 200_000,
+    })
+    cleanups.push(proxy.close)
+    assert.equal(proxy.port > 0, true)
+  })
+
   it('serves HTTPS with local TLS and still rewrites Host/Origin', async () => {
     const seen: Array<{ host: string | undefined, origin: string | undefined }> = []
     const backend = createServer((req, res) => {
@@ -994,13 +1020,25 @@ describe('trustForwardedFor', () => {
     assert.equal(effectiveRemoteAddress(req, spec), '127.0.0.1')
   })
 
-  it('uses the first address in a forwarded chain', () => {
+  it('uses the last address in a forwarded chain', () => {
     const req = {
       headers: { 'x-forwarded-for': '203.0.113.5, 10.0.0.1' },
       socket: { remoteAddress: '127.0.0.1' },
     } as unknown as IncomingMessage
     const spec = { trustForwardedFor: true } as Parameters<typeof effectiveRemoteAddress>[1]
-    assert.equal(effectiveRemoteAddress(req, spec), '203.0.113.5')
+    assert.equal(effectiveRemoteAddress(req, spec), '10.0.0.1')
+  })
+
+  it('prefers CF-Connecting-IP when present', () => {
+    const req = {
+      headers: {
+        'cf-connecting-ip': '198.51.100.7',
+        'x-forwarded-for': '203.0.113.5, 10.0.0.1',
+      },
+      socket: { remoteAddress: '127.0.0.1' },
+    } as unknown as IncomingMessage
+    const spec = { trustForwardedFor: true } as Parameters<typeof effectiveRemoteAddress>[1]
+    assert.equal(effectiveRemoteAddress(req, spec), '198.51.100.7')
   })
 
   it('only trusts X-Forwarded-For from a loopback peer when enabled', async () => {

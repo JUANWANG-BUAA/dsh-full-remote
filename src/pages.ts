@@ -88,23 +88,20 @@ function shell(locale: PageLocale, title: string) {
 }
 
 /** Token login gate. `error` is always one of our own copy tokens.
- *  Prefill comes from invite links (`?invite=`) or legacy `?token=` bookmarks. */
-export function loginPage(locale: PageLocale, error = '', prefill: string | { invite?: string, token?: string } = {}) {
+ *  Prefill comes only from invite links (`?invite=`); token values are never
+ *  placed in the URL or the form to avoid leaking them through history. */
+export function loginPage(locale: PageLocale, error = '', prefill: { invite?: string } = {}) {
   const copy = LOGIN_COPY[locale] ?? LOGIN_COPY.zh
   const message = error === '' ? '' : `<p role="alert">${error}</p>`
-  const invite = typeof prefill === 'string' ? '' : String(prefill.invite ?? '')
-  const token = typeof prefill === 'string'
-    ? String(prefill)
-    : String(prefill.token ?? '')
+  const invite = String(prefill.invite ?? '')
   const safeInvite = escapeHtml(invite.slice(0, 128))
-  const safeToken = escapeHtml(token.slice(0, 128))
   const useInvite = safeInvite !== ''
-  const autoSubmit = useInvite || safeToken !== ''
+  const autoSubmit = useInvite
     ? `<script>document.addEventListener('DOMContentLoaded',function(){var f=document.getElementById('login');if(f)f.requestSubmit()})</script>`
     : ''
   const fields = useInvite
     ? `<input type="hidden" name="invite" value="${safeInvite}"><p>${copy.inviteHint}</p><button type="submit">${copy.submit}</button>`
-    : `<label for="token">${copy.label}</label><input id="token" name="token" type="password" autocomplete="current-password" required autofocus value="${safeToken}"><button type="submit">${copy.submit}</button>`
+    : `<label for="token">${copy.label}</label><input id="token" name="token" type="password" autocomplete="current-password" required autofocus><button type="submit">${copy.submit}</button>`
   return `${shell(locale, copy.title)}${LOGIN_EXTRA_CSS}</style></head><body><main class="card"><p class="kicker">dsh-full-remote</p><h1>${copy.title}</h1><p>${copy.intro}</p>${message}<form id="login" method="post" action="${LOGIN_PATH}">${fields}</form>${autoSubmit}</main></body></html>`
 }
 

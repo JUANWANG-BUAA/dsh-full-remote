@@ -53,7 +53,8 @@ export const Config = Schema.object({
   sessionIdleSeconds: Schema.number().min(0).default(0).description('Inactivity timeout in seconds (0 = disabled; uses lastSeenAt). When set, sessions expire after this idle window independently of sessionMaxAgeSeconds.'),
   cookieName: Schema.string().default('dsh_reverse_proxy_session').description('Authentication session cookie name.'),
   maxHeaderSizeBytes: Schema.number().min(1024).default(16 * 1024).description('Maximum HTTP header size accepted by the proxy.'),
-  headersTimeoutMs: Schema.number().min(1000).default(15_000).description('Timeout for a client to send a complete request head.'),
+  headersTimeoutMs: Schema.number().min(1000).default(15_000).description('Timeout for a client to send a complete request head. Must not exceed requestTimeoutMs.'),
+  requestTimeoutMs: Schema.number().min(1000).default(120_000).description('Timeout for a complete request (headers plus body) accepted by the proxy. The effective request timeout is at least headersTimeoutMs.'),
   keepAliveTimeoutMs: Schema.number().min(1000).default(5_000).description('Keep-alive timeout for idle proxy connections.'),
   loginDelayMs: Schema.number().min(0).max(10_000).default(250).description('Fixed delay after a failed login, slowing token guessing.'),
   loginMaxAttempts: Schema.number().min(1).default(5).description('Failed login attempts per remote IP before that IP is locked out.'),
@@ -88,6 +89,7 @@ interface RuntimeConfig {
   cookieName: string
   maxHeaderSizeBytes: number
   headersTimeoutMs: number
+  requestTimeoutMs: number
   keepAliveTimeoutMs: number
   loginDelayMs: number
   loginMaxAttempts: number
@@ -393,6 +395,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
         sessionMaxAgeSeconds: config.sessionMaxAgeSeconds,
         maxHeaderSizeBytes: config.maxHeaderSizeBytes,
         headersTimeoutMs: config.headersTimeoutMs,
+        requestTimeoutMs: config.requestTimeoutMs,
         keepAliveTimeoutMs: config.keepAliveTimeoutMs,
         loginDelayMs: config.loginDelayMs,
         loginMaxAttempts: config.loginMaxAttempts,

@@ -109,9 +109,21 @@ const LOGIN_FAILURE_DELAY_MS = 250
 const MAX_TRACKED_LOGIN_IPS = 4096
 
 /**
- * The first address in an X-Forwarded-For list. Empty/missing becomes undefined.
+ * The last address in an X-Forwarded-For list. Empty/missing becomes undefined.
+ *
+ * Using the rightmost value is safer than the leftmost: a client can prepend
+ * arbitrary values, but only the trusted edge can append the address it
+ * actually saw. (Cloudflare-style `CF-Connecting-IP` is handled separately.)
  */
-function firstForwardedIp(value: string | string[] | undefined): string | undefined {
+function lastForwardedIp(value: string | string[] | undefined): string | undefined {
+  const text = Array.isArray(value) ? value[value.length - 1] : value
+  const parts = String(text ?? '').split(',').map(part => part.trim()).filter(Boolean)
+  const last = parts[parts.length - 1]
+  return last === undefined || last === '' ? undefined : last
+}
+
+/** First value of a single-valued forwarding header such as CF-Connecting-IP. */
+function firstHeaderValue(value: string | string[] | undefined): string | undefined {
   const text = Array.isArray(value) ? value[0] : value
   const first = String(text ?? '').split(',')[0]?.trim()
   return first === '' ? undefined : first
@@ -122,14 +134,20 @@ function firstForwardedIp(value: string | string[] | undefined): string | undefi
  *
  * A local tunnel (cloudflared/ngrok/frp/SSH) connects from 127.0.0.1, so the
  * socket address is not the real remote user. When the operator explicitly
- * enables `trustForwardedFor` AND the immediate peer is loopback, we trust the
- * first X-Forwarded-For value from that local edge. Direct non-loopback peers
- * are never trusted with a spoofable header.
+ * enables `trustForwardedFor` AND the immediate peer is loopback, we trust:
+ *
+ * 1. `CF-Connecting-IP` when present (Cloudflare-style edge);
+ * 2. otherwise the rightmost `X-Forwarded-For` value, which is the address
+ *    appended by the trusted edge rather than a client-controlled prefix.
+ *
+ * Direct non-loopback peers are never trusted with a spoofable header.
  */
 export function effectiveRemoteAddress(req: IncomingMessage, spec: RuntimeSpec): string {
   const direct = req.socket.remoteAddress ?? ''
   if (spec.trustForwardedFor === true && isLoopbackHost(direct)) {
-    const forwarded = firstForwardedIp(req.headers['x-forwarded-for'])
+    const cf = firstHeaderValue(req.headers['cf-connecting-ip'])
+    if (cf !== undefined) return cf
+    const forwarded = lastForwardedIp(req.headers['x-forwarded-for'])
     if (forwarded !== undefined) return forwarded
   }
   return direct
@@ -292,6 +310,11 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
     clearTimeout(connectTimer)
     const responseHeaders = sanitizeResponseHeaders(incoming.headers)
     res.writeHead(incoming.statusCode ?? 502, responseHeaders)
+    // If the upstream response stream fails mid-body, tear down the client
+    // response instead of leaving it hanging.
+    incoming.on('error', () => {
+      if (!res.destroyed) res.destroy()
+    })
     incoming.pipe(res)
   })
   spec.trackUpstream?.(up)
@@ -343,8 +366,7 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse, spec: Runt
   if (req.method === 'GET') {
     const url = new URL(req.url ?? '/', 'http://localhost')
     const queryInvite = url.searchParams.get('invite') ?? ''
-    const queryToken = url.searchParams.get('token') ?? ''
-    sendHtml(res, 200, loginPage(locale, '', { invite: queryInvite, token: queryToken }), GATE_PAGE_HEADERS)
+    sendHtml(res, 200, loginPage(locale, '', { invite: queryInvite }), GATE_PAGE_HEADERS)
     return
   }
   if (req.method !== 'POST') {
@@ -547,7 +569,9 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
   const serverOptions = {
     maxHeaderSize: spec.maxHeaderSizeBytes ?? 16 * 1024,
     // Bound hung clients; 0 previously left keep-alive sockets forever.
-    requestTimeout: spec.requestTimeoutMs ?? 120_000,
+    // Node requires requestTimeout >= headersTimeout, so never let a user
+    // configured headersTimeout exceed the effective request timeout.
+    requestTimeout: Math.max(spec.requestTimeoutMs ?? 120_000, spec.headersTimeoutMs ?? 15_000),
     headersTimeout: spec.headersTimeoutMs ?? 15_000,
     keepAliveTimeout: spec.keepAliveTimeoutMs ?? 5_000,
   }
@@ -617,6 +641,8 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     // and close instead of leaving the client socket hanging.
     up.on('response', (upRes) => {
       spec.audit?.('ws.reject', { remote: upgradeRemote, path: req.url ?? '/', status: upRes.statusCode ?? 502 })
+      // Drain the upstream response so its socket is not left hanging.
+      upRes.resume()
       writeRawHead(socket, upRes.statusCode ?? 502, upRes.statusMessage ?? 'Bad Gateway', {
         ...sanitizeResponseHeaders(upRes.headers),
         Connection: 'close',

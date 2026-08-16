@@ -8,10 +8,14 @@ documented in this file.
 ### Added
 
 - Config `trustForwardedFor`: when enabled and the direct peer is loopback,
-  the proxy uses the first `X-Forwarded-For` value as the remote client IP
-  for CIDR allowlist, login rate limiting, audit and logs. This lets a local
-  tunnel (cloudflared/ngrok/frp/SSH) distinguish real remote clients instead
-  of treating them all as `127.0.0.1`. Keep disabled for LAN direct access.
+  the proxy uses `CF-Connecting-IP` when present, otherwise the rightmost
+  `X-Forwarded-For` value, as the remote client IP for CIDR allowlist,
+  login rate limiting, audit and logs. This lets a local tunnel
+  (cloudflared/ngrok/frp/SSH) distinguish real remote clients instead of
+  treating them all as `127.0.0.1`. Keep disabled for LAN direct access.
+- Config `requestTimeoutMs` (default 120s) to control the complete request
+  timeout; the effective proxy request timeout is always at least
+  `headersTimeoutMs`.
 - The reverse-proxy self-check now reports whether `trustForwardedFor` is
   active, so operators can see the tunnel IP behavior from the panel.
 - In-panel audit log viewer: Settings → Reverse proxy can load the most
@@ -29,7 +33,18 @@ documented in this file.
 - Add an end-to-end TLS proxy test with a self-signed fixture certificate.
 - Audit log reads now use a bounded tail window instead of loading the whole
   JSONL file into memory.
-
+- Prevent `ERR_OUT_OF_RANGE` when `headersTimeoutMs` exceeds the default
+  request timeout: `requestTimeoutMs` is now configurable and the effective
+  request timeout is at least `headersTimeoutMs`.
+- `trustForwardedFor` now prefers `CF-Connecting-IP` and otherwise uses the
+  rightmost `X-Forwarded-For` value, reducing client-side spoofing of CIDR /
+  rate-limit / audit inputs.
+- Add IPv6 CIDR parse and match tests.
+- Drain upstream responses in the WebSocket non-101 fallback and destroy the
+  downstream response when an upstream response stream errors.
+- Remove legacy `?token=` prefill from the login page so tokens are not
+  placed into browser history.
+- Remove the stale `dsh-reverse-proxy-0.1.0.tgz` artifact from the repo root.
 - Document the tunnel IP limitation and the new opt-in in both READMEs.
 
 ## 0.2.4 (2026-08-16)
