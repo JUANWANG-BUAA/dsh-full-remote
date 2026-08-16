@@ -222,12 +222,6 @@ a pinned version.
 |---|---|---|
 | ![Mobile login](./docs/screenshots/preview-mobile-login.png) | ![Mobile workspace](./docs/screenshots/preview-mobile.png) | ![Mobile panel](./docs/screenshots/preview-mobile-panel.png) |
 
-### Responsive
-
-| Small phone | Phone landscape | Tablet |
-|---|---|---|
-| ![Phone small](./docs/screenshots/preview-phone-small.png) | ![Phone landscape](./docs/screenshots/preview-phone-landscape.png) | ![Tablet](./docs/screenshots/preview-tablet.png) |
-
 ## Configuration
 
 Common options:

@@ -174,12 +174,6 @@ dsh plugin --profile web update dsh-full-remote
 |---|---|---|
 | ![移动端登录](./docs/screenshots/preview-mobile-login.png) | ![手机工作区](./docs/screenshots/preview-mobile.png) | ![移动面板](./docs/screenshots/preview-mobile-panel.png) |
 
-### 响应式
-
-| 小屏手机 | 手机横屏 | 平板 |
-|---|---|---|
-| ![小屏手机](./docs/screenshots/preview-phone-small.png) | ![手机横屏](./docs/screenshots/preview-phone-landscape.png) | ![平板](./docs/screenshots/preview-tablet.png) |
-
 ## 常用配置
 
 ```yaml
