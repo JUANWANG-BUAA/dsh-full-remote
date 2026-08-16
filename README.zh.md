@@ -82,7 +82,7 @@ flowchart LR
 ### 运维
 
 - 栅栏自检：使用与代理相同的 Host/Origin 改写探测 `settings.describe`
-- 结构化 JSONL 审计日志（登录、审批、撤销、令牌轮换、启动、停止），并支持在面板内查看最近事件
+- 结构化 JSONL 审计日志（登录、审批、撤销、令牌轮换、启动、停止、WebSocket 打开/拒绝/拒绝），并支持在面板内查看最近事件
 - 监听地址可在运行时修改，绑定失败自动回滚
 - 可选本地 TLS（`tlsCertFile` / `tlsKeyFile`）
 - 健康检查接口 `/_dsh_reverse_proxy/healthz`

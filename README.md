@@ -112,7 +112,8 @@ flowchart LR
 - Fence self-check: probes `settings.describe` with the same Host/Origin
   rewrite the proxy uses
 - Structured JSONL audit log (login, approval, revocation, token rotation,
-  start, stop) with an in-panel viewer for recent events
+  start, stop, WebSocket open/deny/reject) with an in-panel viewer for
+  recent events
 - Runtime listen-address changes with automatic rollback when a bind fails
 - Optional local TLS (`tlsCertFile` / `tlsKeyFile`)
 - Health endpoint at `/_dsh_reverse_proxy/healthz`
