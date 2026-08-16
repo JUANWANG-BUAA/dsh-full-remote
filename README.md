@@ -267,7 +267,7 @@ side of the tunnel. For LAN use without a tunnel, set
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.3.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.2.3.tgz
 ```
 
 Git installs run the `prepare` build. On pnpm ≥ 10 allow it:
