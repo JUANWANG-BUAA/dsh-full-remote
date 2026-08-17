@@ -42,6 +42,14 @@ Web UI. Please take security issues seriously.
 - Failed logins are rate-limited per remote IP (configurable
   `loginMaxAttempts` / `loginLockoutSeconds`) on top of a fixed per-attempt
   delay.
+- Phone invites are one-time 15-minute links. A repeat submit of the same
+  code is only accepted from the same remote IP within 60 seconds of the
+  first use (browser retry after a lost redirect), and reuses the original
+  device session instead of minting a second one. Any other reuse is
+  rejected, so the link still grants nothing once consumed.
+- `GET /_dsh_reverse_proxy/healthz` is behind the CIDR allowlist, not the
+  login gate: an empty allowlist means the probe is public on the proxy
+  port (use CIDR or bind loopback if you do not want that).
 - Spoofable forwarding and hop-by-hop headers are stripped; the proxy's own
   session cookie never reaches the backend; request bodies are size-limited
   on the stream.

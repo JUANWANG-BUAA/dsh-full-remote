@@ -9,15 +9,29 @@ import { randomBytes } from 'node:crypto'
 const CODE_BYTES = 18
 const DEFAULT_TTL_MS = 15 * 60_000
 const DEFAULT_MAX_PENDING = 32
+/** Same-IP retry grace after a successful consume. A flaky tunnel can drop
+ *  the login redirect after the code was already consumed; the browser then
+ *  re-POSTs the same code. Without a grace the retry would deadlock into the
+ *  token form even though the first attempt actually signed in. */
+const DEFAULT_RETRY_GRACE_MS = 60_000
 
-/**
- * @param {{ ttlMs?: number, maxPending?: number }} [options]
- */
-export function createInviteStore(options: { ttlMs?: number, maxPending?: number } = {}) {
+export type InviteConsume =
+  | { ok: false }
+  | { ok: true, retry: false }
+  | { ok: true, retry: true, sessionId?: string }
+
+type InviteEntry = {
+  expiresAt: number
+  usedAt?: number
+  usedIp?: string
+  sessionId?: string
+}
+
+export function createInviteStore(options: { ttlMs?: number, maxPending?: number, retryGraceMs?: number } = {}) {
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS
   const maxPending = options.maxPending ?? DEFAULT_MAX_PENDING
-  /** @type {Map<string, { expiresAt: number }>} */
-  const codes = new Map()
+  const retryGraceMs = options.retryGraceMs ?? DEFAULT_RETRY_GRACE_MS
+  const codes = new Map<string, InviteEntry>()
 
   const prune = (now = Date.now()) => {
     for (const [code, entry] of codes) {
@@ -43,16 +57,44 @@ export function createInviteStore(options: { ttlMs?: number, maxPending?: number
     },
 
     /**
-     * Consume a code exactly once. Returns true when the code was valid and
-     * not expired.
+     * Consume a code. The first consume marks the code used and records the
+     * client IP; a repeat consume from the SAME IP inside the retry grace
+     * window is treated as a legitimate browser retry (ok + retry) so a
+     * lost redirect cannot deadlock the phone into the token form. Any other
+     * reuse is rejected and the code is forgotten.
      */
-    consume(code: string, now = Date.now()) {
+    consume(code: string, ip?: string, now = Date.now()): InviteConsume {
       const key = String(code ?? '')
-      if (key === '') return false
+      if (key === '') return { ok: false }
       const entry = codes.get(key)
-      if (entry === undefined) return false
+      if (entry === undefined) return { ok: false }
+      if (entry.expiresAt <= now) {
+        codes.delete(key)
+        return { ok: false }
+      }
+      if (entry.usedAt === undefined) {
+        entry.usedAt = now
+        entry.usedIp = ip === undefined || ip === '' ? undefined : ip
+        return { ok: true, retry: false }
+      }
+      // Retry grace: same client, shortly after the first use. Codes used
+      // without a client IP (callers that never knew one) get no grace.
+      if (
+        ip !== undefined && ip !== '' &&
+        entry.usedIp !== undefined && entry.usedIp === ip &&
+        now - entry.usedAt <= retryGraceMs
+      ) {
+        return { ok: true, retry: true, sessionId: entry.sessionId }
+      }
       codes.delete(key)
-      return entry.expiresAt > now
+      return { ok: false }
+    },
+
+    /** Remember the device session minted on first consume so a retry can reuse it. */
+    bindSession(code: string, sessionId: string) {
+      const entry = codes.get(code)
+      if (entry === undefined || entry.usedAt === undefined) return
+      entry.sessionId = sessionId
     },
 
     clear() {

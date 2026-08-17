@@ -102,7 +102,10 @@ flowchart LR
 - Optional first-visit approval: a new device waits on a page until it is
   approved from the local panel
 - Phone invite: a QR code or a one-time link (single use, 15-minute
-  expiry). The link does not contain the standing token.
+  expiry). Same-IP browser retries within 60 s reuse the original device
+  session so a flaky tunnel dropping the redirect cannot deadlock the
+  phone into the token form or spawn a duplicate device. The link does
+  not contain the standing token.
 - Fixed delay and per-IP lockout on failed logins
 - Optional CIDR allowlist for remote IPs
 - Optional `trustForwardedFor` to use real client IPs from a trusted local
@@ -126,6 +129,32 @@ flowchart LR
   per remote IP
 - Stream-level request body limit; hop-by-hop and spoofable headers are
   stripped; upstream `set-cookie` is removed
+
+### One-click public tunnel (Cloudflare quick tunnel)
+
+- Start a cloudflared quick tunnel from the panel (free, no account) and
+  get a `https://…trycloudflare.com` address — no public IP or port
+  forwarding required
+- Binary resolution: `cloudflaredPath` → PATH → a pinned
+  (2026.8.2), SHA256-verified download cache; failed checksums are
+  discarded
+- While the tunnel is up, forwarding-header trust applies dynamically
+  (rate limiting / CIDR / audit see real client IPs) and reverts when the
+  tunnel stops; the tunnel forwards to the proxy listener, so the token
+  gate, approval and audit all keep applying
+- Invites automatically use the tunnel URL: start the tunnel, generate
+  the QR, scan from the phone (the panel shows it and the Origin can
+  still override it)
+- Mutually exclusive with local TLS (the Cloudflare edge already
+  provides HTTPS); the quick-tunnel address is random per start and is
+  meant for temporary sharing / emergencies
+
+### Device home (opt-in)
+
+- A second button on the login form opens `/_dsh_reverse_proxy/home`:
+  device facts (label, login IP/time, expiry estimate, security
+  posture), self-rename, and self-logout (revokes only this device)
+- The default login landing stays `/`; the original flow is unchanged
 
 ### Mobile use
 
@@ -202,9 +231,10 @@ Do not put `127.0.0.1` in Origin. That address is the Harness machine; a
 phone would open its own loopback and never reach the proxy.
 
 Then press **Generate invite**. After a scan (or opening the link) the
-login page submits once. The invite expires in 15 minutes, works once, and
-does not contain the standing token. Invites can only be generated while
-the proxy is running.
+login page submits once. The invite expires in 15 minutes, works once
+(same-IP retries within 60 s reuse the original session), and does not
+contain the standing token. Invites can only be generated while the proxy
+is running.
 
 ### Upgrade
 
@@ -219,19 +249,20 @@ dsh plugin --profile web update --latest dsh-full-remote
 
 Then restart `dsh web`. `--latest` ignores the current range, installs the
 newest version, and rewrites `package.json`. For a specific version use
-`dsh plugin --profile web update dsh-full-remote@0.3.0`.
+`dsh plugin --profile web update dsh-full-remote@0.3.1`.
 
 ## Screenshots
 
 ### Desktop
 
-The full settings page: running status and fence self-check, tunnel
-target, one-time invite QR, listen address, access token, connected
-devices with source IPs, and the audit viewer.
+The full settings page: running status and fence self-check, listen
+address, recommended setup, tunnel target, one-click quick tunnel,
+one-time invite QR, access token, connected devices with source IPs
+(inline rename), and the audit viewer.
 
 ![Reverse proxy control panel](./docs/screenshots/preview-desktop.png)
 
-| One-time phone invite (QR) | Connected devices with source IP |
+| One-time phone invite (QR) | Connected devices with inline rename |
 |---|---|
 | ![Phone invite](./docs/screenshots/preview-invite.png) | ![Connected devices](./docs/screenshots/preview-devices.png) |
 
@@ -240,6 +271,15 @@ devices with source IPs, and the audit viewer.
 | Login page | Control panel | Add workspace |
 |---|---|---|
 | ![Mobile login](./docs/screenshots/preview-mobile-login.png) | ![Mobile panel](./docs/screenshots/preview-mobile-panel.png) | ![Mobile workspace](./docs/screenshots/preview-mobile.png) |
+
+### Gate pages
+
+The token login (with an opt-in **Device home** button), the device home
+itself, and the first-visit approval wait page.
+
+| Device home | Waiting for approval |
+|---|---|
+| ![Device home](./docs/screenshots/preview-home.png) | ![Waiting for approval](./docs/screenshots/preview-wait.png) |
 
 ## Configuration
 
@@ -261,6 +301,7 @@ Common options:
     sessionIdleSeconds: 0        # 0: off; otherwise idle timeout in seconds
     auditLog: true
     allowTokenRead: true         # false: token only returned on rotation
+    cloudflaredPath: ""          # optional path to cloudflared for the one-click tunnel
     tlsCertFile: ""              # optional local HTTPS
     tlsKeyFile: ""
 ```
@@ -323,6 +364,13 @@ side of the tunnel. For LAN use without a tunnel, set
   access-control layer. A defect in this layer has serious consequences.
   If Harness provides official remote access in the future, the role of
   this plugin should be reassessed.
+- The one-click quick tunnel: the URL is random per start (old invites
+  and logins stop working), Cloudflare positions quick tunnels as
+  temporary/testing with terms limiting heavy non-HTML content, and the
+  first use downloads cloudflared on demand (18–52 MB depending on the
+  platform; Windows ARM64 has no official build — install it yourself
+  and set `cloudflaredPath`). For a stable daily entry, bring your own
+  frp / ngrok / named tunnel.
 
 ## Development
 
@@ -330,7 +378,7 @@ side of the tunnel. For LAN use without a tunnel, set
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.3.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.1.tgz
 ```
 
 Git installs run the `prepare` build. On pnpm ≥ 10 allow it:

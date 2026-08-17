@@ -173,15 +173,51 @@ describe('one-time invites', () => {
   it('issues single-use codes and rejects reuse or expiry', async () => {
     const store = createInviteStore({ ttlMs: 30 })
     const code = store.issue()
-    assert.equal(store.consume(code), true)
-    assert.equal(store.consume(code), false)
-    assert.equal(store.consume(''), false)
+    assert.equal(store.consume(code).ok, true)
+    assert.equal(store.consume(code).ok, false)
+    assert.equal(store.consume('').ok, false)
     const brief = createInviteStore({ ttlMs: 20 })
     const stale = brief.issue()
     await new Promise<void>(resolve => setTimeout(resolve, 35))
-    assert.equal(brief.consume(stale), false)
+    assert.equal(brief.consume(stale).ok, false)
     brief.clear()
     assert.equal(brief.size(), 0)
+  })
+
+  it('allows a same-IP retry inside the grace window and rejects everything else', async () => {
+    const store = createInviteStore({ ttlMs: 60_000, retryGraceMs: 200 })
+    const code = store.issue()
+    assert.equal(store.consume(code, '203.0.113.9').ok, true)
+    // Browser re-POST after a lost redirect: same client, same code.
+    const retry = store.consume(code, '203.0.113.9')
+    assert.equal(retry.ok, true)
+    assert.equal(retry.ok && retry.retry, true)
+    // A different client replaying the link is still rejected.
+    assert.equal(store.consume(code, '198.51.100.5').ok, false)
+  })
+
+  it('expires the retry grace and rejects reuse afterwards', async () => {
+    const store = createInviteStore({ ttlMs: 60_000, retryGraceMs: 80 })
+    const code = store.issue()
+    assert.equal(store.consume(code, '203.0.113.9').ok, true)
+    await new Promise<void>(resolve => setTimeout(resolve, 120))
+    assert.equal(store.consume(code, '203.0.113.9').ok, false)
+  })
+
+  it('grants no grace to callers that never supplied a client IP', () => {
+    const store = createInviteStore({ retryGraceMs: 60_000 })
+    const code = store.issue()
+    assert.equal(store.consume(code).ok, true)
+    assert.equal(store.consume(code).ok, false)
+  })
+
+  it('returns the bound session id on a same-IP retry', () => {
+    const store = createInviteStore({ retryGraceMs: 60_000 })
+    const code = store.issue()
+    assert.equal(store.consume(code, '203.0.113.9').ok, true)
+    store.bindSession(code, 'sess-1')
+    const retry = store.consume(code, '203.0.113.9')
+    assert.deepEqual(retry, { ok: true, retry: true, sessionId: 'sess-1' })
   })
 })
 

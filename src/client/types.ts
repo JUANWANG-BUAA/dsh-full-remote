@@ -2,6 +2,17 @@
  * types — the control-surface data contracts shared by the API client and
  * the panel components.
  */
+/** One-click Cloudflare quick tunnel state, mirrored from the host. */
+export type TunnelState = 'off' | 'starting' | 'online' | 'error'
+
+export type TunnelStatus = {
+  state: TunnelState
+  /** Live https://*.trycloudflare.com URL while online. */
+  publicUrl?: string
+  /** Progress stage while starting ('resolving' | 'downloading' | 'connecting'); an error token when state is 'error'. */
+  detail?: string
+}
+
 export type ProxyStatus = {
   enabled: boolean
   running: boolean
@@ -16,6 +27,7 @@ export type ProxyStatus = {
   auditLog?: boolean
   trustForwardedFor?: boolean
   reason?: string
+  tunnel?: TunnelStatus
 }
 
 export type SessionStatus = 'active' | 'pending'
@@ -84,4 +96,6 @@ export type ProxyApi = {
   invite: (publicBase?: string) => Promise<InviteResult>
   audit: (limit?: number, event?: string) => Promise<AuditResult>
   exportAudit: (event?: string) => Promise<Blob>
+  startTunnel: () => Promise<ProxyStatus>
+  stopTunnel: () => Promise<ProxyStatus>
 }

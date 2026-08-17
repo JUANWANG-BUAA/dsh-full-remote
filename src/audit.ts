@@ -10,6 +10,7 @@
  */
 import { appendFile, mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { asError } from './http-util.ts'
 
 /** Default rotation threshold for the append-only audit log. */
 const DEFAULT_MAX_AUDIT_BYTES = 8 * 1024 * 1024
@@ -57,7 +58,7 @@ export function createAuditLog(options: {
         }
         await appendFile(path, line, { encoding: 'utf8', mode: 0o600 })
       } catch (error) {
-        warn?.(error instanceof Error ? error : new Error(String(error)))
+        warn?.(asError(error))
       }
     })
     return queue
@@ -76,6 +77,21 @@ export function defaultAuditPath(statePath: string) {
 }
 
 const TAIL_READ_BYTES = 64 * 1024
+
+function parseJsonl(text: string, event?: string): unknown[] {
+  const events: unknown[] = []
+  for (const line of text.split('\n')) {
+    if (line.trim() === '') continue
+    try {
+      const parsed = JSON.parse(line) as { event?: unknown }
+      if (event !== undefined && parsed.event !== event) continue
+      events.push(parsed)
+    } catch {
+      // Skip malformed lines; the audit log is append-only and best-effort.
+    }
+  }
+  return events
+}
 
 /**
  * Read the most recent audit events from a JSONL audit file.
@@ -107,20 +123,9 @@ export async function readAuditLog(
       if (firstNewline === -1) return []
       text = text.slice(firstNewline + 1)
     }
-    const lines = text.split('\n').filter(line => line.trim() !== '')
-    const events: unknown[] = []
     // Filter first, then take the newest `limit`: slicing raw lines first
     // would hide matching events that sit just beyond the last `limit` lines.
-    for (const line of lines) {
-      try {
-        const parsed = JSON.parse(line) as { event?: unknown }
-        if (event !== undefined && parsed.event !== event) continue
-        events.push(parsed)
-      } catch {
-        // Skip malformed lines; the audit log is append-only and best-effort.
-      }
-    }
-    return events.slice(-limit)
+    return parseJsonl(text, event).slice(-limit)
   } catch {
     return []
   } finally {
@@ -141,19 +146,7 @@ export async function readAuditLogAll(
 ): Promise<unknown[]> {
   if (path === undefined || path === '') return []
   try {
-    const text = await readFile(path, 'utf8')
-    const events: unknown[] = []
-    for (const line of text.split('\n')) {
-      if (line.trim() === '') continue
-      try {
-        const parsed = JSON.parse(line) as { event?: unknown }
-        if (event !== undefined && parsed.event !== event) continue
-        events.push(parsed)
-      } catch {
-        // Skip malformed lines; the audit log is append-only and best-effort.
-      }
-    }
-    return events
+    return parseJsonl(await readFile(path, 'utf8'), event)
   } catch {
     return []
   }

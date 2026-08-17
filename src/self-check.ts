@@ -7,7 +7,7 @@
  * check passed (the method may still 404/400 without a full RPC body).
  */
 import { request as httpRequest } from 'node:http'
-import { rewriteLoopbackAuthority } from './http-util.ts'
+import { rewriteLoopbackAuthority, asError } from './http-util.ts'
 
 const METHOD = 'settings.describe'
 const PATH = `/api/${METHOD}`
@@ -83,7 +83,7 @@ export function probeFence(spec: {
         method: METHOD,
         status: 0,
         rewriteAuthority,
-        detail: error instanceof Error ? error.message : String(error),
+        detail: asError(error).message,
       })
     })
     up.end(body)

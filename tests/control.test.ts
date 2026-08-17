@@ -236,6 +236,41 @@ describe('device session control', () => {
     const afterRevoke = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET', headers: CONTROL })
     assert.deepEqual(afterRevoke.body, { sessions: [] })
   })
+
+  it('surfaces approvalMode on the device home page after the owner approves', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-home-approval-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const runtime = createRuntime(makeContext(), makeConfig(join(dir, 'state.json'), { approvalMode: true }))
+    cleanups.push(() => runtime.dispose())
+    const started = await runtime.start()
+    const proxyPort = Number(new URL(started.target).port)
+    const token = await runtime.token()
+    const login = await http({
+      port: proxyPort,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    assert.equal(login.status, 303)
+    const listed = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET', headers: CONTROL })
+    const id = (listed.body as { sessions: Array<{ id: string }> }).sessions[0].id
+    await call(runtime, {
+      path: '/dsh-reverse-proxy/sessions/approve',
+      method: 'POST',
+      headers: { ...CONTROL, 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    const raw = login.headers['set-cookie']
+    const cookie = (Array.isArray(raw) ? raw[0] : raw)!.split(';', 1)[0]
+    const home = await http({
+      port: proxyPort,
+      path: '/_dsh_reverse_proxy/home',
+      headers: { cookie },
+    })
+    assert.equal(home.status, 200)
+    assert.match(home.body, /需主人审批/)
+  })
 })
 
 describe('runtime control surface', () => {
@@ -469,6 +504,7 @@ describe('runtime control surface', () => {
       body: '{not-json',
     })
     assert.equal(malformed.status, 400)
+    assert.equal((malformed.body as { error: string }).error, 'invalid-request')
   })
 
   it('answers unknown paths with 404 and refuses to restart after dispose', async () => {
@@ -596,5 +632,87 @@ describe('audit log viewer', () => {
     const limitedBody = limited.body as { events: Array<{ event: string }> }
     assert.equal(limitedBody.events.length, 1)
     assert.equal(limitedBody.events[0].event, 'login.ok')
+  })
+})
+
+describe('one-click tunnel control', () => {
+  const fakeTunnel = (calls: string[]) => {
+    let state: 'off' | 'starting' = 'off'
+    return {
+      status: () => ({ state }),
+      start: async () => { calls.push('start'); state = 'starting'; return { state } },
+      stop: async () => { calls.push('stop'); state = 'off'; return { state } },
+    }
+  }
+
+  it('refuses to start the tunnel while the proxy is stopped', async () => {
+    const { runtime } = await makeRuntime()
+    const res = await call(runtime, { path: '/dsh-reverse-proxy/tunnel/start', method: 'POST', headers: CONTROL })
+    assert.equal(res.status, 409)
+    assert.equal((res.body as { error: string }).error, 'not-running')
+  })
+
+  it('starts and stops the tunnel through the control routes and reports it in status', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-tunnel-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const stateFile = join(dir, 'state.json')
+    const calls: string[] = []
+    const runtime = createRuntime(makeContext(), makeConfig(stateFile), {
+      createTunnel: () => fakeTunnel(calls),
+    })
+    cleanups.push(() => runtime.dispose())
+    await runtime.start()
+
+    const started = await call(runtime, { path: '/dsh-reverse-proxy/tunnel/start', method: 'POST', headers: CONTROL })
+    assert.equal(started.status, 200)
+    assert.equal((started.body as { tunnel: { state: string } }).tunnel.state, 'starting')
+
+    const status = await call(runtime, { path: '/dsh-reverse-proxy/status', headers: CONTROL })
+    assert.equal((status.body as { tunnel: { state: string } }).tunnel.state, 'starting')
+
+    const stopped = await call(runtime, { path: '/dsh-reverse-proxy/tunnel/stop', method: 'POST', headers: CONTROL })
+    assert.equal(stopped.status, 200)
+    assert.equal((stopped.body as { tunnel: { state: string } }).tunnel.state, 'off')
+    assert.deepEqual(calls, ['start', 'stop'])
+  })
+
+  it('rejects the tunnel when the proxy runs with local TLS', async () => {
+    const { fileURLToPath } = await import('node:url')
+    const cert = fileURLToPath(new URL('./fixtures/tls-cert.pem', import.meta.url))
+    const key = fileURLToPath(new URL('./fixtures/tls-key.pem', import.meta.url))
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-tunnel-tls-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const runtime = createRuntime(makeContext(), makeConfig(join(dir, 'state.json'), {
+      tlsCertFile: cert,
+      tlsKeyFile: key,
+    }), { createTunnel: () => fakeTunnel([]) })
+    cleanups.push(() => runtime.dispose())
+    const started = await runtime.start()
+    assert.equal(started.running, true)
+
+    const res = await call(runtime, { path: '/dsh-reverse-proxy/tunnel/start', method: 'POST', headers: CONTROL })
+    assert.equal(res.status, 400)
+    assert.equal((res.body as { error: string }).error, 'tls-unsupported')
+  })
+
+  it('requires the control header for tunnel routes', async () => {
+    const { runtime } = await makeRuntime()
+    const bare = await call(runtime, { path: '/dsh-reverse-proxy/tunnel/stop', method: 'POST' })
+    assert.equal(bare.status, 403)
+  })
+
+  it('restarts a live tunnel after rotating the token', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-tunnel-rotate-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const calls: string[] = []
+    const runtime = createRuntime(makeContext(), makeConfig(join(dir, 'state.json')), {
+      createTunnel: () => fakeTunnel(calls),
+    })
+    cleanups.push(() => runtime.dispose())
+    await runtime.start()
+    const started = await call(runtime, { path: '/dsh-reverse-proxy/tunnel/start', method: 'POST', headers: CONTROL })
+    assert.equal(started.status, 200)
+    await runtime.rotateToken()
+    assert.deepEqual(calls, ['start', 'stop', 'start'])
   })
 })

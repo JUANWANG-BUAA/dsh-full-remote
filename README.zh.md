@@ -74,10 +74,24 @@ flowchart LR
 - 192 位访问令牌，状态文件权限 `0600`，在本地面板查看与轮换
 - 按设备会话：每次登录生成独立的设备凭据，持久化时只保存其哈希；可在面板中重命名或撤销设备，并查看每台设备的来源 IP（登录时与最近活跃）
 - 可选首访审批：新设备停留在等待页，直至本机批准
-- 手机邀请：二维码或一次性链接（单次有效，15 分钟过期），链接中不含长期令牌
+- 手机邀请：二维码或一次性链接（单次有效、15 分钟过期）。同 IP 60 秒内的浏览器自动重试会沿用同一台设备会话，避免隧道抖动丢响应时把手机卡进令牌页，也不会在设备列表里多出一条。链接中不含长期令牌
 - 登录失败计入固定延时，并按 IP 累计锁定
 - 可选 CIDR 白名单，限制远程 IP
 - 可选 `trustForwardedFor`：在可信本地隧道后使用真实客户端 IP 进行 CIDR / 限流 / 审计，优先 `CF-Connecting-IP`，否则取 `X-Forwarded-For` 最右值；回环或非法的转发值一律不信任，因此在非 Cloudflare 边缘上客户端自行注入的 `CF-Connecting-IP` 无法冒充回环地址
+
+### 一键公网隧道（Cloudflare 快速隧道）
+
+- 面板内一键启动 cloudflared 快速隧道（免费、免账号），自动给出 `https://…trycloudflare.com` 地址，免公网 IP、免端口映射
+- 二进制三级获取：`cloudflaredPath` → PATH 探测 → 钉版本（2026.8.2）+ 内嵌 SHA256 校验的按需下载缓存；校验失败即丢弃
+- 隧道在线期间转发头信任动态生效（限流 / CIDR / 审计按真实客户端 IP），隧道关闭立即还原；隧道指向代理监听端口，令牌门 / 审批 / 审计全部照旧生效
+- 邀请自动使用隧道地址：开隧道 → 生成邀请 → 手机扫码直入（面板显示且可手动覆盖 Origin）
+- 与本地 TLS 互斥（Cloudflare 边缘已提供 HTTPS）；快速隧道地址每次启动随机变化，定位是临时分享 / 救急
+
+### 设备主页（可选落点）
+
+- 登录页第二个按钮「设备主页」进入 `/_dsh_reverse_proxy/home`：查看本设备信息（名称 / 登录 IP / 登录时间 / 会话到期 / 安全状态）
+- 给自己设备改名（主人审批列表里看到「小王的 iPhone」而非「Safari on iOS」）、自助登出（只吊销本设备会话）
+- 登录默认落点仍为 `/`，原有流程不变
 
 ### 运维
 
@@ -148,7 +162,7 @@ ngrok http 3081
 
 不要把 `127.0.0.1` 写入 Origin。那是运行 Harness 的机器；手机扫码后会访问手机自己的回环地址，连不上本机代理。
 
-然后点击 **生成邀请**。扫码或打开链接后，登录页会自动提交。链接单次有效、15 分钟过期，不含长期令牌。只有代理运行时才能生成邀请。
+然后点击 **生成邀请**。扫码或打开链接后，登录页会自动提交。链接单次有效、15 分钟过期；同 IP 60 秒内的自动重试会沿用同一台设备会话。不含长期令牌。只有代理运行时才能生成邀请。
 
 ### 升级
 
@@ -158,18 +172,19 @@ ngrok http 3081
 dsh plugin --profile web update --latest dsh-full-remote
 ```
 
-然后重启 `dsh web`。`--latest` 会忽略现有版本范围，装上最新版并改写 `package.json`。指定某一版用 `dsh plugin --profile web update dsh-full-remote@0.3.0`。
+然后重启 `dsh web`。`--latest` 会忽略现有版本范围，装上最新版并改写 `package.json`。指定某一版用 `dsh plugin --profile web update dsh-full-remote@0.3.1`。
 
 ## 截图
 
 ### 桌面端
 
-完整设置页一图览：运行状态与栅栏自检、隧道目标、一次性邀请二维码、
-发布地址、访问令牌、带来源 IP 的已连接设备，以及审计查看器。
+完整设置页一图览：运行状态与栅栏自检、发布地址、推荐用法、隧道目标、
+一键快速隧道、一次性邀请二维码、访问令牌、带来源 IP 的已连接设备
+（行内改名），以及审计查看器。
 
 ![反向代理控制面板](./docs/screenshots/preview-desktop.png)
 
-| 一次性手机邀请（二维码） | 带来源 IP 的已连接设备 |
+| 一次性手机邀请（二维码） | 行内改名的已连接设备 |
 |---|---|
 | ![手机邀请](./docs/screenshots/preview-invite.png) | ![已连接设备](./docs/screenshots/preview-devices.png) |
 
@@ -178,6 +193,14 @@ dsh plugin --profile web update --latest dsh-full-remote
 | 手机登录页 | 移动控制面板 | 手机添加工作区 |
 |---|---|---|
 | ![移动端登录](./docs/screenshots/preview-mobile-login.png) | ![移动面板](./docs/screenshots/preview-mobile-panel.png) | ![手机工作区](./docs/screenshots/preview-mobile.png) |
+
+### 门面页
+
+令牌登录（带可选的 **设备主页** 按钮）、设备主页本身，以及首次访问的审批等待页。
+
+| 设备主页 | 等待审批 |
+|---|---|
+| ![设备主页](./docs/screenshots/preview-home.png) | ![等待审批](./docs/screenshots/preview-wait.png) |
 
 ## 常用配置
 
@@ -197,6 +220,7 @@ dsh plugin --profile web update --latest dsh-full-remote
     sessionIdleSeconds: 0        # 0 = 关闭；否则按空闲秒数过期
     auditLog: true
     allowTokenRead: true         # false：令牌只在轮换时返回
+    cloudflaredPath: ""          # 可选：一键隧道用的 cloudflared 路径
     tlsCertFile: ""              # 可选本地 HTTPS
     tlsKeyFile: ""
 ```
@@ -228,6 +252,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 - 默认 `allowTokenRead: true` 时，`GET /token` 通过回环 HTTP 提供，任何能发送控制头的本机进程均可读取。设为 `false` 后，令牌仅在轮换时返回。
 - 默认情况下，运行在本机的隧道会让所有远程客户端在代理看来都是 `127.0.0.1`。因此 `allowedCidrs` 与按 IP 登录锁定只对“隧道整体”生效；如需按真实客户端 IP 生效，请在可信本地边缘后设置 `trustForwardedFor: true`。
 - 插件以自身的访问控制层替代 Harness 的远程信任校验，该层若存在缺陷，影响严重。若 Harness 未来提供官方远程访问能力，应重新评估本插件的定位。
+- 一键快速隧道：URL 每次启动随机变化（旧邀请与登录失效）、官方定位是临时/测试用途，非 HTML 大流量内容受 Cloudflare 条款限制；首次使用需按需下载 cloudflared（18–52 MB，取决于平台），Windows ARM64 没有官方构建（可自行安装后填 `cloudflaredPath`）。日常稳定入口仍建议自备 frp / ngrok / 命名隧道。
 
 ## 开发
 
@@ -235,7 +260,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.3.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.1.tgz
 ```
 
 git 安装会执行 `prepare` 构建，pnpm ≥ 10 需要放行：

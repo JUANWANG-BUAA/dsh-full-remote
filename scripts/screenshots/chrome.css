@@ -1,0 +1,121 @@
+/* Harness-like tokens so the settings section matches the in-app panel. */
+:root {
+  color-scheme: dark;
+  --dsw-alias-label-primary: #f4f6f8;
+  --dsw-alias-label-secondary: #c5ccd6;
+  --dsw-alias-label-tertiary: #8b95a3;
+  --dsw-alias-label-dimmed: #6d7682;
+  --dsw-alias-bg-layer-1: #111317;
+  --dsw-alias-bg-layer-2: #171a1f;
+  --dsw-alias-bg-layer-3: #1e2229;
+  --dsw-alias-border-l2: #2c323c;
+  --dsw-alias-interactive-bg-hover: #2a3038;
+  --dsw-alias-state-success-primary: #3dd68c;
+  --dsw-alias-state-error-primary: #f07178;
+  --dsw-alias-state-warn-label: #e6b450;
+  --dsw-alias-brand-primary: #6aa8d8;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+}
+
+body[data-chrome='off'] {
+  padding: 24px 28px 40px;
+}
+
+.settings {
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr);
+  min-height: 100vh;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 18px 12px;
+  border-right: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.nav strong {
+  display: block;
+  margin: 0 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.nav button {
+  appearance: none;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.nav button[data-active] {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+}
+
+.toolbar span,
+.toolbar b {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.toolbar b {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+}
+
+.body {
+  padding: 20px 24px 40px;
+}
+
+body[data-narrow='true'] .settings {
+  grid-template-columns: 1fr;
+}
+
+body[data-narrow='true'] .nav,
+body[data-narrow='true'] .toolbar {
+  display: none;
+}
+
+body[data-narrow='true'] .body {
+  padding: 16px;
+}

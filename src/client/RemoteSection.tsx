@@ -6,21 +6,18 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { AuditResult, InviteResult, ProxyApi, ProxyStatus, SelfCheckResult, SessionInfo } from './types.ts'
+import type { AuditResult, InviteResult, ProxyApi, ProxyStatus, SelfCheckResult, SessionInfo, TunnelStatus } from './types.ts'
 import { DevicesSection } from './DevicesSection.tsx'
 import type { ReverseProxyTranslate } from './i18n.ts'
 import { PanelToast } from './PanelToast.tsx'
 import { ReverseProxyIcon } from './ReverseProxyIcon.tsx'
-import { toastFromCaught, toastFromReason, toastFromStatus, type PanelToastModel, type ToastIntent } from './toast.ts'
+import { toastFromCaught, toastFromReason, toastFromStatus, toastFromTunnelDetail, type PanelToastModel, type ToastIntent } from './toast.ts'
+import { isLoopbackHost, isWildcardHost } from '../hosts.ts'
 import css from './remote.module.css'
 
 export type RemoteSectionProps =
   & PropsRuntime<'settings.section'>
   & { api: ProxyApi, t: ReverseProxyTranslate }
-
-function isWildcardListen(host: string) {
-  return host === '0.0.0.0' || host === '::' || host === '::0' || host === '[::]'
-}
 
 /** Only render QR SVG that looks like our own generator output. */
 function safeQrSvg(svg: string | undefined) {
@@ -30,10 +27,32 @@ function safeQrSvg(svg: string | undefined) {
   return trimmed
 }
 
+function isLoopbackHttpUrl(url: string) {
+  try {
+    const parsed = new URL(url)
+    return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && isLoopbackHost(parsed.hostname)
+  } catch {
+    return false
+  }
+}
+
+function CopyField(props: {
+  value: string
+  action: string
+  disabled?: boolean
+  onCopy: () => void
+}) {
+  return (
+    <button className={css.copyField} type="button" disabled={props.disabled} onClick={props.onCopy}>
+      <code>{props.value}</code><span>{props.action}</span>
+    </button>
+  )
+}
+
 export function RemoteSection({ api, t }: RemoteSectionProps) {
   const [status, setStatus] = useState<ProxyStatus>()
   const [accessToken, setAccessToken] = useState<string>()
-  const [busyKind, setBusyKind] = useState<'start' | 'stop' | 'listen' | 'token' | 'check' | 'invite' | 'device' | undefined>()
+  const [busyKind, setBusyKind] = useState<'start' | 'stop' | 'listen' | 'token' | 'check' | 'invite' | 'device' | 'tunnel' | undefined>()
   const busy = busyKind !== undefined
   const [toast, setToast] = useState<(PanelToastModel & { id: number })>()
   const [listenHost, setListenHost] = useState('')
@@ -49,6 +68,8 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
   const toastSeq = useRef(0)
   const mounted = useRef(true)
   const sessionsEpoch = useRef(0)
+  /** Previous tunnel snapshot so polling toasts transitions exactly once. */
+  const prevTunnelRef = useRef<TunnelStatus | undefined>(undefined)
   const showToast = (model: PanelToastModel) => {
     if (!mounted.current) return
     toastSeq.current += 1
@@ -114,6 +135,34 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
     }
   }, [api, t])
 
+  // Follow the tunnel while it is starting or online: starting → online gets
+  // a success toast, and a later exit/error surfaces instead of going quiet.
+  useEffect(() => {
+    const state = status?.tunnel?.state
+    if (state !== 'starting' && state !== 'online') return
+    const timer = setInterval(() => {
+      void api.status().then(
+        next => {
+          if (!mounted.current) return
+          const prev = prevTunnelRef.current
+          applyTunnelStatus(next)
+          const tunnel = next.tunnel
+          if (tunnel === undefined) return
+          if (tunnel.state === 'error' && prev?.state !== 'error') {
+            const model = tunnel.detail === undefined ? undefined : toastFromTunnelDetail(tunnel.detail, t)
+            showToast(model ?? { kind: 'error', text: t('tunnel.state.error') })
+          } else if (tunnel.state === 'online' && prev?.state !== 'online' && tunnel.publicUrl !== undefined) {
+            showToast({ kind: 'success', text: t('tunnel.toast.online', { url: tunnel.publicUrl }) })
+          }
+        },
+        () => {
+          // transient poll failure: keep the interval while starting
+        },
+      )
+    }, 2000)
+    return () => { clearInterval(timer) }
+  }, [status?.tunnel?.state, api, t])
+
   const applyResult = (next: ProxyStatus, intent: ToastIntent) => {
     if (!mounted.current) return
     setStatus(next)
@@ -125,15 +174,61 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
     showToast(toastFromStatus(next, t, intent))
   }
 
-  const run = async (intent: 'start' | 'stop') => {
-    setBusyKind(intent)
+  const withBusy = async (
+    kind: 'start' | 'stop' | 'listen' | 'token' | 'check' | 'invite' | 'device' | 'tunnel',
+    work: () => Promise<void>,
+  ) => {
+    setBusyKind(kind)
     try {
-      applyResult(await (intent === 'stop' ? api.stop() : api.start()), intent)
+      await work()
     } catch (reason) {
       showToast(toastFromCaught(reason, t))
     } finally {
       if (mounted.current) setBusyKind(undefined)
     }
+  }
+
+  const run = async (intent: 'start' | 'stop') => {
+    await withBusy(intent, async () => {
+      applyResult(await (intent === 'stop' ? api.stop() : api.start()), intent)
+    })
+  }
+
+  const applyTunnelStatus = (next: ProxyStatus) => {
+    if (!mounted.current) return
+    prevTunnelRef.current = next.tunnel
+    setStatus(next)
+    // An invite minted against a dead quick-tunnel URL can no longer connect;
+    // clear it whenever the tunnel leaves starting/online.
+    const tunnel = next.tunnel
+    if (tunnel !== undefined && tunnel.state !== 'starting' && tunnel.state !== 'online') setInvite(undefined)
+  }
+
+  const startTunnel = async () => {
+    await withBusy('tunnel', async () => {
+      // One click from the user's point of view: bring the proxy up first,
+      // then the tunnel. The host refuses a tunnel without a listener anyway.
+      let current = status
+      if (!(current?.running)) {
+        current = await api.start()
+        if (mounted.current) {
+          setStatus(current)
+          setCheck(undefined)
+        }
+        if (!current.running) {
+          showToast(toastFromStatus(current, t, 'start'))
+          return
+        }
+      }
+      applyTunnelStatus(await api.startTunnel())
+    })
+  }
+
+  const stopTunnel = async () => {
+    await withBusy('tunnel', async () => {
+      applyTunnelStatus(await api.stopTunnel())
+      showToast({ kind: 'success', text: t('tunnel.toast.stopped') })
+    })
   }
 
   // Remote browsers run on plain HTTP, an insecure context where the async
@@ -176,20 +271,14 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
   }
 
   const revealToken = async () => {
-    setBusyKind('token')
-    try {
+    await withBusy('token', async () => {
       const token = await api.token()
       if (mounted.current) setAccessToken(token)
-    } catch (reason) {
-      showToast(toastFromCaught(reason, t))
-    } finally {
-      if (mounted.current) setBusyKind(undefined)
-    }
+    })
   }
 
   const rotate = async () => {
-    setBusyKind('token')
-    try {
+    await withBusy('token', async () => {
       const next = await api.rotateToken()
       sessionsEpoch.current += 1
       if (mounted.current) {
@@ -199,11 +288,7 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
       }
       applyResult(next, 'rotate')
       void refreshSessions(sessionsEpoch.current)
-    } catch (reason) {
-      showToast(toastFromCaught(reason, t))
-    } finally {
-      if (mounted.current) setBusyKind(undefined)
-    }
+    })
   }
 
   const applyListen = async () => {
@@ -218,15 +303,10 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
       showToast({ kind: 'error', text: t('error.invalidListen') })
       return
     }
-    setBusyKind('listen')
-    try {
+    await withBusy('listen', async () => {
       if (mounted.current) setInvite(undefined)
       applyResult(await api.setListen(host, port), 'listen')
-    } catch (reason) {
-      showToast(toastFromCaught(reason, t))
-    } finally {
-      if (mounted.current) setBusyKind(undefined)
-    }
+    })
   }
 
   const afterDeviceMutation = async (successKey: 'devices.kicked' | 'devices.approved' | 'devices.rejected' | 'devices.renamed') => {
@@ -237,77 +317,52 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
     if (!ok) showToast({ kind: 'warn', text: t('error.sessionsPoll') })
   }
 
-  const kick = async (id: string) => {
-    setBusyKind('device')
-    try {
-      const result = await api.revokeSession(id)
+  const mutateDevice = async (
+    action: () => Promise<{ ok: boolean }>,
+    successKey: 'devices.kicked' | 'devices.approved' | 'devices.rejected' | 'devices.renamed',
+    failKey: 'error.sessionActionFailed' | 'devices.renameFailed',
+  ) => {
+    await withBusy('device', async () => {
+      const result = await action()
       if (!result.ok) {
-        showToast({ kind: 'error', text: t('error.sessionActionFailed') })
+        showToast({ kind: 'error', text: t(failKey) })
         return
       }
-      await afterDeviceMutation('devices.kicked')
-    } catch (reason) {
-      showToast(toastFromCaught(reason, t))
-    } finally {
-      if (mounted.current) setBusyKind(undefined)
-    }
+      await afterDeviceMutation(successKey)
+    })
   }
 
-  const decide = async (id: string, approve: boolean) => {
-    setBusyKind('device')
-    try {
-      const result = await (approve ? api.approveSession(id) : api.revokeSession(id))
-      if (!result.ok) {
-        showToast({ kind: 'error', text: t('error.sessionActionFailed') })
-        return
-      }
-      await afterDeviceMutation(approve ? 'devices.approved' : 'devices.rejected')
-    } catch (reason) {
-      showToast(toastFromCaught(reason, t))
-    } finally {
-      if (mounted.current) setBusyKind(undefined)
-    }
-  }
+  const kick = (id: string) => mutateDevice(
+    () => api.revokeSession(id),
+    'devices.kicked',
+    'error.sessionActionFailed',
+  )
 
-  const rename = async (id: string, label: string) => {
-    setBusyKind('device')
-    try {
-      const result = await api.renameSession(id, label)
-      if (!result.ok) {
-        showToast({ kind: 'error', text: t('devices.renameFailed') })
-        return
-      }
-      await afterDeviceMutation('devices.renamed')
-    } catch (reason) {
-      showToast(toastFromCaught(reason, t))
-    } finally {
-      if (mounted.current) setBusyKind(undefined)
-    }
-  }
+  const decide = (id: string, approve: boolean) => mutateDevice(
+    () => (approve ? api.approveSession(id) : api.revokeSession(id)),
+    approve ? 'devices.approved' : 'devices.rejected',
+    'error.sessionActionFailed',
+  )
+
+  const rename = (id: string, label: string) => mutateDevice(
+    () => api.renameSession(id, label),
+    'devices.renamed',
+    'devices.renameFailed',
+  )
 
   const runSelfCheck = async () => {
-    setBusyKind('check')
-    try {
+    await withBusy('check', async () => {
       const result = await api.selfCheck()
       if (mounted.current) setCheck(result)
-    } catch (reason) {
-      showToast(toastFromCaught(reason, t))
-    } finally {
-      if (mounted.current) setBusyKind(undefined)
-    }
+    })
   }
 
   const generateInvite = async () => {
-    setBusyKind('invite')
-    try {
+    await withBusy('invite', async () => {
       const base = inviteBase.trim()
       const result = await api.invite(base === '' ? undefined : base)
       if (mounted.current) setInvite(result)
-    } catch (reason) {
-      showToast(toastFromCaught(reason, t))
-    } finally {
-      if (mounted.current) setBusyKind(undefined)
-    }
+    })
   }
 
   const loadAudit = async () => {
@@ -346,10 +401,9 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
 
   const running = status?.running === true
   const statusReady = status !== undefined
-  const wildcard = isWildcardListen(listenHost.trim())
-  const nonLoopback = listenHost.trim() !== ''
-    && !wildcard
-    && !['127.0.0.1', 'localhost', '::1', '[::1]', '::ffff:127.0.0.1'].includes(listenHost.trim())
+  const host = listenHost.trim()
+  const wildcard = isWildcardHost(host)
+  const nonLoopback = host !== '' && !wildcard && !isLoopbackHost(host)
   const startStopLabel = busyKind === 'start' || busyKind === 'stop'
     ? t('busy')
     : running ? t('stop') : t('start')
@@ -376,9 +430,37 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
 
   const extraReachables = (status?.reachables ?? []).filter(url => url !== status?.target)
   const proxyStoppedHint = check !== undefined && statusReady && !running
+  // The recommended at-home entry: a directly connectable LAN URL when one
+  // exists (listen on a LAN IP or a reachable published address).
+  const lanUrl = !statusReady
+    ? undefined
+    : !isLoopbackHttpUrl(status.target)
+      ? status.target
+      : (status.reachables ?? []).find(url => !isLoopbackHttpUrl(url))
+  const tunnelState = status?.tunnel?.state ?? 'off'
+  const tunnelUrl = status?.tunnel?.publicUrl
+  const tunnelOn = tunnelState === 'starting' || tunnelState === 'online'
+  const tunnelBusy = busyKind === 'tunnel'
+  const tunnelStartLabel = tunnelBusy ? t('busy') : tunnelOn ? t('tunnel.oneClick.stop') : t('tunnel.oneClick.start')
+  const tunnelStage = tunnelState === 'starting'
+    ? status?.tunnel?.detail === 'resolving' ? t('tunnel.state.resolving')
+      : status?.tunnel?.detail === 'downloading' ? t('tunnel.state.downloading')
+        : status?.tunnel?.detail === 'connecting' ? t('tunnel.state.connecting') : t('busy')
+    : undefined
+  const tlsBlocksTunnel = status?.tls === true
+  const tunnelHint = tlsBlocksTunnel
+    ? t('tunnel.hint.tlsBlocked')
+    : tunnelState === 'starting'
+      ? tunnelStage
+      : tunnelState === 'online'
+        ? t('tunnel.hint.ephemeral')
+        : tunnelState === 'error'
+          ? t('tunnel.state.error')
+          : !running ? t('tunnel.hint.requiresProxy') : undefined
+  const copyTarget = (url: string) => { void copy(url, t('tunnel.copy'), 'copied.target') }
 
   return (
-    <div className={css.section}>
+    <div className={css.section} data-shot="section">
       <h2 className={css.title}>{t('section.title')}</h2>
       <p className={css.intro}>{t('section.intro')}</p>
 
@@ -386,7 +468,7 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
         <PanelToast key={toast.id} toast={toast} t={t} onDismiss={dismissToast} />
       )}
 
-      <div className={css.hero}>
+      <div className={css.hero} data-shot="hero">
         <div className={css.heroMain}>
           <span className={css.brand} data-online={running ? 'true' : undefined}>
             <ReverseProxyIcon />
@@ -417,7 +499,7 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
       </div>
 
       {check !== undefined && (
-        <section className={css.group}>
+        <section className={css.group} data-shot="check">
           <h3 className={css.groupHead}>{t('check.label')}</h3>
           {fenceDetail !== undefined && (
             <p className={check.fence.ok ? css.hint : css.warn}>{fenceDetail}</p>
@@ -432,86 +514,12 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
           <p className={css.hint}>{check.tls ? t('check.tlsOn') : t('check.tlsOff')}</p>
           <p className={css.hint}>{check.auditLog ? t('check.auditOn') : t('check.auditOff')}</p>
           <p className={css.hint}>{check.trustForwardedFor ? t('check.trustForwardedForOn') : t('check.trustForwardedForOff')}</p>
-          {check.allowTokenRead !== true && <p className={css.hint}>{t('check.tokenReadOff')}</p>}
+          <p className={css.hint}>{check.allowTokenRead ? t('check.tokenReadOn') : t('check.tokenReadOff')}</p>
           {proxyStoppedHint && <p className={css.hint}>{t('check.proxyStopped')}</p>}
         </section>
       )}
 
-      <section className={css.group}>
-        <h3 className={css.groupHead}>{t('tunnel.label')}</h3>
-        <button
-          className={css.copyField}
-          type="button"
-          disabled={status === undefined}
-          onClick={() => { if (status !== undefined) void copy(status.target, t('tunnel.copy'), 'copied.target') }}
-        >
-          <code>{status?.target ?? t('tunnel.loading')}</code>
-          <span>{t('tunnel.copy')}</span>
-        </button>
-        {status?.wildcard === true && status.listen !== undefined && (
-          <p className={css.hint}>{t('tunnel.bound', { bind: `${status.listen.host}:${status.listen.port}` })}</p>
-        )}
-        {extraReachables.length > 0 && (
-          <>
-            <p className={css.hint}>{t('tunnel.reachables')}</p>
-            {extraReachables.map(url => (
-              <button
-                key={url}
-                className={css.copyField}
-                type="button"
-                onClick={() => { void copy(url, t('tunnel.copy'), 'copied.target') }}
-              >
-                <code>{url}</code>
-                <span>{t('tunnel.copy')}</span>
-              </button>
-            ))}
-          </>
-        )}
-      </section>
-
-      <section className={css.group}>
-        <h3 className={css.groupHead}>{t('invite.label')}</h3>
-        <p className={css.hint}>{t('invite.description')}</p>
-        <label className={css.field}>
-          <span>{t('invite.base')}</span>
-          <input
-            className={css.input}
-            value={inviteBase}
-            onChange={event => { setInviteBase(event.target.value) }}
-            placeholder={t('invite.placeholder')}
-            inputMode="url"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-        </label>
-        <div className={css.tokenRow}>
-          <button
-            className={css.secondaryButton}
-            type="button"
-            disabled={busy || (statusReady && !running)}
-            onClick={() => { void generateInvite() }}
-          >{inviteLabel}</button>
-          {invite !== undefined && (
-            <button className={css.secondaryButton} type="button" onClick={() => { void copy(invite.inviteUrl, t('invite.copy'), 'invite.copied') }}>{t('invite.copy')}</button>
-          )}
-        </div>
-        {statusReady && !running && (
-          <p className={css.hint}>{t('invite.requiresRunning')}</p>
-        )}
-        {qrSvg !== undefined && (
-          <div
-            className={css.qr}
-            // SVG is generated by our own qrToSvg / uqr — not user HTML.
-            dangerouslySetInnerHTML={{ __html: qrSvg }}
-          />
-        )}
-        {invite !== undefined && (
-          <p className={css.hint}><code className={css.inviteUrl}>{invite.inviteUrl}</code></p>
-        )}
-      </section>
-
-      <section className={css.group}>
+      <section className={css.group} data-shot="listen">
         <h3 className={css.groupHead}>{t('listen.label')}</h3>
         <p className={css.hint}>{t('listen.description')}</p>
         <div className={css.listenRow}>
@@ -549,7 +557,108 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
         {nonLoopback && <p className={css.warn}>{t('listen.warn')}</p>}
       </section>
 
-      <section className={css.group}>
+      <section className={css.group} data-shot="guide">
+        <h3 className={css.groupHead}>{t('guide.label')}</h3>
+        <p className={css.hint}>{t('guide.description')}</p>
+        <p className={css.hint}>{lanUrl !== undefined ? t('guide.wifi', { url: lanUrl }) : t('guide.wifiNone')}</p>
+        <p className={css.hint}>{t('guide.outside')}</p>
+        <p className={css.warn}>{t('guide.quick')}</p>
+      </section>
+
+      <section className={css.group} data-shot="tunnel">
+        <h3 className={css.groupHead}>{t('tunnel.label')}</h3>
+        <CopyField
+          value={status?.target ?? t('tunnel.loading')}
+          action={t('tunnel.copy')}
+          disabled={status === undefined}
+          onCopy={() => { if (status !== undefined) copyTarget(status.target) }}
+        />
+        {status?.wildcard === true && status.listen !== undefined && (
+          <p className={css.hint}>{t('tunnel.bound', { bind: `${status.listen.host}:${status.listen.port}` })}</p>
+        )}
+        {lanUrl !== undefined && (
+          <p className={css.hint}>{t('tunnel.target.recommended')}</p>
+        )}
+        {extraReachables.length > 0 && (
+          <>
+            <p className={css.hint}>{t('tunnel.reachables')}</p>
+            {extraReachables.map(url => (
+              <CopyField key={url} value={url} action={t('tunnel.copy')} onCopy={() => { copyTarget(url) }} />
+            ))}
+          </>
+        )}
+      </section>
+
+      <section className={css.group} data-shot="oneClick">
+        <h3 className={css.groupHead}>{t('tunnel.oneClick.label')} <span className={css.badge}>{t('tunnel.oneClick.badge')}</span></h3>
+        <p className={css.hint}>{t('tunnel.oneClick.description')}</p>
+        <div className={css.tokenRow}>
+          <button
+            className={tunnelOn ? css.dangerButton : css.secondaryButton}
+            type="button"
+            disabled={busy || tlsBlocksTunnel}
+            onClick={() => { void (tunnelOn ? stopTunnel() : startTunnel()) }}
+          >
+            {tunnelStartLabel}
+          </button>
+          {tunnelState === 'online' && tunnelUrl !== undefined && (
+            <CopyField value={tunnelUrl} action={t('tunnel.copy')} onCopy={() => { copyTarget(tunnelUrl) }} />
+          )}
+        </div>
+        {tunnelHint !== undefined && (
+          <p className={tunnelState === 'error' || tlsBlocksTunnel ? css.warn : css.hint}>{tunnelHint}</p>
+        )}
+      </section>
+
+      <section className={css.group} data-shot="invite">
+        <h3 className={css.groupHead}>{t('invite.label')}</h3>
+        <p className={css.hint}>{t('invite.description')}</p>
+        <label className={css.field}>
+          <span>{t('invite.base')}</span>
+          <input
+            className={css.input}
+            value={inviteBase}
+            onChange={event => { setInviteBase(event.target.value) }}
+            placeholder={t('invite.placeholder')}
+            inputMode="url"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+        </label>
+        <div className={css.tokenRow}>
+          <button
+            className={css.secondaryButton}
+            type="button"
+            disabled={busy || (statusReady && !running)}
+            onClick={() => { void generateInvite() }}
+          >{inviteLabel}</button>
+          {invite !== undefined && (
+            <button className={css.secondaryButton} type="button" onClick={() => { void copy(invite.inviteUrl, t('invite.copy'), 'invite.copied') }}>{t('invite.copy')}</button>
+          )}
+        </div>
+        {statusReady && !running && (
+          <p className={css.hint}>{t('invite.requiresRunning')}</p>
+        )}
+        {tunnelState === 'online' && (
+          <p className={css.hint}>{t('tunnel.hint.inviteUsesTunnel')}</p>
+        )}
+        {tunnelState === 'off' && statusReady && running && (
+          <p className={css.hint}>{t('invite.lanHint')}</p>
+        )}
+        {qrSvg !== undefined && (
+          <div
+            className={css.qr}
+            // SVG is generated by our own qrToSvg / uqr — not user HTML.
+            dangerouslySetInnerHTML={{ __html: qrSvg }}
+          />
+        )}
+        {invite !== undefined && (
+          <p className={css.hint}><code className={css.inviteUrl}>{invite.inviteUrl}</code></p>
+        )}
+      </section>
+
+      <section className={css.group} data-shot="token">
         <h3 className={css.groupHead}>{t('token.label')}</h3>
         <p className={css.hint}>{t('token.description')}</p>
         {accessToken === undefined ? (
@@ -558,9 +667,7 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
           </button>
         ) : (
           <div className={css.tokenRow}>
-            <button className={css.copyField} type="button" onClick={() => { void copy(accessToken, t('token.copyLabel'), 'copied.token') }}>
-              <code>{accessToken}</code><span>{t('tunnel.copy')}</span>
-            </button>
+            <CopyField value={accessToken} action={t('tunnel.copy')} onCopy={() => { void copy(accessToken, t('token.copyLabel'), 'copied.token') }} />
             <button className={css.textButton} type="button" disabled={busy} onClick={() => { void rotate() }}>
               {busyKind === 'token' ? t('busy') : t('token.rotate')}
             </button>
@@ -578,47 +685,51 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
         onRename={(id, label) => { void rename(id, label) }}
       />
 
-      <section className={css.group}>
+      <section className={css.group} data-shot="audit">
         <h3 className={css.groupHead}>{t('audit.label')}</h3>
         <p className={css.hint}>{t('audit.description')}</p>
-        <label className={css.field}>
-          <span>{t('audit.filter')}</span>
-          <input
-            className={css.input}
-            value={auditFilter}
-            onChange={event => { setAuditFilter(event.target.value) }}
-            placeholder={t('audit.filterPlaceholder')}
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-        </label>
-        <label className={css.field}>
-          <span>{t('audit.limit')}</span>
-          <input
-            className={css.input}
-            value={auditLimit}
-            onChange={event => { setAuditLimit(event.target.value.replace(/[^0-9]/g, '')) }}
-            inputMode="numeric"
-            placeholder="50"
-          />
-        </label>
-        <button
-          className={css.secondaryButton}
-          type="button"
-          disabled={busy || auditLoading}
-          onClick={() => { void loadAudit() }}
-        >
-          {auditLoading ? t('busy') : t('audit.load')}
-        </button>
-        <button
-          className={css.secondaryButton}
-          type="button"
-          disabled={busy || auditLoading}
-          onClick={() => { void exportAudit() }}
-        >
-          {t('audit.export')}
-        </button>
+        <div className={css.auditRow}>
+          <label className={css.field}>
+            <span>{t('audit.filter')}</span>
+            <input
+              className={css.input}
+              value={auditFilter}
+              onChange={event => { setAuditFilter(event.target.value) }}
+              placeholder={t('audit.filterPlaceholder')}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+          </label>
+          <label className={css.field}>
+            <span>{t('audit.limit')}</span>
+            <input
+              className={css.input}
+              value={auditLimit}
+              onChange={event => { setAuditLimit(event.target.value.replace(/[^0-9]/g, '')) }}
+              inputMode="numeric"
+              placeholder="50"
+            />
+          </label>
+        </div>
+        <div className={css.auditActions}>
+          <button
+            className={css.secondaryButton}
+            type="button"
+            disabled={busy || auditLoading}
+            onClick={() => { void loadAudit() }}
+          >
+            {auditLoading ? t('busy') : t('audit.load')}
+          </button>
+          <button
+            className={css.secondaryButton}
+            type="button"
+            disabled={busy || auditLoading}
+            onClick={() => { void exportAudit() }}
+          >
+            {t('audit.export')}
+          </button>
+        </div>
         {audit !== undefined && !audit.enabled && <p className={css.warn}>{t('audit.disabled')}</p>}
         {audit !== undefined && audit.enabled && audit.events.length === 0 && (
           <p className={css.hint}>{t('audit.empty')}</p>

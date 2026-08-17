@@ -3,6 +3,77 @@
 All notable changes to dsh-full-remote (formerly dsh-reverse-proxy) are
 documented in this file.
 
+## Unreleased
+
+## 0.3.1 (2026-08-18)
+
+### Added
+
+- One-click Cloudflare quick tunnel (Settings → Reverse proxy): resolves a
+  cloudflared binary via `cloudflaredPath` → PATH → a pinned,
+  SHA256-verified download cache (release `2026.8.2`; darwin tgz, linux
+  bare binaries, windows exe), then runs `cloudflared tunnel --url` in
+  front of the proxy listener. The token gate, approval, CIDR allowlist
+  and audit all keep applying. Quick-tunnel URLs are random per start, so
+  the tunnel is a session-scoped opt-in — it is never persisted or
+  auto-restored.
+- While the tunnel is active, forwarding-header trust
+  (`trustForwardedFor` / `trustForwardedProto`) is enabled dynamically
+  so tunnel users keep per-client IPs in rate limiting, CIDR and audit;
+  it reverts the moment the tunnel stops. The proxy still only trusts
+  forwarding headers from loopback peers.
+- Tunnel-aware invite fallback: `publicBase ?? tunnel URL ?? local
+  target` — open the tunnel, generate the QR, scan on the phone.
+- Local TLS and the quick tunnel are mutually exclusive
+  (`tls-unsupported`); tunnel start/stop/error events are audited; the
+  tunnel process is torn down on stop, listen-address change and dispose.
+- Invite retry grace: after a successful invite consume, the same code is
+  accepted again only from the same remote IP within 60 seconds, so a flaky
+  tunnel that drops the login redirect cannot deadlock the phone into the
+  token form. The retry reuses the original device session (it does not
+  mint a second one). Any other reuse stays rejected and the audit keeps
+  the `via=invite` trail.
+- Invite failure copy now tells the user they may already be signed in and
+  to open the home page directly, instead of silently degrading to the
+  token form.
+- Opt-in device home page at `/_dsh_reverse_proxy/home`: session facts
+  (device label, login IP/time, expiry estimate, security posture),
+  self-rename and self-logout (`POST /_dsh_reverse_proxy/logout`
+  revokes only the signed-in device and clears its cookie; audited as
+  `session.logout`). Login still lands on `/` by default — the home
+  page is reachable from a secondary button on the login form or a
+  direct visit.
+
+### Changed
+
+- Control-surface HTTP dispatch is a route table with a single auth gate,
+  so a new route cannot ship without the loopback Origin / control-header
+  check. Host classification (`isLoopbackHost` / `isWildcardHost`) is
+  shared by the host, the settings page, and the settings-persistence wrap.
+- Control-surface JSON bodies: malformed JSON is still `400
+  invalid-request`; unexpected handler throws become `500 action-failed`
+  instead of being reported as a client error.
+- Device rename on the settings page uses an inline field (Save / Cancel),
+  not `window.prompt`.
+- Self-check always reports whether standing token reads are on or off.
+- `RuntimeStatus` no longer carries a constant `authenticated: true` field.
+- The npm tarball now ships `docs/screenshots/*` so the README gallery
+  renders on npm, not only on GitHub.
+
+### Fixed
+
+- Wait-page poll script embeds the status URL and copy via JSON (JavaScript
+  context), not HTML escaping.
+- Wait-status responses serialize `session.status` with `JSON.stringify`.
+- Settings page loopback/wildcard checks now follow the same 127/8 and
+  IPv4-mapped rules as the host (e.g. `127.0.0.2` is loopback).
+- Invite retry no longer creates a second device; kicking the device
+  during the grace window cannot be undone by re-POSTing the invite.
+- README / npm screenshot gallery recaptured against the current settings
+  page (listen address first, recommended-usage guide, one-click tunnel,
+  token-read self-check, inline device rename) plus the login secondary
+  button, device home, and approval wait page.
+
 ## 0.3.0 (2026-08-17)
 
 ### Added

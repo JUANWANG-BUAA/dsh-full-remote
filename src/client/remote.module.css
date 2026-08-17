@@ -77,8 +77,6 @@
   font-weight: 500;
 }
 
-.hero > .primaryButton,
-.hero > .dangerButton,
 .heroActions .primaryButton,
 .heroActions .dangerButton,
 .heroActions .secondaryButton {
@@ -124,6 +122,20 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--dsw-alias-label-tertiary);
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-warn-label, #c48a00) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-label, #c48a00) 14%, transparent);
+  color: var(--dsw-alias-state-warn-label, #8a5a00);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  vertical-align: 1px;
 }
 
 .hint {
@@ -272,6 +284,7 @@
 
 .tokenRow {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   min-width: 0;
@@ -384,7 +397,8 @@ button:disabled {
 
 .deviceItem {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
@@ -438,6 +452,33 @@ button:disabled {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.deviceRename {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: min(100%, 220px);
+}
+
+.deviceRename .input {
+  flex: 1;
+  min-width: 10em;
+}
+
+.auditRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px;
+  gap: 10px;
+  align-items: end;
+}
+
+.auditActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .auditList {
@@ -485,9 +526,14 @@ button:disabled {
     flex-wrap: wrap;
   }
 
-  .hero > .primaryButton,
-  .hero > .dangerButton {
+  .heroActions {
     width: 100%;
+  }
+
+  .heroActions .primaryButton,
+  .heroActions .dangerButton,
+  .heroActions .secondaryButton {
+    flex: 1 1 auto;
   }
 
   .listenRow {
@@ -499,7 +545,17 @@ button:disabled {
     width: 100%;
   }
 
-  .tokenRow {
-    flex-wrap: wrap;
+  .deviceActions {
+    width: 100%;
+    justify-content: flex-end;
+    padding-top: 0;
+  }
+
+  .deviceRename {
+    width: 100%;
+  }
+
+  .auditRow {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

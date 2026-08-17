@@ -134,6 +134,20 @@ describe('session store', () => {
     assert.equal(store.list().length, 0)
   })
 
+  it('reissue rotates the secret but keeps one device record', () => {
+    const store = createSessionStore()
+    const session = store.login({ userAgent: 'Chrome/126', ip: '203.0.113.9' })
+    const oldCookie = encodeSessionCookie(session.id, session.secret)
+    const next = store.reissue(session.id, '198.51.100.2')
+    assert.notEqual(next, undefined)
+    assert.equal(next!.id, session.id)
+    assert.equal(store.list().length, 1)
+    assert.equal(store.validate(oldCookie), undefined)
+    assert.equal(store.validate(encodeSessionCookie(next!.id, next!.secret))?.id, session.id)
+    assert.equal(store.list()[0].lastSeenIp, '198.51.100.2')
+    assert.equal(store.reissue('missing'), undefined)
+  })
+
   it('records login and last-seen IPs and carries them through persistence', () => {
     const store = createSessionStore()
     const session = store.login({ userAgent: 'Chrome/126', ip: '203.0.113.9' })

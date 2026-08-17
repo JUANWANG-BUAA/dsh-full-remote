@@ -83,9 +83,38 @@ export function toastFromCaught(error: unknown, t: ReverseProxyTranslate): Panel
   if (message === 'invalid-request') return { kind: 'error', text: t('error.invalidRequest') }
   if (message === 'invalid-base') return { kind: 'error', text: t('error.invalidInviteBase') }
   if (message === 'not-running') return { kind: 'error', text: t('error.notRunning') }
+  if (message === 'tls-unsupported') return { kind: 'error', text: t('tunnel.errorTlsUnsupported') }
+  if (message === 'disposed') return { kind: 'error', text: t('error.startDisposed') }
   // Server-side action failure (500): the generic copy already tells the
   // user to retry / check the log; a raw code would not.
   if (message === 'action-failed') return { kind: 'error', text: t('error.generic') }
   if (message !== '') return { kind: 'error', text: t('error.network', { detail: message }) }
   return { kind: 'error', text: t('error.generic') }
+}
+
+/**
+ * Map a tunnel status `detail` token (state 'error') to a toast. Unknown
+ * tokens return undefined so the panel can fall back to a generic line.
+ */
+export function toastFromTunnelDetail(detail: string, t: ReverseProxyTranslate): PanelToastModel | undefined {
+  switch (detail) {
+    case 'download-failed':
+      return { kind: 'error', text: t('tunnel.errorDownloadFailed') }
+    case 'integrity-failed':
+      return { kind: 'error', text: t('tunnel.errorIntegrityFailed') }
+    case 'configured-path-invalid':
+      return { kind: 'error', text: t('tunnel.errorConfiguredPathInvalid') }
+    case 'unsupported-platform':
+      return { kind: 'error', text: t('tunnel.errorUnsupportedPlatform') }
+    case 'spawn-failed':
+      return { kind: 'error', text: t('tunnel.errorSpawnFailed') }
+    case 'connect-failed':
+      return { kind: 'error', text: t('tunnel.errorConnectFailed') }
+    case 'connect-timeout':
+      return { kind: 'error', text: t('tunnel.errorConnectTimeout') }
+    case 'exited':
+      return { kind: 'warn', text: t('tunnel.errorExited') }
+    default:
+      return undefined
+  }
 }

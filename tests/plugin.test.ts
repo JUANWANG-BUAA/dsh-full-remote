@@ -12,10 +12,11 @@ import { join } from 'node:path'
 import { injectIndexEnhancements, injectViewport } from '../src/index.ts'
 import { readState, writeState } from '../src/persist.ts'
 import { effectiveRemoteAddress, forwardHeaders, listenProxy, sanitizeResponseHeaders, sanitizeUpgradeResponseHeaders } from '../src/proxy.ts'
-import { formatAuthority, formatHttpUrl, isSelfLoop, isWildcardHost, publishHost, rewriteLoopbackAuthority } from '../src/http-util.ts'
+import { formatAuthority, formatHttpUrl, isLoopbackHost, isSelfLoop, isWildcardHost, publishHost, rewriteLoopbackAuthority } from '../src/http-util.ts'
 import { generateAccessToken, safeEqual } from '../src/security.ts'
 import { createInviteStore } from '../src/invites.ts'
 import { createSessionStore, encodeSessionCookie, hashSessionSecret, newSessionId, newSessionSecret } from '../src/sessions.ts'
+import { parseWaitPath, waitPagePath, waitStatusPath } from '../src/pages.ts'
 
 interface HttpResponse {
   status: number | undefined
@@ -358,6 +359,17 @@ describe('listen address formatting', () => {
     new URL(formatHttpUrl(publishHost('0.0.0.0'), 3081))
   })
 
+  it('classifies every 127/8 alias and IPv4-mapped loopback as loopback', () => {
+    assert.equal(isLoopbackHost('127.0.0.1'), true)
+    assert.equal(isLoopbackHost('127.0.0.2'), true)
+    assert.equal(isLoopbackHost('::1'), true)
+    assert.equal(isLoopbackHost('[::1]'), true)
+    assert.equal(isLoopbackHost('::ffff:127.0.0.1'), true)
+    assert.equal(isLoopbackHost('::ffff:127.0.0.2'), true)
+    assert.equal(isLoopbackHost('192.168.1.5'), false)
+    assert.equal(isLoopbackHost('::ffff:192.168.1.5'), false)
+  })
+
   it('detects self-loop on wildcard listen at the backend port', () => {
     assert.equal(isSelfLoop('127.0.0.1', 3080, '127.0.0.1', 3080), true)
     assert.equal(isSelfLoop('0.0.0.0', 3080, '127.0.0.1', 3080), true)
@@ -365,6 +377,14 @@ describe('listen address formatting', () => {
     assert.equal(isSelfLoop('localhost', 3080, '127.0.0.1', 3080), true)
     assert.equal(isSelfLoop('127.0.0.1', 3081, '127.0.0.1', 3080), false)
     assert.equal(isSelfLoop('192.168.1.5', 3080, '127.0.0.1', 3080), false)
+  })
+
+  it('parses wait-page and wait-status paths', () => {
+    assert.deepEqual(parseWaitPath(waitPagePath('abc')), { id: 'abc', kind: 'page' })
+    assert.deepEqual(parseWaitPath(waitStatusPath('abc')), { id: 'abc', kind: 'status' })
+    assert.equal(parseWaitPath('/_dsh_reverse_proxy/wait/'), undefined)
+    assert.equal(parseWaitPath('/_dsh_reverse_proxy/wait/a/b'), undefined)
+    assert.equal(parseWaitPath('/_dsh_reverse_proxy/login'), undefined)
   })
 
   it('rewrites Host/Origin to a loopback literal independent of backendHost', () => {
@@ -830,6 +850,7 @@ describe('device sessions', () => {
     assert.equal(page.status, 200)
     assert.match(page.body, /Chrome on macOS/)
     assert.match(page.body, /等待审批/)
+    assert.match(page.body, /fetch\("\/_dsh_reverse_proxy\/wait\//)
 
     const status = await http({ port: proxy.port, path: `${waitPath}/status`, headers: { cookie } })
     assert.deepEqual(JSON.parse(status.body), { status: 'pending' })
@@ -859,26 +880,26 @@ describe('device sessions', () => {
     assert.equal(unknown.headers.location, '/_dsh_reverse_proxy/login')
   })
 
-  it('accepts a one-time invite code exactly once', async () => {
-    const inviteStore = createInviteStore()
+  it('accepts an invite once, then only same-IP retries inside the grace window', async () => {
+    const inviteStore = createInviteStore({ retryGraceMs: 60 })
     const code = inviteStore.issue()
     const { proxy } = await proxyWith({}, { inviteStore })
-    const ok = await http({
+    const post = () => http({
       port: proxy.port,
       path: '/_dsh_reverse_proxy/login',
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: `invite=${encodeURIComponent(code)}`,
     })
+    const ok = await post()
     assert.equal(ok.status, 303)
     assert.equal(ok.headers.location, '/')
-    const reuse = await http({
-      port: proxy.port,
-      path: '/_dsh_reverse_proxy/login',
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: `invite=${encodeURIComponent(code)}`,
-    })
+    // A same-client browser retry after a lost redirect stays accepted.
+    const retry = await post()
+    assert.equal(retry.status, 303)
+    // Past the grace window the code is dead and the page explains why.
+    await new Promise<void>(resolve => setTimeout(resolve, 90))
+    const reuse = await post()
     assert.equal(reuse.status, 401)
     assert.match(reuse.body, /邀请已失效|invite expired/i)
   })
@@ -1045,7 +1066,7 @@ describe('trustForwardedFor', () => {
       headers: { 'x-forwarded-for': '10.0.0.1' },
       socket: { remoteAddress: '192.168.1.10' },
     } as unknown as IncomingMessage
-    const spec = { trustForwardedFor: true } as Parameters<typeof effectiveRemoteAddress>[1]
+    const spec = { trustForwardedFor: () => true } as Parameters<typeof effectiveRemoteAddress>[1]
     assert.equal(effectiveRemoteAddress(req, spec), '192.168.1.10')
   })
 
@@ -1054,7 +1075,7 @@ describe('trustForwardedFor', () => {
       headers: {},
       socket: { remoteAddress: '127.0.0.1' },
     } as unknown as IncomingMessage
-    const spec = { trustForwardedFor: true } as Parameters<typeof effectiveRemoteAddress>[1]
+    const spec = { trustForwardedFor: () => true } as Parameters<typeof effectiveRemoteAddress>[1]
     assert.equal(effectiveRemoteAddress(req, spec), '127.0.0.1')
   })
 
@@ -1063,7 +1084,7 @@ describe('trustForwardedFor', () => {
       headers: { 'x-forwarded-for': '203.0.113.5, 10.0.0.1' },
       socket: { remoteAddress: '127.0.0.1' },
     } as unknown as IncomingMessage
-    const spec = { trustForwardedFor: true } as Parameters<typeof effectiveRemoteAddress>[1]
+    const spec = { trustForwardedFor: () => true } as Parameters<typeof effectiveRemoteAddress>[1]
     assert.equal(effectiveRemoteAddress(req, spec), '10.0.0.1')
   })
 
@@ -1075,7 +1096,7 @@ describe('trustForwardedFor', () => {
       },
       socket: { remoteAddress: '127.0.0.1' },
     } as unknown as IncomingMessage
-    const spec = { trustForwardedFor: true } as Parameters<typeof effectiveRemoteAddress>[1]
+    const spec = { trustForwardedFor: () => true } as Parameters<typeof effectiveRemoteAddress>[1]
     assert.equal(effectiveRemoteAddress(req, spec), '198.51.100.7')
   })
 
@@ -1090,7 +1111,7 @@ describe('trustForwardedFor', () => {
       },
       socket: { remoteAddress: '127.0.0.1' },
     } as unknown as IncomingMessage
-    const spec = { trustForwardedFor: true } as Parameters<typeof effectiveRemoteAddress>[1]
+    const spec = { trustForwardedFor: () => true } as Parameters<typeof effectiveRemoteAddress>[1]
     assert.equal(effectiveRemoteAddress(spoofedLoopback, spec), '10.0.0.1')
 
     const garbage = {
@@ -1104,7 +1125,7 @@ describe('trustForwardedFor', () => {
   })
 
   it('falls back to the socket when the rightmost XFF is loopback or malformed', () => {
-    const spec = { trustForwardedFor: true } as Parameters<typeof effectiveRemoteAddress>[1]
+    const spec = { trustForwardedFor: () => true } as Parameters<typeof effectiveRemoteAddress>[1]
     const loopback = {
       headers: { 'x-forwarded-for': '10.0.0.1, ::1' },
       socket: { remoteAddress: '127.0.0.1' },

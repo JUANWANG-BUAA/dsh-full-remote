@@ -9,7 +9,7 @@ import {
 } from '../src/client/trust-settings.ts'
 import type { ProxyApi, ProxyStatus } from '../src/client/types.ts'
 import { translatorFor, zh, en, type ReverseProxyTranslate } from '../src/client/i18n.ts'
-import { toastFromCaught, toastFromStatus } from '../src/client/toast.ts'
+import { toastFromCaught, toastFromStatus, toastFromTunnelDetail } from '../src/client/toast.ts'
 
 afterEach(cleanup)
 
@@ -48,6 +48,8 @@ function api(overrides: Partial<ProxyApi> = {}): ProxyApi {
     }),
     audit: vi.fn().mockResolvedValue({ enabled: true, events: [] }),
     exportAudit: vi.fn().mockResolvedValue(new Blob(['[]'], { type: 'application/json' })),
+    startTunnel: vi.fn().mockResolvedValue({ ...stopped, enabled: true, running: true, tunnel: { state: 'starting' as const } }),
+    stopTunnel: vi.fn().mockResolvedValue(stopped),
     ...overrides,
   }
 }
@@ -133,12 +135,26 @@ describe('toast mapping', () => {
     expect(errorFromControlResponse(403, { error: 'loopback-required' }).message).toBe('loopback-required')
     expect(errorFromControlResponse(500, {}).message).toBe('HTTP 500')
   })
+
+  it('maps tunnel detail tokens to dedicated copy and ignores unknown tokens', () => {
+    expect(toastFromTunnelDetail('integrity-failed', t)?.kind).toBe('error')
+    expect(toastFromTunnelDetail('integrity-failed', t)?.text).toBe(t('tunnel.errorIntegrityFailed'))
+    expect(toastFromTunnelDetail('exited', t)?.kind).toBe('warn')
+    expect(toastFromTunnelDetail('not-a-token', t)).toBeUndefined()
+  })
+
+  it('maps tls-unsupported control refusals for the tunnel', () => {
+    const toast = toastFromCaught(new Error('tls-unsupported'), t)
+    expect(toast.kind).toBe('error')
+    expect(toast.text).toBe(t('tunnel.errorTlsUnsupported'))
+  })
 })
 
 describe('settings persistence trust', () => {
   it('requires the index-tap flag and a non-loopback hostname', () => {
     expect(pageNeedsHostSettingsPersistence('app.example', 1)).toBe(true)
     expect(pageNeedsHostSettingsPersistence('127.0.0.1', 1)).toBe(false)
+    expect(pageNeedsHostSettingsPersistence('127.0.0.2', 1)).toBe(false)
     expect(pageNeedsHostSettingsPersistence('localhost', 1)).toBe(false)
     expect(pageNeedsHostSettingsPersistence('app.example', undefined)).toBe(false)
     expect(pageNeedsHostSettingsPersistence('', 1)).toBe(false)
@@ -350,6 +366,28 @@ describe('remote settings section', () => {
     expect(await screen.findByText('已踢出该设备。')).toBeTruthy()
   })
 
+  it('renames a device from an inline field, not a prompt', async () => {
+    const now = Date.now()
+    const device = {
+      id: 's1',
+      label: 'Chrome on macOS',
+      status: 'active' as const,
+      createdAt: now,
+      lastSeenAt: now,
+    }
+    const service = api({ sessions: vi.fn().mockResolvedValue([device]) })
+    const prompt = vi.spyOn(window, 'prompt')
+    render(<RemoteSection {...sectionProps(service)} />)
+    fireEvent.click(await screen.findByRole('button', { name: /重命名: Chrome on macOS/ }))
+    expect(prompt).not.toHaveBeenCalled()
+    const field = screen.getByLabelText('设备显示名称')
+    fireEvent.change(field, { target: { value: '书房 Mac' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(service.renameSession).toHaveBeenCalledWith('s1', '书房 Mac'))
+    expect(await screen.findByText('已更新设备名称。')).toBeTruthy()
+    prompt.mockRestore()
+  })
+
   it('approves a pending device from the panel', async () => {
     const now = Date.now()
     const pending = { id: 'p1', label: 'Safari on iOS', status: 'pending' as const, createdAt: now, lastSeenAt: now }
@@ -430,5 +468,118 @@ describe('remote settings section', () => {
         Object.defineProperty(navigator, 'clipboard', originalClipboard)
       }
     }
+  })
+
+  it('starts the proxy and then the tunnel in one click', async () => {
+    const start = vi.fn().mockResolvedValue({ ...stopped, enabled: true, running: true })
+    const startTunnel = vi.fn().mockResolvedValue({
+      ...stopped, enabled: true, running: true,
+      tunnel: { state: 'starting' as const, detail: 'connecting' as const },
+    })
+    const service = api({ start, startTunnel })
+    render(<RemoteSection {...sectionProps(service)} />)
+    expect(await screen.findByText('代理尚未运行')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '开启快速隧道' }))
+    await waitFor(() => expect(start).toHaveBeenCalledOnce())
+    await waitFor(() => expect(startTunnel).toHaveBeenCalledOnce())
+    expect(await screen.findByText('正在建立隧道…')).toBeTruthy()
+  })
+
+  it('shows the live URL while online and stops the tunnel', async () => {
+    const online: ProxyStatus = {
+      ...stopped,
+      enabled: true,
+      running: true,
+      tunnel: { state: 'online', publicUrl: 'https://abc123.trycloudflare.com' },
+    }
+    const stopTunnel = vi.fn().mockResolvedValue(stopped)
+    const service = api({ status: vi.fn().mockResolvedValue(online), stopTunnel })
+    render(<RemoteSection {...sectionProps(service)} />)
+    expect(await screen.findByText('https://abc123.trycloudflare.com')).toBeTruthy()
+    expect(screen.getByText(/地址是随机的/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '关闭快速隧道' }))
+    await waitFor(() => expect(stopTunnel).toHaveBeenCalledOnce())
+    await waitFor(() => {
+      expect(screen.queryByText('https://abc123.trycloudflare.com')).toBeNull()
+    })
+  })
+
+  it('surfaces a tunnel error token observed by polling', async () => {
+    const statuses: ProxyStatus[] = [
+      { ...stopped, enabled: true, running: true, tunnel: { state: 'starting', detail: 'connecting' } },
+      { ...stopped, enabled: true, running: true, tunnel: { state: 'error', detail: 'integrity-failed' } },
+    ]
+    let index = 0
+    const service = api({
+      status: vi.fn(async () => statuses[Math.min(index++, statuses.length - 1)]),
+    })
+    render(<RemoteSection {...sectionProps(service)} />)
+    expect(await screen.findByText('正在建立隧道…')).toBeTruthy()
+    // The panel polls every 2s while the tunnel is starting; the next
+    // snapshot carries the error detail.
+    await waitFor(() => {
+      expect(screen.getByText(/校验失败/)).toBeTruthy()
+    }, { timeout: 4500 })
+  })
+
+  it('always reports whether standing token reads are on after a self-check', async () => {
+    const service = api()
+    render(<RemoteSection {...sectionProps(service)} />)
+    fireEvent.click(await screen.findByRole('button', { name: '运行自检' }))
+    expect(await screen.findByText(/常驻令牌读取已开启/)).toBeTruthy()
+  })
+
+  it('shows the recommended-setup guide with the LAN address front and center', async () => {
+    const service = api({
+      status: vi.fn().mockResolvedValue({
+        ...stopped, enabled: true, running: true,
+        target: 'http://192.168.3.23:8080',
+        reachables: ['http://192.168.3.23:8080'],
+      }),
+    })
+    render(<RemoteSection {...sectionProps(service)} />)
+    expect(await screen.findByRole('heading', { name: '推荐用法' })).toBeTruthy()
+    expect(screen.getAllByText(/同一 WiFi/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/192\.168\.3\.23:8080/).length).toBeGreaterThan(0)
+    expect(screen.getByText('临时 / 救急')).toBeTruthy()
+    expect(screen.getByText(/frp \/ Tailscale/)).toBeTruthy()
+  })
+
+  it('explains the loopback-only situation when no LAN address is reachable', async () => {
+    const service = api()
+    render(<RemoteSection {...sectionProps(service)} />)
+    expect(await screen.findByText(/回环地址/)).toBeTruthy()
+  })
+
+  it('recommends the LAN invite when the tunnel is off and the proxy runs', async () => {
+    const service = api({
+      status: vi.fn().mockResolvedValue({ ...stopped, enabled: true, running: true, target: 'http://192.168.3.23:8080' }),
+    })
+    render(<RemoteSection {...sectionProps(service)} />)
+    expect(await screen.findByText(/局域网直连链接/)).toBeTruthy()
+  })
+
+  it('hints that invites use the tunnel address while online', async () => {
+    const online: ProxyStatus = {
+      ...stopped,
+      enabled: true,
+      running: true,
+      tunnel: { state: 'online', publicUrl: 'https://abc.trycloudflare.com' },
+    }
+    const service = api({ status: vi.fn().mockResolvedValue(online) })
+    render(<RemoteSection {...sectionProps(service)} />)
+    expect(await screen.findByText(/邀请将使用隧道地址/)).toBeTruthy()
+  })
+
+  it('disables the quick-tunnel button when local TLS is on', async () => {
+    const service = api({
+      status: vi.fn().mockResolvedValue({ ...stopped, enabled: true, running: true, tls: true }),
+    })
+    render(<RemoteSection {...sectionProps(service)} />)
+    expect(await screen.findByText(/不能同时开快速隧道/)).toBeTruthy()
+    const button = screen.getByRole('button', { name: '开启快速隧道' }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    fireEvent.click(button)
+    expect(service.startTunnel).not.toHaveBeenCalled()
   })
 })

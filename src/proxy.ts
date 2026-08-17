@@ -6,7 +6,7 @@
  * header sanitization, stream-level body limits, and full WebSocket/SSE
  * upgrade forwarding with both-end teardown on close.
  *
- * All user-facing copy is delegated to pages.js; session state lives in the
+ * All user-facing copy is delegated to pages.ts; session state lives in the
  * caller-supplied session store (defaults to an in-memory one).
  */
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse, type ClientRequest } from 'node:http'
@@ -14,10 +14,23 @@ import { createServer as createHttpsServer } from 'node:https'
 import { isIP } from 'node:net'
 import type { Duplex } from 'node:stream'
 import { parseCookies, safeEqual } from './security.ts'
-import { createSessionStore, encodeSessionCookie } from './sessions.ts'
+import { createSessionStore, encodeSessionCookie, sessionCookie } from './sessions.ts'
 import { normalizeRemoteIp } from './cidr.ts'
 import { isLoopbackHost, readBody, sendHtml, pathnameOf, rewriteLoopbackAuthority } from './http-util.ts'
-import { LOGIN_COPY, LOGIN_PATH, loginLocale, loginPage, waitPage } from './pages.ts'
+import {
+  HOME_PATH,
+  HOME_RENAME_PATH,
+  HEALTHZ_PATH,
+  LOGIN_COPY,
+  LOGIN_PATH,
+  LOGOUT_PATH,
+  homePage,
+  loginLocale,
+  loginPage,
+  parseWaitPath,
+  waitPage,
+  waitPagePath,
+} from './pages.ts'
 
 /** Response header bag the proxy relays between client and upstream. */
 type ProxyHeaders = Record<string, string | string[] | number | undefined>
@@ -63,18 +76,25 @@ export interface ProxySpec {
   ipAllowed?: (address: string) => boolean
   audit?: (event: string, fields?: Record<string, unknown>) => void
   tls?: boolean | { key: string | Buffer, cert: string | Buffer }
-  inviteStore?: { consume: (code: string) => boolean }
-  trustForwardedProto?: boolean
-  /** When true and the direct peer is loopback, use the first X-Forwarded-For value as the remote client IP for CIDR / rate limiting / audit. Only enable behind a trusted local tunnel/edge. */
-  trustForwardedFor?: boolean
+  inviteStore?: {
+    consume: (code: string, ip?: string) => { ok: boolean, retry?: boolean, sessionId?: string }
+    bindSession?: (code: string, sessionId: string) => void
+  }
+  /** Static boolean, or a per-request probe so a tunnel can toggle trust without restarting the proxy. */
+  trustForwardedProto?: boolean | (() => boolean)
+  /** When truthy and the direct peer is loopback, derive the remote client IP from CF-Connecting-IP / the rightmost X-Forwarded-For value for CIDR / rate limiting / audit. Only enable behind a trusted local tunnel/edge. Static boolean or per-request probe. */
+  trustForwardedFor?: boolean | (() => boolean)
+  /** Display-only: shown on the device home page as part of the security posture. */
+  approvalMode?: boolean
   log?: (entry: { method: string | undefined, path: string, status: number, remote: string }) => void
 }
 
 /** ProxySpec after listenProxy resolves defaults and internal helpers. */
-type RuntimeSpec = ProxySpec & {
+type RuntimeSpec = Omit<ProxySpec, 'trustForwardedProto' | 'trustForwardedFor'> & {
   tls: boolean
-  trustForwardedProto: boolean
-  trustForwardedFor: boolean
+  /** Normalized probes, evaluated per request. */
+  trustForwardedProto: () => boolean
+  trustForwardedFor: () => boolean
   rewriteAuthority: string
   trackUpstream: (up: ClientRequest | Duplex) => void
   loginTracker: LoginTracker
@@ -115,6 +135,15 @@ const MAX_TRACKED_LOGIN_IPS = 4096
  *  sessionMaxAgeSeconds still gets a valid cookie Max-Age. */
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 30 * 24 * 3600
 
+function csvHeaderPart(value: string | string[] | undefined, pick: 'first' | 'last'): string | undefined {
+  const text = Array.isArray(value)
+    ? (pick === 'last' ? value[value.length - 1] : value[0])
+    : value
+  const parts = String(text ?? '').split(',').map(part => part.trim()).filter(Boolean)
+  const chosen = pick === 'last' ? parts[parts.length - 1] : parts[0]
+  return chosen === undefined || chosen === '' ? undefined : chosen
+}
+
 /**
  * The last address in an X-Forwarded-For list. Empty/missing becomes undefined.
  *
@@ -123,17 +152,12 @@ const DEFAULT_SESSION_MAX_AGE_SECONDS = 30 * 24 * 3600
  * actually saw. (Cloudflare-style `CF-Connecting-IP` is handled separately.)
  */
 function lastForwardedIp(value: string | string[] | undefined): string | undefined {
-  const text = Array.isArray(value) ? value[value.length - 1] : value
-  const parts = String(text ?? '').split(',').map(part => part.trim()).filter(Boolean)
-  const last = parts[parts.length - 1]
-  return last === undefined || last === '' ? undefined : last
+  return csvHeaderPart(value, 'last')
 }
 
 /** First value of a single-valued forwarding header such as CF-Connecting-IP. */
 function firstHeaderValue(value: string | string[] | undefined): string | undefined {
-  const text = Array.isArray(value) ? value[0] : value
-  const first = String(text ?? '').split(',')[0]?.trim()
-  return first === '' ? undefined : first
+  return csvHeaderPart(value, 'first')
 }
 
 /**
@@ -166,7 +190,7 @@ function trustedForwardedIp(value: string | undefined): string | undefined {
  */
 export function effectiveRemoteAddress(req: IncomingMessage, spec: RuntimeSpec): string {
   const direct = req.socket.remoteAddress ?? ''
-  if (spec.trustForwardedFor === true && isLoopbackHost(direct)) {
+  if (spec.trustForwardedFor() && isLoopbackHost(direct)) {
     const cf = trustedForwardedIp(firstHeaderValue(req.headers['cf-connecting-ip']))
     if (cf !== undefined) return cf
     const forwarded = trustedForwardedIp(lastForwardedIp(req.headers['x-forwarded-for']))
@@ -245,11 +269,7 @@ export function forwardHeaders(req: IncomingMessage, backendHost: string, option
   }
   const sourceHost = req.headers.host ?? ''
   const remote = req.socket.remoteAddress ?? ''
-  // Prefer the proxy's own TLS; only trust inbound x-forwarded-proto when the
-  // operator opted into a trusted edge (trustForwardedProto).
-  const forwardedHttps = options.trustForwardedProto === true
-    && req.headers['x-forwarded-proto'] === 'https'
-  const proto = options.tls === true || forwardedHttps ? 'https' : 'http'
+  const proto = requestIsHttps(req, options.tls === true, options.trustForwardedProto === true) ? 'https' : 'http'
   headers.host = backendHost
   headers.origin = `http://${backendHost}`
   // Same-origin after Host/Origin rewrite. Upstream Caddy snippets often
@@ -263,15 +283,20 @@ export function forwardHeaders(req: IncomingMessage, backendHost: string, option
   return headers
 }
 
-/** Drop hop-by-hop and set-cookie before relaying an upstream response. */
-export function sanitizeResponseHeaders(headers: ProxyHeaders | undefined) {
+function sanitizeHeaders(headers: ProxyHeaders | undefined, keep: ReadonlySet<string> = new Set()) {
   const out: Record<string, string | string[] | number | undefined> = {}
   for (const [key, value] of Object.entries(headers ?? {})) {
     const lower = key.toLowerCase()
-    if (value === undefined || value === null || lower === 'set-cookie' || HOP_BY_HOP.has(lower)) continue
+    if (value === undefined || value === null || lower === 'set-cookie') continue
+    if (HOP_BY_HOP.has(lower) && !keep.has(lower)) continue
     out[key] = value as string | string[] | number
   }
   return out
+}
+
+/** Drop hop-by-hop and set-cookie before relaying an upstream response. */
+export function sanitizeResponseHeaders(headers: ProxyHeaders | undefined) {
+  return sanitizeHeaders(headers)
 }
 
 /**
@@ -279,14 +304,7 @@ export function sanitizeResponseHeaders(headers: ProxyHeaders | undefined) {
  * other hop-by-hop fields the HTTP path already drops.
  */
 export function sanitizeUpgradeResponseHeaders(headers: ProxyHeaders | undefined) {
-  const out: Record<string, string | string[] | number | undefined> = {}
-  for (const [key, value] of Object.entries(headers ?? {})) {
-    const lower = key.toLowerCase()
-    if (value === undefined || value === null || lower === 'set-cookie') continue
-    if (HOP_BY_HOP.has(lower) && lower !== 'connection' && lower !== 'upgrade') continue
-    out[key] = value as string | string[] | number
-  }
-  return out
+  return sanitizeHeaders(headers, new Set(['connection', 'upgrade']))
 }
 
 function writeRawHead(socket: Duplex, statusCode: number, statusMessage: string, headers: ProxyHeaders) {
@@ -310,12 +328,39 @@ function drainRequest(req: IncomingMessage) {
   req.resume()
 }
 
+function sendText(
+  res: ServerResponse,
+  status: number,
+  body: string,
+  extra: Record<string, string | number> = {},
+) {
+  res.writeHead(status, {
+    'content-type': 'text/plain; charset=utf-8',
+    'cache-control': 'no-store',
+    ...extra,
+  })
+  res.end(body)
+}
+
+function redirect(res: ServerResponse, location: string, extra: Record<string, string | number | string[]> = {}) {
+  res.writeHead(303, { location, 'cache-control': 'no-store', ...extra })
+  res.end()
+}
+
+/** Secure cookies / forwarded proto: own TLS, or a trusted edge says https. */
+function requestIsHttps(req: IncomingMessage, tls: boolean, trustForwardedProto: boolean) {
+  return tls === true || (trustForwardedProto && req.headers['x-forwarded-proto'] === 'https')
+}
+
+function cookieIsSecure(req: IncomingMessage, spec: RuntimeSpec) {
+  return requestIsHttps(req, spec.tls === true, spec.trustForwardedProto())
+}
+
 function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSpec) {
   const contentLength = Number(req.headers['content-length'] ?? 0)
   if (!Number.isFinite(contentLength) || contentLength < 0 || contentLength > spec.maxRequestBytes) {
     drainRequest(req)
-    res.writeHead(413, { 'content-type': 'text/plain; charset=utf-8', connection: 'close' })
-    res.end('request too large\n')
+    sendText(res, 413, 'request too large\n', { connection: 'close' })
     return
   }
   const up = httpRequest({
@@ -325,7 +370,7 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
     method: req.method,
     headers: forwardHeaders(req, spec.rewriteAuthority, {
       tls: spec.tls === true,
-      trustForwardedProto: spec.trustForwardedProto === true,
+      trustForwardedProto: spec.trustForwardedProto(),
       forwardedFor: effectiveRemoteAddress(req, spec),
     }),
   }, (incoming) => {
@@ -347,8 +392,7 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
   up.on('error', () => {
     clearTimeout(connectTimer)
     if (!res.headersSent) {
-      res.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' })
-      res.end('bad gateway\n')
+      sendText(res, 502, 'bad gateway\n')
     } else {
       res.destroy()
     }
@@ -367,8 +411,7 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
       req.unpipe(up)
       up.destroy()
       if (!res.headersSent) {
-        res.writeHead(413, { 'content-type': 'text/plain; charset=utf-8', connection: 'close' })
-        res.end('request too large\n')
+        sendText(res, 413, 'request too large\n', { connection: 'close' })
       } else {
         res.destroy()
       }
@@ -405,20 +448,14 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse, spec: Runt
     if (spec.ipAllowed !== undefined && !spec.ipAllowed(remote)) {
       drainRequest(req)
       spec.audit?.('login.denied', { reason: 'cidr', remote })
-      res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' })
-      res.end('forbidden\n')
+      sendText(res, 403, 'forbidden\n')
       return
     }
     const retryAfter = spec.loginTracker.check(remote)
     if (retryAfter > 0) {
       drainRequest(req)
       spec.audit?.('login.locked', { remote, retryAfter })
-      res.writeHead(429, {
-        'content-type': 'text/plain; charset=utf-8',
-        'cache-control': 'no-store',
-        'retry-after': String(retryAfter),
-      })
-      res.end('too many attempts\n')
+      sendText(res, 429, 'too many attempts\n', { 'retry-after': String(retryAfter) })
       return
     }
     const form = new URLSearchParams((await readBody(req, 4096)).toString('utf8'))
@@ -428,8 +465,11 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse, spec: Runt
     await new Promise(resolve => setTimeout(resolve, delayMs))
     const inviteCode = form.get('invite') ?? ''
     const usedInvite = inviteCode !== ''
+    // remote = effectiveRemoteAddress: under an active tunnel this is the
+    // real client IP, which the retry grace matches against.
+    const consumed = usedInvite ? spec.inviteStore?.consume(inviteCode, remote) : undefined
     const authed = usedInvite
-      ? spec.inviteStore?.consume(inviteCode) === true
+      ? consumed?.ok === true
       : safeEqual(form.get('token') ?? '', spec.accessToken)
     if (!authed) {
       spec.loginTracker.fail(remote)
@@ -442,47 +482,138 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse, spec: Runt
       return
     }
     spec.loginTracker.success(remote)
-    const session = spec.sessionStore.login({ userAgent: req.headers['user-agent'], ip: remote })
+    let session
+    if (usedInvite && consumed?.retry === true) {
+      session = consumed.sessionId !== undefined
+        ? spec.sessionStore.reissue(consumed.sessionId, remote)
+        : undefined
+      if (session === undefined) {
+        spec.audit?.('login.fail', { remote, via: 'invite', reason: 'retry-session-gone' })
+        sendHtml(res, 401, loginPage(locale, (LOGIN_COPY[locale] ?? LOGIN_COPY.zh).invalidInvite), GATE_PAGE_HEADERS)
+        return
+      }
+    } else {
+      session = spec.sessionStore.login({ userAgent: req.headers['user-agent'], ip: remote })
+      if (usedInvite) spec.inviteStore?.bindSession?.(inviteCode, session.id)
+    }
     spec.audit?.('login.ok', {
       remote,
       sessionId: session.id,
       status: session.status,
       via: usedInvite ? 'invite' : 'token',
+      ...(consumed?.retry === true ? { retry: true } : {}),
     })
-    // Secure cookies only when this proxy terminates TLS, or when the operator
-    // explicitly trusts an edge via trustForwardedProto.
-    const secure = spec.tls === true
-      || (spec.trustForwardedProto === true && req.headers['x-forwarded-proto'] === 'https')
-    res.writeHead(303, {
-      location: session.status === 'pending' ? `/_dsh_reverse_proxy/wait/${session.id}` : '/',
-      'set-cookie': `${spec.cookieName}=${encodeSessionCookie(session.id, session.secret)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${spec.sessionMaxAgeSeconds}${secure ? '; Secure' : ''}`,
-      'cache-control': 'no-store',
+    const secure = cookieIsSecure(req, spec)
+    redirect(res, session.status === 'pending'
+      ? waitPagePath(session.id)
+      : form.get('next') === 'home' ? HOME_PATH : '/', {
+      'set-cookie': sessionCookie(spec.cookieName, encodeSessionCookie(session.id, session.secret), {
+        maxAgeSeconds: spec.sessionMaxAgeSeconds,
+        secure,
+      }),
       'referrer-policy': 'no-referrer',
     })
-    res.end()
   } catch {
     sendHtml(res, 400, loginPage(locale, LOGIN_COPY[locale].invalidRequest), GATE_PAGE_HEADERS)
   }
 }
 
+function handleWaitRoutes(
+  req: IncomingMessage,
+  res: ServerResponse,
+  spec: RuntimeSpec,
+  path: string,
+  cookie: string | undefined,
+): boolean {
+  const wait = parseWaitPath(path)
+  if (wait === undefined || req.method !== 'GET') return false
+  const session = spec.sessionStore.pending(cookie, wait.id)
+  if (wait.kind === 'status') {
+    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+    res.end(`${JSON.stringify({ status: session?.status ?? 'unknown' })}\n`)
+    return true
+  }
+  if (session === undefined) {
+    redirect(res, LOGIN_PATH)
+    return true
+  }
+  if (session.status === 'active') {
+    redirect(res, '/')
+    return true
+  }
+  sendHtml(res, 200, waitPage(loginLocale(req), session.id, session.label), GATE_PAGE_HEADERS)
+  return true
+}
+
+async function handleDevicePages(
+  req: IncomingMessage,
+  res: ServerResponse,
+  spec: RuntimeSpec,
+  path: string,
+  cookie: string | undefined,
+): Promise<boolean> {
+  if (path === HOME_PATH && req.method === 'GET') {
+    const session = spec.sessionStore.validate(cookie, effectiveRemoteAddress(req, spec))
+    if (session === undefined) {
+      drainRequest(req)
+      redirect(res, LOGIN_PATH)
+      return true
+    }
+    sendHtml(res, 200, homePage(loginLocale(req), {
+      host: req.headers.host ?? '',
+      label: session.label,
+      ...(session.createdIp !== undefined ? { createdIp: session.createdIp } : {}),
+      createdAt: session.createdAt,
+      sessionMaxAgeSeconds: spec.sessionMaxAgeSeconds,
+      approvalMode: spec.approvalMode === true,
+    }), GATE_PAGE_HEADERS)
+    return true
+  }
+  if (path === HOME_RENAME_PATH && req.method === 'POST') {
+    const remote = effectiveRemoteAddress(req, spec)
+    const session = spec.sessionStore.validate(cookie, remote)
+    if (session === undefined) {
+      drainRequest(req)
+      redirect(res, LOGIN_PATH)
+      return true
+    }
+    try {
+      const form = new URLSearchParams((await readBody(req, 4096)).toString('utf8'))
+      if (spec.sessionStore.rename(session.id, form.get('label') ?? undefined)) {
+        spec.audit?.('session.rename', { remote, sessionId: session.id, self: true })
+      }
+    } catch {
+      drainRequest(req)
+    }
+    redirect(res, HOME_PATH)
+    return true
+  }
+  if (path === LOGOUT_PATH && req.method === 'POST') {
+    const remote = effectiveRemoteAddress(req, spec)
+    const session = spec.sessionStore.validate(cookie, remote)
+    if (session !== undefined) {
+      spec.sessionStore.revoke(session.id)
+      spec.audit?.('session.logout', { remote, sessionId: session.id })
+    } else {
+      drainRequest(req)
+    }
+    // Expire the cookie even when the session was already gone: a stale
+    // cookie should never survive an explicit sign-out. Repeat Secure when
+    // the original login cookie had it, or an HTTPS browser keeps the old one.
+    redirect(res, LOGIN_PATH, {
+      'set-cookie': sessionCookie(spec.cookieName, '', {
+        maxAgeSeconds: 0,
+        secure: cookieIsSecure(req, spec),
+      }),
+      'referrer-policy': 'no-referrer',
+    })
+    return true
+  }
+  return false
+}
+
 /**
  * Start an authenticated reverse proxy suitable for any external tunnel.
- * @param {{
- *  listenHost: string, listenPort: number, backendHost: string, backendPort: number,
- *  accessToken: string, cookieName: string, controlPrefix: string,
- *  maxRequestBytes: number, upstreamTimeoutMs: number, sessionMaxAgeSeconds: number,
- *  maxHeaderSizeBytes?: number, headersTimeoutMs?: number, keepAliveTimeoutMs?: number,
- *  loginDelayMs?: number, loginMaxAttempts?: number, loginLockoutMs?: number,
- *  sessionStore: import('./sessions.js').ReturnType<typeof import('./sessions.js').createSessionStore>,
- *  ipAllowed?: (address: string) => boolean,
- *  audit?: (event: string, fields?: Record<string, unknown>) => void,
- *  tls?: boolean | { key: string | Buffer, cert: string | Buffer },
- *  inviteStore?: { consume: (code: string) => boolean },
- *  trustForwardedProto?: boolean,
- *  trustForwardedFor?: boolean,
- *  log?: (entry: { method: string, path: string, status: number, remote: string }) => void,
- * }} spec
- * @returns {Promise<{ host: string, port: number, close: () => Promise<void> }>}
  */
 export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
   // TCP still targets backendHost (even 0.0.0.0, which most kernels treat as
@@ -501,11 +632,15 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     upstreamSockets.add(up)
     up.once('close', () => upstreamSockets.delete(up))
   }
-  const runtimeSpec = {
+  const runtimeSpec: RuntimeSpec = {
     ...spec,
     tls: tlsEnabled,
-    trustForwardedProto: spec.trustForwardedProto === true,
-    trustForwardedFor: spec.trustForwardedFor === true,
+    trustForwardedProto: typeof spec.trustForwardedProto === 'function'
+      ? spec.trustForwardedProto
+      : () => spec.trustForwardedProto === true,
+    trustForwardedFor: typeof spec.trustForwardedFor === 'function'
+      ? spec.trustForwardedFor
+      : () => spec.trustForwardedFor === true,
     rewriteAuthority,
     trackUpstream,
     loginTracker: createLoginTracker(spec),
@@ -521,8 +656,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     if (spec.ipAllowed === undefined || spec.ipAllowed(remote)) return false
     spec.audit?.('access.denied', { reason: 'cidr', remote, path: req.url ?? '/' })
     drainRequest(req)
-    res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' })
-    res.end('forbidden\n')
+    sendText(res, 403, 'forbidden\n')
     return true
   }
   const logRequest = spec.log === undefined ? undefined : (req: IncomingMessage, res: ServerResponse) => {
@@ -537,7 +671,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     // healthz sits behind the CIDR gate so a public probe cannot map the
     // listener when an allowlist is configured.
     if (denyCidr(req, res)) return
-    if (path === '/_dsh_reverse_proxy/healthz') {
+    if (path === HEALTHZ_PATH) {
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
       res.end('{"ok":true}\n')
       return
@@ -546,43 +680,17 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
       await handleLogin(req, res, runtimeSpec)
       return
     }
-    const waitStatus = path.match(/^\/_dsh_reverse_proxy\/wait\/([^/]+)\/status$/)
-    if (waitStatus !== null && req.method === 'GET') {
-      const session = runtimeSpec.sessionStore.pending(cookie, waitStatus[1])
-      const body = session === undefined
-        ? '{"status":"unknown"}\n'
-        : `{"status":"${session.status}"}\n`
-      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
-      res.end(body)
-      return
-    }
-    const waitPageMatch = path.match(/^\/_dsh_reverse_proxy\/wait\/([^/]+)$/)
-    if (waitPageMatch !== null && req.method === 'GET') {
-      const session = runtimeSpec.sessionStore.pending(cookie, waitPageMatch[1])
-      if (session === undefined) {
-        res.writeHead(303, { location: LOGIN_PATH, 'cache-control': 'no-store' })
-        res.end()
-        return
-      }
-      if (session.status === 'active') {
-        res.writeHead(303, { location: '/', 'cache-control': 'no-store' })
-        res.end()
-        return
-      }
-      sendHtml(res, 200, waitPage(loginLocale(req), session.id, session.label), GATE_PAGE_HEADERS)
-      return
-    }
+    if (handleWaitRoutes(req, res, runtimeSpec, path, cookie)) return
+    if (await handleDevicePages(req, res, runtimeSpec, path, cookie)) return
     if (path.startsWith(spec.controlPrefix)) {
       drainRequest(req)
-      res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' })
-      res.end('forbidden\n')
+      sendText(res, 403, 'forbidden\n')
       return
     }
     if (runtimeSpec.sessionStore.validate(cookie, effectiveRemoteAddress(req, runtimeSpec)) === undefined) {
       drainRequest(req)
       if (req.method === 'GET' || req.method === 'HEAD') {
-        res.writeHead(303, { location: LOGIN_PATH, 'cache-control': 'no-store' })
-        res.end()
+        redirect(res, LOGIN_PATH)
       } else {
         res.writeHead(401, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
         res.end('{"error":"authentication-required"}\n')
@@ -624,6 +732,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     const cookie = parseCookies(req.headers.cookie)[spec.cookieName]
     if (path.startsWith(spec.controlPrefix) || runtimeSpec.sessionStore.validate(cookie, upgradeRemote) === undefined) {
       upgradeTracker.fail(upgradeRemote)
+      upgradeTracker.prune()
       denySocket(socket, '401 Unauthorized')
       spec.audit?.('access.denied', { reason: 'auth', remote: upgradeRemote, path: req.url ?? '/', upgrade: true })
       spec.log?.({ method: req.method, path: req.url ?? '/', status: 401, remote: upgradeRemote })
@@ -631,7 +740,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     }
     const headers = forwardHeaders(req, rewriteAuthority, {
       tls: tlsEnabled,
-      trustForwardedProto: spec.trustForwardedProto === true,
+      trustForwardedProto: runtimeSpec.trustForwardedProto(),
       forwardedFor: upgradeRemote,
     })
     headers.connection = 'Upgrade'

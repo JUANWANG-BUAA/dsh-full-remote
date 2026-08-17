@@ -13,7 +13,7 @@
  * ModuleLoader wrap installed, not that every mixin method is healthy.
  */
 
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
+import { isLoopbackHost } from '../hosts.ts'
 
 type SettingsBinder = {
   bind: (spec: unknown) => unknown
@@ -28,7 +28,7 @@ export function pageNeedsHostSettingsPersistence(
   hostname = globalThis.location?.hostname ?? '',
   trusted = (globalThis as { __DSH_FULL_REMOTE_TRUSTED__?: number }).__DSH_FULL_REMOTE_TRUSTED__,
 ): boolean {
-  return trusted === 1 && hostname !== '' && !LOOPBACK_HOSTS.has(hostname)
+  return trusted === 1 && hostname !== '' && !isLoopbackHost(hostname)
 }
 
 /**

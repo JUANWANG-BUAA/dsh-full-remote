@@ -8,25 +8,13 @@
  */
 import { networkInterfaces } from 'node:os'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { isLoopbackHost, isWildcardHost } from './hosts.ts'
 
-/** True for bind-all wildcards: not connectable destination hosts. */
-export function isWildcardHost(host: string) {
-  const value = String(host ?? '').replace(/^\[|\]$/g, '')
-  return value === '' || value === '0.0.0.0' || value === '::' || value === '::0'
-}
+export { isLoopbackHost, isWildcardHost }
 
-/**
- * Loopback classification aligned with harness `isLoopbackHostname`:
- * localhost, [::1], and any IPv4 in 127/8. Also accepts the IPv4-mapped
- * form Node reports on sockets (`::ffff:127.0.0.1`).
- */
-export function isLoopbackHost(host: string) {
-  const hostname = String(host ?? '').replace(/^\[|\]$/g, '').toLowerCase()
-  if (hostname === 'localhost' || hostname === '::1' || hostname === '::ffff:127.0.0.1') return true
-  const parts = hostname.split('.')
-  return parts.length === 4
-    && parts[0] === '127'
-    && parts.every(part => /^\d{1,3}$/.test(part) && Number(part) <= 255)
+/** Coerce unknown thrown values to Error for loggers. */
+export function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error))
 }
 
 /** Bracket IPv6 literals so `host:port` is a legal authority. */

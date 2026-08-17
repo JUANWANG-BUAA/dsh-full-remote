@@ -1,6 +1,6 @@
 {
   "name": "dsh-full-remote",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "DeepSeek Harness plugin for remote access: a token-gated reverse proxy keeps settings, credentials, and file access working over public tunnels and on other devices instead of returning 403. Per-device sessions.",
   "type": "module",
   "main": "lib/index.js",
@@ -21,6 +21,7 @@
     "typecheck:ci": "tsc -p tsconfig.ci.json",
     "test:unit": "node --experimental-strip-types --test tests/*.test.ts",
     "test:client": "vitest run",
+    "screenshots": "node --experimental-strip-types scripts/capture-screenshots.ts",
     "test": "pnpm run test:unit && pnpm run test:client",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
     "check:ci": "pnpm run lint && pnpm run typecheck:ci && pnpm run test && pnpm run build",
@@ -47,7 +48,15 @@
     "docs/rp-demo-listen-address.png",
     "docs/rp-demo-token.png",
     "docs/rp-demo-mobile-login.png",
-    "docs/rp-demo-mobile-workspace.png"
+    "docs/rp-demo-mobile-workspace.png",
+    "docs/screenshots/preview-desktop.png",
+    "docs/screenshots/preview-devices.png",
+    "docs/screenshots/preview-home.png",
+    "docs/screenshots/preview-invite.png",
+    "docs/screenshots/preview-mobile-login.png",
+    "docs/screenshots/preview-mobile-panel.png",
+    "docs/screenshots/preview-mobile.png",
+    "docs/screenshots/preview-wait.png"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0"

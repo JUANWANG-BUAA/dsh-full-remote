@@ -14,10 +14,12 @@
 import Schema from '@deepseek-ai/schemastery'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { readFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { listenProxy, type ProxyServer } from './proxy.ts'
 import { defaultStateFile, readState, writeState, type PersistedState } from './persist.ts'
 import { generateAccessToken } from './security.ts'
 import { createSessionStore } from './sessions.ts'
+import { createTunnelManager, tunnelTrustsForwarding, type TunnelStatus } from './tunnel.ts'
 import {
   pathnameOf,
   readJson,
@@ -28,6 +30,7 @@ import {
   isLoopbackHost,
   publishHost,
   reachableHosts,
+  asError,
 } from './http-util.ts'
 import { PAGE_BOOTSTRAP_SOURCE } from './page-bootstrap.ts'
 import { createAuditLog, defaultAuditPath, readAuditLog, readAuditLogAll } from './audit.ts'
@@ -36,6 +39,7 @@ import { createInviteStore } from './invites.ts'
 import { probeFence } from './self-check.ts'
 import { qrToSvg } from './qr-svg.ts'
 import { LOGIN_PATH } from './pages.ts'
+import { CONTROL_HEADER, CONTROL_HEADER_VALUE, CONTROL_PREFIX } from './control.ts'
 
 export const name = 'reverse-proxy'
 export const inject = ['webServer']
@@ -45,6 +49,7 @@ export const Config = Schema.object({
   listenPort: Schema.number().min(0).max(65535).default(3081).description('Default local tunnel target port; 0 chooses a free port; the UI can override it at runtime.'),
   backendHost: Schema.string().default('127.0.0.1').description('DeepSeek Harness Web backend host. Must be a loopback address, not a wildcard (0.0.0.0 / ::). TCP connects here; Host/Origin rewrite always uses 127.0.0.1 regardless.'),
   backendPort: Schema.number().min(0).max(65535).default(0).description('DeepSeek Harness Web backend port; 0 follows webServer.port.'),
+  cloudflaredPath: Schema.string().default('').description('Optional explicit path to a cloudflared binary for the one-click quick tunnel. When empty the tunnel resolves the binary via PATH, then a pinned, SHA256-verified download cache under the state file directory.'),
   stateFile: Schema.string().default('').description('Durable state file; empty uses $DSH_HOME/reverse-proxy.json.'),
   autoRestore: Schema.boolean().default(true).description('Restore the last enabled state after DeepSeek Harness restarts.'),
   maxRequestBytes: Schema.number().min(1024).default(16 * 1024 * 1024).description('Maximum declared request body size.'),
@@ -75,39 +80,7 @@ export const Config = Schema.object({
 })
 
 /** Validated plugin config: every field carries its Schema default. */
-interface RuntimeConfig {
-  listenHost: string
-  listenPort: number
-  backendHost: string
-  backendPort: number
-  stateFile: string
-  autoRestore: boolean
-  maxRequestBytes: number
-  upstreamTimeoutMs: number
-  sessionMaxAgeSeconds: number
-  sessionIdleSeconds: number
-  cookieName: string
-  maxHeaderSizeBytes: number
-  headersTimeoutMs: number
-  requestTimeoutMs: number
-  keepAliveTimeoutMs: number
-  loginDelayMs: number
-  loginMaxAttempts: number
-  loginLockoutSeconds: number
-  upgradeMaxAttempts: number
-  upgradeLockoutSeconds: number
-  approvalMode: boolean
-  maxSessions: number
-  logRequests: boolean
-  auditLog: boolean
-  auditLogFile: string
-  allowedCidrs: string[]
-  allowTokenRead: boolean
-  tlsCertFile: string
-  tlsKeyFile: string
-  trustForwardedProto: boolean
-  trustForwardedFor: boolean
-}
+type RuntimeConfig = ReturnType<typeof Config>
 
 /** Runtime state once `load()` has regenerated the access token when missing. */
 type RuntimeState = PersistedState & { accessToken: string }
@@ -149,15 +122,16 @@ interface RuntimeStatus {
   tls: boolean
   auditLog: boolean
   trustForwardedFor: boolean
-  authenticated: boolean
   reason?: string
+  tunnel: TunnelStatus
 }
 
-const CONTROL_PREFIX = '/dsh-reverse-proxy'
+/** Injectable runtime dependencies; tests replace the tunnel factory. */
+export interface RuntimeDeps {
+  createTunnel?: typeof createTunnelManager
+}
+
 const VIEWPORT = 'width=device-width, initial-scale=1, viewport-fit=cover'
-// FROZEN (roadmap §7.1 class 2/3/4): plugin id, cookie name, control prefix,
-// forwarding header, polyfill marker. Renaming any of these drops sessions
-// or silently disables anti-spoof stripping. Only the npm package name moves.
 
 export function injectViewport(html: string) {
   return html.replace(
@@ -194,14 +168,6 @@ export function injectIndexEnhancements(html: string) {
   return withViewport.replace('<head>', `<head>${INDEX_BOOTSTRAP}`)
 }
 
-/**
- * Socket peer loopback check. Delegates to isLoopbackHost so every 127/8
- * alias (127.0.0.2, …) and the v4-mapped form count, not just 127.0.0.1.
- */
-function isLoopbackAddress(address: string | undefined) {
-  return isLoopbackHost(address ?? '')
-}
-
 function isLoopbackOrigin(origin: string | undefined) {
   if (origin === undefined) return true
   try {
@@ -217,15 +183,15 @@ function isValidListenHost(value: string) {
   return !/[\s/\\]/.test(value)
 }
 
-export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
-  /** @type {{ host: string, port: number, close: () => Promise<void> } | undefined} */
+export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: RuntimeDeps = {}) {
   let bound: ProxyServer | undefined
   let disposed = false
   let state: RuntimeState | undefined
-  /** Last start refusal, kept in memory so the panel can explain a stopped proxy. @type {string | undefined} */
+  /** Last start refusal, kept in memory so the panel can explain a stopped proxy. */
   let lastFailure: string | undefined
   /** Mutating operations share one exclusive queue so start/stop/listen/rotate never interleave. */
   let writeGate = Promise.resolve()
+  const warn = (error: unknown) => { ctx.logger.warn(asError(error)) }
   const exclusive = <T>(fn: () => T | Promise<T>): Promise<T> => {
     const run = writeGate.then(fn, fn)
     writeGate = run.then(() => {}, () => {})
@@ -255,6 +221,22 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
   })
   const inviteStore = createInviteStore()
   const scheme = () => (config.tlsCertFile && config.tlsKeyFile ? 'https' : 'http')
+  /** One-click cloudflared quick tunnel. Session-scoped: never persisted or auto-restored (the URL is random per start). */
+  const tunnel = (deps.createTunnel ?? createTunnelManager)({
+    target: () => {
+      // cloudflared must reach the proxy listener, not the backend. Loopback
+      // and wildcard binds resolve to 127.0.0.1; a concrete LAN IP is used as-is.
+      if (bound === undefined) return ''
+      const host = isWildcardHost(bound.host) || isLoopbackHost(bound.host) ? '127.0.0.1' : bound.host
+      return formatHttpUrl(host, bound.port, 'http')
+    },
+    configuredPath: config.cloudflaredPath,
+    cacheDir: join(dirname(statePath), 'bin'),
+    audit: (event, fields) => { void audit.record(event, fields) },
+    log: message => { ctx.logger.info(message) },
+  })
+  /** Tunnel trust is live only while cloudflared is starting or online — not after error/off. */
+  const tunnelLive = () => tunnelTrustsForwarding(tunnel.status().state)
 
   let sessionStore: ReturnType<typeof createSessionStore> | undefined
   let saveTimer: ReturnType<typeof setTimeout> | undefined
@@ -308,7 +290,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
         ...(state.listenPort !== undefined ? { listenPort: state.listenPort } : {}),
       })
     } catch (error) {
-      ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
+      warn(error)
     }
   }
 
@@ -337,7 +319,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
       tls: scheme() === 'https',
       auditLog: audit.enabled,
       trustForwardedFor: config.trustForwardedFor === true,
-      authenticated: true,
+      tunnel: tunnel.status(),
       ...(reason !== undefined ? { reason } : {}),
     }
   }
@@ -362,9 +344,20 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
     ctx.logger.info(`reverse-proxy: stopped listening on ${formatHttpUrl(current.host, current.port, scheme())}`)
   }
 
+  /** Stop the tunnel first so cloudflared is not still forwarding into a closing listener. */
+  const teardown = async () => {
+    await tunnel.stop()
+    await closeBound()
+  }
+
+  const restartTunnelIfLive = async (wasLive: boolean) => {
+    if (!wasLive || bound === undefined || disposed || scheme() === 'https') return
+    await tunnel.start()
+  }
+
   const stop = async () => {
     await load()
-    await closeBound()
+    await teardown()
     state!.enabled = false
     lastFailure = undefined
     await save()
@@ -396,7 +389,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
     try {
       tls = await loadTls()
     } catch (error) {
-      ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
+      warn(error)
       return failStart('tls-failed')
     }
     try {
@@ -422,17 +415,23 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
         upgradeLockoutMs: config.upgradeLockoutSeconds * 1000,
         sessionStore,
         inviteStore,
+        approvalMode: config.approvalMode,
         ipAllowed: address => ipAllowed(address, cidrRules),
         audit: (event, fields) => { void audit.record(event, fields) },
         tls,
-        trustForwardedProto: config.trustForwardedProto === true,
-        trustForwardedFor: config.trustForwardedFor === true,
+        // While the one-click tunnel is up, cloudflared peers come from
+        // 127.0.0.1 — without trust every tunnel user shares one loopback
+        // rate-limit bucket and audit/CIDR see a single fake IP. The proxy
+        // only ever trusts forwarding headers from loopback peers, so this
+        // probe adds no surface beyond the explicit config.
+        trustForwardedProto: () => config.trustForwardedProto === true || tunnelLive(),
+        trustForwardedFor: () => config.trustForwardedFor === true || tunnelLive(),
         log: config.logRequests
           ? entry => { ctx.logger.debug(`reverse-proxy: ${entry.remote ?? '-'} ${entry.method} ${entry.path} -> ${entry.status}`) }
           : undefined,
       })
     } catch (error) {
-      ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
+      warn(error)
       return failStart('listen-failed')
     }
     lastFailure = undefined
@@ -450,7 +449,8 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
   const rotateToken = async () => {
     await load()
     const restart = bound !== undefined
-    await closeBound()
+    const wasTunnel = tunnelLive()
+    await teardown()
     state!.accessToken = generateAccessToken()
     // Rotation invalidates every device: sessions are independent of the
     // token, so they must be revoked explicitly.
@@ -460,6 +460,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
     void audit.record('token.rotate')
     ctx.logger.info('reverse-proxy: access token rotated')
     if (restart) await start()
+    await restartTunnelIfLive(wasTunnel)
     return { ...(await snapshot()), accessToken: state!.accessToken }
   }
 
@@ -478,30 +479,38 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
     const previous = effectiveListen()
     if (hostname === previous.host && portNumber === previous.port) return snapshot()
     const wasRunning = bound !== undefined
+    const wasTunnel = tunnelLive()
     state!.listenHost = hostname
     state!.listenPort = portNumber
     lastFailure = undefined
     await save()
-    await closeBound()
+    await teardown()
     if (!wasRunning) {
       ctx.logger.info(`reverse-proxy: publish address set to ${hostname}:${portNumber}`)
       return snapshot()
     }
     const status = await start()
-    if (status.running) return status
+    if (status.running) {
+      await restartTunnelIfLive(wasTunnel)
+      return snapshot()
+    }
     // Roll back: keep serving on the address that worked.
     state!.listenHost = previous.host
     state!.listenPort = previous.port
     await save()
     const restored = await start()
+    await restartTunnelIfLive(wasTunnel && restored.running)
     return snapshot({ reason: restored.running ? 'listen-failed-restored' : 'listen-failed' })
   })
 
   const buildInvite = async (publicBase: string | undefined) => {
     await load()
     const base = String(publicBase ?? '').trim().replace(/\/$/, '')
+    // Explicit origin wins; then the live quick-tunnel URL so a phone can
+    // scan the QR immediately; finally the local target.
+    const tunnelUrl = tunnel.status().publicUrl
     const fallback = (await snapshot()).target
-    const origin = base === '' ? fallback : base
+    const origin = base === '' ? (tunnelUrl ?? fallback) : base
     let url
     try {
       url = new URL(LOGIN_PATH, origin.endsWith('/') ? origin : `${origin}/`)
@@ -544,176 +553,166 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
     }
   }
 
-  /** POST-only control routes mapped to their unwrapped work functions. */
-  const actions = new Map<string, () => () => Promise<RuntimeStatus>>([
-    [`${CONTROL_PREFIX}/start`, () => start],
-    [`${CONTROL_PREFIX}/stop`, () => stop],
-    [`${CONTROL_PREFIX}/rotate-token`, () => rotateToken],
-  ])
+  type ControlHandler = (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
+
+  const auditQuery = (req: IncomingMessage) => {
+    const url = new URL(req.url ?? '/', 'http://localhost')
+    const rawLimit = Number(url.searchParams.get('limit') ?? 50)
+    const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(rawLimit, 1), 200) : 50
+    const event = url.searchParams.get('event')?.trim() || undefined
+    return { limit, event }
+  }
+
+  const withJson = (
+    fn: (body: Record<string, unknown>, res: ServerResponse) => Promise<void>,
+  ): ControlHandler => async (req, res) => {
+    let body: Record<string, unknown>
+    try {
+      body = await readJson(req) as Record<string, unknown>
+    } catch {
+      sendJson(res, 400, { error: 'invalid-request' })
+      return
+    }
+    try {
+      await fn(body, res)
+    } catch (error) {
+      warn(error)
+      sendJson(res, 500, { error: 'action-failed' })
+    }
+  }
+
+  const routes = new Map<string, ControlHandler>()
+  const route = (method: string, suffix: string, handler: ControlHandler) => {
+    routes.set(`${method} ${CONTROL_PREFIX}${suffix}`, handler)
+  }
+
+  const runAction = (fn: () => Promise<RuntimeStatus>): ControlHandler => async (_req, res) => {
+    // A rejected action (e.g. close-timeout during stop) must still answer
+    // the panel — an unanswered request hangs the fetch and leaks an
+    // unhandled rejection into the host route.
+    try {
+      sendJson(res, 200, await exclusive(fn))
+    } catch (error) {
+      warn(error)
+      sendJson(res, 500, { error: 'action-failed' })
+    }
+  }
+
+  const mutateSession = (action: 'approve' | 'revoke' | 'rename'): ControlHandler => withJson(async (body, res) => {
+    const id = typeof body.id === 'string' ? body.id : ''
+    const result = await exclusive(async () => {
+      await load()
+      const ok = action === 'approve'
+        ? sessionStore!.approve(id)
+        : action === 'revoke'
+          ? sessionStore!.revoke(id)
+          : sessionStore!.rename(id, typeof body.label === 'string' ? body.label : undefined)
+      if (ok) void audit.record(`session.${action}`, { id })
+      return ok
+    })
+    sendJson(res, 200, { ok: result })
+  })
+
+  route('GET', '/status', async (_req, res) => {
+    sendJson(res, 200, await shared(() => snapshot()))
+  })
+  route('POST', '/self-check', async (_req, res) => {
+    sendJson(res, 200, await shared(() => runSelfCheck()))
+  })
+  route('POST', '/invite', withJson(async (body, res) => {
+    const invite = await shared(() => buildInvite(typeof body.publicBase === 'string' ? body.publicBase : undefined))
+    if (invite.error !== undefined) {
+      sendJson(res, invite.error === 'not-running' ? 409 : 400, invite)
+      return
+    }
+    void audit.record('invite.create')
+    sendJson(res, 200, invite)
+  }))
+  route('GET', '/token', async (_req, res) => {
+    if (config.allowTokenRead === false) {
+      sendJson(res, 403, { error: 'token-read-disabled' })
+      return
+    }
+    sendJson(res, 200, { accessToken: await exclusive(async () => {
+      await load()
+      void audit.record('token.reveal')
+      return state!.accessToken
+    }) })
+  })
+  route('GET', '/sessions', async (_req, res) => {
+    sendJson(res, 200, { sessions: await shared(async () => {
+      await load()
+      return sessionStore!.list()
+    }) })
+  })
+  route('GET', '/audit', async (req, res) => {
+    const { limit, event } = auditQuery(req)
+    sendJson(res, 200, await shared(async () => ({
+      enabled: audit.enabled,
+      events: await readAuditLog(audit.path, limit, event),
+    })))
+  })
+  route('GET', '/audit/export', async (req, res) => {
+    const { event } = auditQuery(req)
+    const events = await shared(() => readAuditLogAll(audit.path, event))
+    res.writeHead(200, {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      'content-disposition': 'attachment; filename="dsh-reverse-proxy-audit.json"',
+      'x-content-type-options': 'nosniff',
+    })
+    res.end(JSON.stringify(events, null, 2))
+  })
+  route('POST', '/tunnel/start', async (_req, res) => {
+    const outcome = await exclusive(async (): Promise<'ok' | 'not-running' | 'tls-unsupported' | 'disposed'> => {
+      await load()
+      if (disposed) return 'disposed'
+      // The tunnel forwards to the proxy listener; without a listener there
+      // is nothing to forward to (the panel starts the proxy first).
+      if (bound === undefined) return 'not-running'
+      // CF edge already terminates TLS; a local-TLS proxy plus tunnel is a
+      // meaningless combination the panel should not offer silently.
+      if (scheme() === 'https') return 'tls-unsupported'
+      await tunnel.start()
+      return 'ok'
+    })
+    if (outcome !== 'ok') {
+      sendJson(res, outcome === 'not-running' || outcome === 'disposed' ? 409 : 400, { error: outcome })
+      return
+    }
+    sendJson(res, 200, await shared(() => snapshot()))
+  })
+  route('POST', '/tunnel/stop', async (_req, res) => {
+    sendJson(res, 200, await exclusive(async () => {
+      await tunnel.stop()
+      return snapshot()
+    }))
+  })
+  route('POST', '/sessions/approve', mutateSession('approve'))
+  route('POST', '/sessions/revoke', mutateSession('revoke'))
+  route('POST', '/sessions/rename', mutateSession('rename'))
+  route('POST', '/start', runAction(start))
+  route('POST', '/stop', runAction(stop))
+  route('POST', '/rotate-token', runAction(rotateToken))
+  route('POST', '/listen', withJson(async (body, res) => {
+    sendJson(res, 200, await setListen(body.host, body.port))
+  }))
 
   const handle = async (req: IncomingMessage, res: ServerResponse) => {
-    const path = pathnameOf(req.url)
-    if (!isLoopbackAddress(req.socket.remoteAddress)) {
+    if (!isLoopbackHost(req.socket.remoteAddress ?? '')) {
       sendJson(res, 403, { error: 'loopback-required' })
       return
     }
-    const allowed = (req.headers['x-dsh-reverse-proxy-control'] === '1') && isLoopbackOrigin(req.headers.origin)
-    if (path === `${CONTROL_PREFIX}/status` && req.method === 'GET') {
-      if (!allowed) {
-        sendJson(res, 403, { error: 'forbidden' })
-        return
-      }
-      sendJson(res, 200, await shared(() => snapshot()))
+    const handler = routes.get(`${req.method} ${pathnameOf(req.url)}`)
+    if (handler === undefined) {
+      sendJson(res, 404, { error: 'not-found' })
       return
     }
-    if (path === `${CONTROL_PREFIX}/self-check` && req.method === 'POST') {
-      if (!allowed) {
-        sendJson(res, 403, { error: 'forbidden' })
-        return
-      }
-      sendJson(res, 200, await shared(() => runSelfCheck()))
+    if (req.headers[CONTROL_HEADER] !== CONTROL_HEADER_VALUE || !isLoopbackOrigin(req.headers.origin)) {
+      sendJson(res, 403, { error: 'forbidden' })
       return
     }
-    if (path === `${CONTROL_PREFIX}/invite` && req.method === 'POST') {
-      if (!allowed) {
-        sendJson(res, 403, { error: 'forbidden' })
-        return
-      }
-      try {
-        const body = await readJson(req)
-        const invite = await shared(() => buildInvite(body?.publicBase))
-        if (invite.error !== undefined) {
-          sendJson(res, invite.error === 'not-running' ? 409 : 400, invite)
-          return
-        }
-        void audit.record('invite.create')
-        sendJson(res, 200, invite)
-      } catch {
-        sendJson(res, 400, { error: 'invalid-request' })
-      }
-      return
-    }
-    if (path === `${CONTROL_PREFIX}/token` && req.method === 'GET') {
-      if (!allowed) {
-        sendJson(res, 403, { error: 'forbidden' })
-        return
-      }
-      if (config.allowTokenRead === false) {
-        sendJson(res, 403, { error: 'token-read-disabled' })
-        return
-      }
-      sendJson(res, 200, { accessToken: await exclusive(async () => {
-        await load()
-        void audit.record('token.reveal')
-        return state!.accessToken
-      }) })
-      return
-    }
-    if (path === `${CONTROL_PREFIX}/sessions` && req.method === 'GET') {
-      if (!allowed) {
-        sendJson(res, 403, { error: 'forbidden' })
-        return
-      }
-      sendJson(res, 200, { sessions: await shared(async () => {
-        await load()
-        return sessionStore!.list()
-      }) })
-      return
-    }
-    if (path === `${CONTROL_PREFIX}/audit` && req.method === 'GET') {
-      if (!allowed) {
-        sendJson(res, 403, { error: 'forbidden' })
-        return
-      }
-      const auditUrl = new URL(req.url ?? '/', 'http://localhost')
-      const rawLimit = Number(auditUrl.searchParams.get('limit') ?? 50)
-      const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(rawLimit, 1), 200) : 50
-      const event = auditUrl.searchParams.get('event')?.trim() || undefined
-      sendJson(res, 200, await shared(async () => ({
-        enabled: audit.enabled,
-        events: await readAuditLog(audit.path, limit, event),
-      })))
-      return
-    }
-    if (path === `${CONTROL_PREFIX}/audit/export` && req.method === 'GET') {
-      if (!allowed) {
-        sendJson(res, 403, { error: 'forbidden' })
-        return
-      }
-      const auditUrl = new URL(req.url ?? '/', 'http://localhost')
-      const event = auditUrl.searchParams.get('event')?.trim() || undefined
-      const events = await shared(() => readAuditLogAll(audit.path, event))
-      res.writeHead(200, {
-        'content-type': 'application/json; charset=utf-8',
-        'cache-control': 'no-store',
-        'content-disposition': 'attachment; filename="dsh-reverse-proxy-audit.json"',
-        'x-content-type-options': 'nosniff',
-      })
-      res.end(JSON.stringify(events, null, 2))
-      return
-    }
-    const sessionAction = path.match(/^\/dsh-reverse-proxy\/sessions\/(approve|revoke|rename)$/)
-    if (sessionAction !== null && req.method === 'POST') {
-      if (!allowed) {
-        sendJson(res, 403, { error: 'forbidden' })
-        return
-      }
-      try {
-        const body = await readJson(req)
-        const id = typeof body?.id === 'string' ? body.id : ''
-        const result = await exclusive(async () => {
-          await load()
-          if (sessionAction[1] === 'approve') {
-            const ok = sessionStore!.approve(id)
-            if (ok) void audit.record('session.approve', { id })
-            return ok
-          }
-          if (sessionAction[1] === 'revoke') {
-            const ok = sessionStore!.revoke(id)
-            if (ok) void audit.record('session.revoke', { id })
-            return ok
-          }
-          const ok = sessionStore!.rename(id, body?.label)
-          if (ok) void audit.record('session.rename', { id })
-          return ok
-        })
-        sendJson(res, 200, { ok: result })
-      } catch {
-        sendJson(res, 400, { error: 'invalid-request' })
-      }
-      return
-    }
-    const action = actions.get(path)
-    if (action !== undefined && req.method === 'POST') {
-      if (!allowed) {
-        sendJson(res, 403, { error: 'forbidden' })
-        return
-      }
-      // A rejected action (e.g. close-timeout during stop) must still answer
-      // the panel — an unanswered request hangs the fetch and leaks an
-      // unhandled rejection into the host route.
-      try {
-        sendJson(res, 200, await exclusive(action()))
-      } catch (error) {
-        ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
-        sendJson(res, 500, { error: 'action-failed' })
-      }
-      return
-    }
-    if (path === `${CONTROL_PREFIX}/listen` && req.method === 'POST') {
-      if (!allowed) {
-        sendJson(res, 403, { error: 'forbidden' })
-        return
-      }
-      try {
-        const body = await readJson(req)
-        sendJson(res, 200, await setListen(body?.host, body?.port))
-      } catch {
-        sendJson(res, 400, { error: 'invalid-request' })
-      }
-      return
-    }
-    sendJson(res, 404, { error: 'not-found' })
+    await handler(req, res)
   }
 
   return {
@@ -731,7 +730,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
         clearTimeout(saveTimer)
         saveTimer = undefined
       }
-      await closeBound()
+      await teardown()
       await save()
     }),
     status: () => shared(() => snapshot()),
@@ -750,8 +749,6 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
 
 /**
  * Publish an authenticated local reverse-proxy endpoint for any tunnel client.
- * @param {import('@deepseek-ai/cordis').Context} ctx
- * @param {Schema.Type<typeof Config>} config
  */
 export function apply(ctx: RuntimeContext, config: RuntimeConfig) {
   if (isWildcardHost(config.backendHost)) {

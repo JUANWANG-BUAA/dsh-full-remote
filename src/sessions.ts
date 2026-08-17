@@ -49,12 +49,25 @@ export function newSessionId() {
   return randomBytes(ID_BYTES).toString('base64url')
 }
 
+function validSessionIp(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 && value.length <= 64 ? value : undefined
+}
+
 export function hashSessionSecret(secret: string) {
   return createHash('sha256').update(`dsh-reverse-proxy/session-secret/v1\0${secret}`).digest('base64url')
 }
 
 export function encodeSessionCookie(id: string, secret: string) {
   return `${id}.${secret}`
+}
+
+/** Session Set-Cookie (login or expiry). Logout must repeat `Secure` when the original cookie had it, or HTTPS browsers keep the old cookie. */
+export function sessionCookie(
+  name: string,
+  value: string,
+  options: { maxAgeSeconds: number, secure: boolean },
+) {
+  return `${name}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${options.maxAgeSeconds}${options.secure ? '; Secure' : ''}`
 }
 
 /** Split a cookie value; returns undefined for malformed input. */
@@ -206,6 +219,25 @@ export function createSessionStore(options: {
       return { id, secret, status: record.status, label: record.label }
     },
 
+    /**
+     * Re-issue a cookie for an existing device (invite retry after a lost
+     * redirect). Rotates the secret so the new Set-Cookie is the only live
+     * credential; status and createdAt stay put so the owner still sees one
+     * device. Undefined when the session is gone, expired, or rejected.
+     */
+    reissue(id: string, ip?: string) {
+      const now = Date.now()
+      sweep(now)
+      const session = sessions.get(id)
+      if (session === undefined || expired(session, now) || session.status === 'rejected') return undefined
+      const secret = newSessionSecret()
+      session.secretHash = hashSessionSecret(secret)
+      session.lastSeenAt = now
+      if (ip !== undefined && ip !== '') session.lastSeenIp = ip
+      changed()
+      return { id, secret, status: session.status, label: session.label }
+    },
+
     /** Validate a device cookie; undefined when unknown, revoked, or expired. */
     validate(cookieValue: string | undefined, ip?: string) {
       const session = find(cookieValue)
@@ -308,8 +340,8 @@ export function createSessionStore(options: {
         if (!Number.isFinite(entry.createdAt) || !Number.isFinite(entry.lastSeenAt)) continue
         // IP fields are optional (records from before IP tracking lack them);
         // a malformed one is dropped individually, never the whole record.
-        const validIp = (value: unknown) =>
-          typeof value === 'string' && value.length > 0 && value.length <= 64 ? value : undefined
+        const createdIp = validSessionIp(entry.createdIp)
+        const lastSeenIp = validSessionIp(entry.lastSeenIp)
         sessions.set(entry.id, {
           id: entry.id,
           secretHash: entry.secretHash,
@@ -317,8 +349,8 @@ export function createSessionStore(options: {
           status: entry.status,
           createdAt: entry.createdAt as number,
           lastSeenAt: entry.lastSeenAt as number,
-          ...(validIp(entry.createdIp) !== undefined ? { createdIp: validIp(entry.createdIp) } : {}),
-          ...(validIp(entry.lastSeenIp) !== undefined ? { lastSeenIp: validIp(entry.lastSeenIp) } : {}),
+          ...(createdIp !== undefined ? { createdIp } : {}),
+          ...(lastSeenIp !== undefined ? { lastSeenIp } : {}),
         })
       }
     },

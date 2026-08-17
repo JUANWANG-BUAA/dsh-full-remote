@@ -4,12 +4,12 @@ import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    ignores: ['lib/**', 'node_modules/**', 'coverage/**', 'output/**', '.harness/**'],
+    ignores: ['lib/**', 'node_modules/**', 'coverage/**', 'output/**', '.harness/**', 'scripts/screenshots/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['**/*.js', '**/*.mjs'],
+    files: ['**/*.js', '**/*.mjs', 'scripts/**/*.ts'],
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'module',

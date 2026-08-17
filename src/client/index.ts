@@ -11,6 +11,7 @@ import { RemoteSection } from './RemoteSection.tsx'
 import { bindTranslate } from './i18n.ts'
 import { trustSettingsPersistence } from './trust-settings.ts'
 import type { AuditResult, InviteResult, ProxyApi, ProxyStatus, SelfCheckResult, SessionInfo } from './types.ts'
+import { CONTROL_HEADER, CONTROL_HEADER_VALUE, CONTROL_PREFIX } from '../control.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -37,22 +38,45 @@ export function errorFromControlResponse(status: number, body: { error?: string 
   return new Error(`HTTP ${status}`)
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/dsh-reverse-proxy${path}`, {
+function withQuery(path: string, params: Record<string, string | number | undefined>) {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === '') continue
+    search.set(key, String(value))
+  }
+  const query = search.toString()
+  return query === '' ? path : `${path}?${query}`
+}
+
+function controlFetch(path: string, init?: RequestInit) {
+  return fetch(`${CONTROL_PREFIX}${path}`, {
     credentials: 'same-origin',
     ...init,
     headers: {
       ...(init?.headers ?? {}),
-      'x-dsh-reverse-proxy-control': '1',
+      [CONTROL_HEADER]: CONTROL_HEADER_VALUE,
     },
   })
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await controlFetch(path, init)
   const body = await response.json().catch(() => ({})) as { error?: string }
   if (!response.ok) throw errorFromControlResponse(response.status, body)
   return body as T
 }
 
+async function requestBlob(path: string): Promise<Blob> {
+  const response = await controlFetch(path)
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { error?: string }
+    throw errorFromControlResponse(response.status, body)
+  }
+  return response.blob()
+}
+
 function createApi(): ProxyApi {
-  const post = (path: string, body?: unknown) => request<ProxyStatus>(path, {
+  const post = <T = ProxyStatus>(path: string, body?: unknown) => request<T>(path, {
     method: 'POST',
     ...(body === undefined ? {} : {
       headers: { 'content-type': 'application/json' },
@@ -64,56 +88,23 @@ function createApi(): ProxyApi {
     start: () => post('/start'),
     stop: () => post('/stop'),
     token: async () => (await request<{ accessToken: string }>('/token')).accessToken,
-    rotateToken: () => request<ProxyStatus & { accessToken: string }>('/rotate-token', { method: 'POST' }),
+    rotateToken: () => post<ProxyStatus & { accessToken: string }>('/rotate-token'),
     setListen: (host, port) => post('/listen', { host, port }),
     sessions: async () => (await request<{ sessions: SessionInfo[] }>('/sessions')).sessions ?? [],
-    approveSession: id => request<{ ok: boolean }>(`/sessions/approve`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id }),
-    }),
-    revokeSession: id => request<{ ok: boolean }>(`/sessions/revoke`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id }),
-    }),
-    renameSession: (id, label) => request<{ ok: boolean }>(`/sessions/rename`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id, label }),
-    }),
+    approveSession: id => post<{ ok: boolean }>('/sessions/approve', { id }),
+    revokeSession: id => post<{ ok: boolean }>('/sessions/revoke', { id }),
+    renameSession: (id, label) => post<{ ok: boolean }>('/sessions/rename', { id, label }),
     selfCheck: async () => {
-      const result = await request<SelfCheckResult>('/self-check', { method: 'POST' })
+      const result = await post<SelfCheckResult>('/self-check')
       const trusted = (globalThis as { __DSH_FULL_REMOTE_TRUSTED__?: number }).__DSH_FULL_REMOTE_TRUSTED__ === 1
       const failed = (globalThis as { __DSH_FULL_REMOTE_BOOTSTRAP_FAILED__?: number }).__DSH_FULL_REMOTE_BOOTSTRAP_FAILED__ === 1
       return { ...result, trustBootstrap: trusted, bootstrapFailed: failed }
     },
-    invite: (publicBase) => request<InviteResult>('/invite', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(publicBase === undefined ? {} : { publicBase }),
-    }),
-    audit: (limit, event) => {
-      const params = new URLSearchParams()
-      if (limit !== undefined) params.set('limit', String(limit))
-      if (event !== undefined && event !== '') params.set('event', event)
-      const query = params.toString()
-      return request<AuditResult>(`/audit${query === '' ? '' : `?${query}`}`)
-    },
-    exportAudit: async (event) => {
-      const params = new URLSearchParams()
-      if (event !== undefined && event !== '') params.set('event', event)
-      const query = params.toString()
-      const response = await fetch(`/dsh-reverse-proxy/audit/export${query === '' ? '' : `?${query}`}`, {
-        credentials: 'same-origin',
-        headers: { 'x-dsh-reverse-proxy-control': '1' },
-      })
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({})) as { error?: string }
-        throw errorFromControlResponse(response.status, body)
-      }
-      return response.blob()
-    },
+    invite: (publicBase) => post<InviteResult>('/invite', publicBase === undefined ? {} : { publicBase }),
+    audit: (limit, event) => request<AuditResult>(withQuery('/audit', { limit, event })),
+    startTunnel: () => post('/tunnel/start'),
+    stopTunnel: () => post('/tunnel/stop'),
+    exportAudit: event => requestBlob(withQuery('/audit/export', { event })),
   }
 }
 
