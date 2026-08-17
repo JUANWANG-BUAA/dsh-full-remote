@@ -64,6 +64,7 @@ export const zh = {
   'error.sessionActionFailed': '设备操作未生效（会话可能已过期）。请刷新列表后再试。',
   'error.sessionsPoll': '无法刷新设备列表。',
   'error.invalidInviteBase': '邀请 Origin 无效。请填 http(s)://host[:port]，不要带路径。',
+  'error.notRunning': '代理尚未运行，无法生成邀请。请先启动代理。',
   'token.copyLabel': '令牌',
   'toast.error': '无法完成',
   'toast.warn': '请注意',
@@ -86,6 +87,7 @@ export const zh = {
   'devices.approve': '批准',
   'devices.reject': '拒绝',
   'devices.lastSeen': '最近活动 {time}',
+  'devices.lastSeenIp': '来源 IP {ip}',
   'devices.kicked': '已踢出该设备。',
   'devices.approved': '已批准该设备。',
   'devices.rejected': '已拒绝该设备。',
@@ -127,6 +129,7 @@ export const zh = {
   'invite.copy': '复制邀请链接',
   'invite.copied': '邀请链接已复制。',
   'invite.placeholder': 'https://your-tunnel.example',
+  'invite.requiresRunning': '邀请只在代理运行时可用：启动代理后再生成二维码。',
 } as const
 
 export const en: Record<keyof typeof zh, string> = {
@@ -177,6 +180,7 @@ export const en: Record<keyof typeof zh, string> = {
   'error.sessionActionFailed': 'The device action did not apply (the session may have expired). Refresh the list and retry.',
   'error.sessionsPoll': 'Could not refresh the device list.',
   'error.invalidInviteBase': 'Invalid invite Origin. Use http(s)://host[:port] with no path.',
+  'error.notRunning': 'The proxy is not running, so no invite can be generated. Start the proxy first.',
   'token.copyLabel': 'token',
   'toast.error': 'Could not complete',
   'toast.warn': 'Heads up',
@@ -199,6 +203,7 @@ export const en: Record<keyof typeof zh, string> = {
   'devices.approve': 'Approve',
   'devices.reject': 'Reject',
   'devices.lastSeen': 'Last seen {time}',
+  'devices.lastSeenIp': 'Source IP {ip}',
   'devices.kicked': 'Device kicked.',
   'devices.approved': 'Device approved.',
   'devices.rejected': 'Device rejected.',
@@ -240,6 +245,7 @@ export const en: Record<keyof typeof zh, string> = {
   'invite.copy': 'Copy invite link',
   'invite.copied': 'Invite link copied.',
   'invite.placeholder': 'https://your-tunnel.example',
+  'invite.requiresRunning': 'Invites only work while the proxy is running. Start the proxy first.',
 }
 
 export type ReverseProxyTranslate = (key: keyof typeof zh, params?: Record<string, unknown>) => string

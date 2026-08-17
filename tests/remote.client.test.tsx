@@ -104,6 +104,18 @@ describe('toast mapping', () => {
     expect(toastFromCaught(new Error('invalid-base'), t).text).toMatch(/Origin/)
   })
 
+  it('maps a server-side action failure to the generic copy, not a raw code', () => {
+    const toast = toastFromCaught(new Error('action-failed'), t)
+    expect(toast.kind).toBe('error')
+    expect(toast.text).toBe(t('error.generic'))
+  })
+
+  it('maps not-running invite refusals to a start-the-proxy hint', () => {
+    const toast = toastFromCaught(new Error('not-running'), t)
+    expect(toast.kind).toBe('error')
+    expect(toast.text).toBe(t('error.notRunning'))
+  })
+
   it('keeps rotate success even when restart reports listen-failed', () => {
     const toast = toastFromStatus(
       { ...stopped, listen: { host: '127.0.0.1', port: 3081 }, reason: 'listen-failed', accessToken: 'x' },
@@ -259,7 +271,9 @@ describe('remote settings section', () => {
   })
 
   it('clears a generated invite after rotating the token', async () => {
-    const service = api()
+    const service = api({
+      status: vi.fn().mockResolvedValue({ ...stopped, enabled: true, running: true }),
+    })
     render(<RemoteSection {...sectionProps(service)} />)
     await waitFor(() => expect(service.status).toHaveBeenCalledOnce())
     fireEvent.click(screen.getByRole('button', { name: '生成邀请' }))
@@ -271,6 +285,17 @@ describe('remote settings section', () => {
     await waitFor(() => {
       expect(screen.queryByText(/login\?invite=one-time/)).toBeNull()
     })
+  })
+
+  it('keeps invite generation disabled while the proxy is stopped', async () => {
+    const service = api()
+    render(<RemoteSection {...sectionProps(service)} />)
+    expect(await screen.findByText('代理尚未运行')).toBeTruthy()
+    const button = screen.getByRole('button', { name: '生成邀请' }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    expect(screen.getByText(/邀请只在代理运行时可用/)).toBeTruthy()
+    fireEvent.click(button)
+    expect(service.invite).not.toHaveBeenCalled()
   })
 
   it('applies a custom listen address and warns about wildcard binds', async () => {
@@ -304,13 +329,22 @@ describe('remote settings section', () => {
     expect(await screen.findByText(/请输入有效的发布地址/)).toBeTruthy()
   })
 
-  it('lists connected devices and kicks one', async () => {
+  it('lists connected devices with their source IP and kicks one', async () => {
     const now = Date.now()
-    const device = { id: 's1', label: 'Chrome on macOS', status: 'active' as const, createdAt: now, lastSeenAt: now }
+    const device = {
+      id: 's1',
+      label: 'Chrome on macOS',
+      status: 'active' as const,
+      createdAt: now,
+      lastSeenAt: now,
+      createdIp: '203.0.113.9',
+      lastSeenIp: '198.51.100.2',
+    }
     const service = api({ sessions: vi.fn().mockResolvedValue([device]) })
     render(<RemoteSection {...sectionProps(service)} />)
     expect(await screen.findByText('Chrome on macOS')).toBeTruthy()
     expect(screen.getByText('在线')).toBeTruthy()
+    expect(screen.getByText(/198\.51\.100\.2/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /踢出/ }))
     await waitFor(() => expect(service.revokeSession).toHaveBeenCalledWith('s1'))
     expect(await screen.findByText('已踢出该设备。')).toBeTruthy()

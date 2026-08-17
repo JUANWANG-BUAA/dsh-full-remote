@@ -10,6 +10,7 @@ test-results/
 .DS_Store
 .cursor/
 .playwright-cli/
+.playwright-mcp/
 .env
 .env.*
 !.env.example

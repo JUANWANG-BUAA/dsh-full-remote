@@ -26,6 +26,10 @@ export type SessionInfo = {
   status: SessionStatus
   createdAt: number
   lastSeenAt: number
+  /** Remote IP at login; absent on records persisted before IP tracking. */
+  createdIp?: string
+  /** Remote IP of the most recent validated request. */
+  lastSeenIp?: string
 }
 
 export type FenceCheck = {

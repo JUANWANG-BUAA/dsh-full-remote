@@ -71,7 +71,7 @@ export const Config = Schema.object({
   tlsCertFile: Schema.string().default('').description('Optional PEM certificate path for local TLS on the proxy listen port (pair with tlsKeyFile). Empty = plain HTTP.'),
   tlsKeyFile: Schema.string().default('').description('Optional PEM private key path for local TLS (pair with tlsCertFile).'),
   trustForwardedProto: Schema.boolean().default(false).description('When true, trust inbound X-Forwarded-Proto from a reverse-edge for Secure cookies and upstream proto. Leave false unless a trusted TLS terminator sits in front.'),
-  trustForwardedFor: Schema.boolean().default(false).description('When true and the direct peer is loopback, use the first X-Forwarded-For value as the remote client IP for CIDR / rate limiting / audit. Only enable behind a trusted local tunnel/edge; do not enable for LAN direct access.'),
+  trustForwardedFor: Schema.boolean().default(false).description('When true and the direct peer is loopback, derive the remote client IP for CIDR / rate limiting / audit from CF-Connecting-IP or the rightmost X-Forwarded-For value (loopback and malformed values are never trusted). Only enable behind a trusted local tunnel/edge that sets these headers; do not enable for LAN direct access.'),
 })
 
 /** Validated plugin config: every field carries its Schema default. */
@@ -194,15 +194,18 @@ export function injectIndexEnhancements(html: string) {
   return withViewport.replace('<head>', `<head>${INDEX_BOOTSTRAP}`)
 }
 
+/**
+ * Socket peer loopback check. Delegates to isLoopbackHost so every 127/8
+ * alias (127.0.0.2, …) and the v4-mapped form count, not just 127.0.0.1.
+ */
 function isLoopbackAddress(address: string | undefined) {
-  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1'
+  return isLoopbackHost(address ?? '')
 }
 
 function isLoopbackOrigin(origin: string | undefined) {
   if (origin === undefined) return true
   try {
-    const hostname = new URL(origin).hostname
-    return hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '[::1]' || hostname === '::1'
+    return isLoopbackHost(new URL(origin).hostname)
   } catch {
     return false
   }
@@ -255,6 +258,8 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
 
   let sessionStore: ReturnType<typeof createSessionStore> | undefined
   let saveTimer: ReturnType<typeof setTimeout> | undefined
+  /** In-flight first load, memoized so concurrent callers share one read. */
+  let loadPromise: Promise<RuntimeState> | undefined
   const scheduleSave = () => {
     if (saveTimer !== undefined) return
     saveTimer = setTimeout(() => {
@@ -265,25 +270,31 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
     saveTimer.unref?.()
   }
 
-  const load = async (): Promise<RuntimeState> => {
-    if (state !== undefined) return state
-    state = await readState(statePath) as RuntimeState
-    // A missing/short token is regenerated. Old device cookies must not
-    // survive that — same semantics as an explicit rotate.
-    const regeneratedToken = state.accessToken === undefined
-    if (regeneratedToken) {
-      state.accessToken = generateAccessToken()
-    }
-    sessionStore = createSessionStore({
-      maxSessions: config.maxSessions,
-      maxAgeSeconds: config.sessionMaxAgeSeconds,
-      idleSeconds: config.sessionIdleSeconds,
-      approvalRequired: config.approvalMode,
-      onChange: scheduleSave,
-    })
-    if (!regeneratedToken) sessionStore.hydrate(state.sessions)
-    await save()
-    return state
+  const load = (): Promise<RuntimeState> => {
+    if (state !== undefined) return Promise.resolve(state)
+    // Two concurrent first loads must not parse the state file twice, mint
+    // two tokens, or race two state writes onto the same temp file name.
+    loadPromise ??= (async () => {
+      const loaded = await readState(statePath) as RuntimeState
+      // A missing/short token is regenerated. Old device cookies must not
+      // survive that — same semantics as an explicit rotate.
+      const regeneratedToken = loaded.accessToken === undefined
+      if (regeneratedToken) {
+        loaded.accessToken = generateAccessToken()
+      }
+      state = loaded
+      sessionStore = createSessionStore({
+        maxSessions: config.maxSessions,
+        maxAgeSeconds: config.sessionMaxAgeSeconds,
+        idleSeconds: config.sessionIdleSeconds,
+        approvalRequired: config.approvalMode,
+        onChange: scheduleSave,
+      })
+      if (!regeneratedToken) sessionStore.hydrate(loaded.sessions)
+      await save()
+      return loaded
+    })()
+    return loadPromise
   }
 
   const save = async () => {
@@ -497,6 +508,14 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
     } catch {
       return { error: 'invalid-base' }
     }
+    // Only http(s) origins make a usable invite link / QR.
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return { error: 'invalid-base' }
+    }
+    // An invite is a login link to the proxy: with nothing listening, the QR
+    // can only produce a connection-refused (or a literal ":0" URL when the
+    // port is auto-assigned). Refuse until the proxy is running.
+    if (bound === undefined) return { error: 'not-running' }
     // One-time invite code — never put the standing access token in the URL.
     url.searchParams.set('invite', inviteStore.issue())
     const inviteUrl = url.toString()
@@ -564,7 +583,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
         const body = await readJson(req)
         const invite = await shared(() => buildInvite(body?.publicBase))
         if (invite.error !== undefined) {
-          sendJson(res, 400, invite)
+          sendJson(res, invite.error === 'not-running' ? 409 : 400, invite)
           return
         }
         void audit.record('invite.create')
@@ -670,7 +689,15 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig) {
         sendJson(res, 403, { error: 'forbidden' })
         return
       }
-      sendJson(res, 200, await exclusive(action()))
+      // A rejected action (e.g. close-timeout during stop) must still answer
+      // the panel — an unanswered request hangs the fetch and leaks an
+      // unhandled rejection into the host route.
+      try {
+        sendJson(res, 200, await exclusive(action()))
+      } catch (error) {
+        ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
+        sendJson(res, 500, { error: 'action-failed' })
+      }
       return
     }
     if (path === `${CONTROL_PREFIX}/listen` && req.method === 'POST') {

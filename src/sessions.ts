@@ -35,6 +35,10 @@ export interface SessionRecord {
   status: 'active' | 'pending' | 'rejected'
   createdAt: number
   lastSeenAt: number
+  /** Remote IP at login; undefined for records persisted before IPs were tracked. */
+  createdIp?: string
+  /** Remote IP of the most recent validated request. */
+  lastSeenIp?: string
 }
 
 export function newSessionSecret() {
@@ -146,6 +150,8 @@ export function createSessionStore(options: {
     status: session.status,
     createdAt: session.createdAt,
     lastSeenAt: session.lastSeenAt,
+    ...(session.createdIp !== undefined ? { createdIp: session.createdIp } : {}),
+    ...(session.lastSeenIp !== undefined ? { lastSeenIp: session.lastSeenIp } : {}),
   })
 
   // Keep lastSeen fresh enough for short idle windows (default 60s throttle
@@ -173,7 +179,7 @@ export function createSessionStore(options: {
 
   return {
     /** Login a new device after the access token already checked out. */
-    login({ userAgent }: { userAgent: string | undefined }) {
+    login({ userAgent, ip }: { userAgent: string | undefined, ip?: string }) {
       const now = Date.now()
       sweep(now)
       const secret = newSessionSecret()
@@ -185,6 +191,7 @@ export function createSessionStore(options: {
         status: approvalRequired ? 'pending' : 'active',
         createdAt: now,
         lastSeenAt: now,
+        ...(ip !== undefined && ip !== '' ? { createdIp: ip, lastSeenIp: ip } : {}),
       }
       sessions.set(id, record)
       // Cap is a soft bound: evict the stalest OTHER session; when the store
@@ -200,7 +207,7 @@ export function createSessionStore(options: {
     },
 
     /** Validate a device cookie; undefined when unknown, revoked, or expired. */
-    validate(cookieValue: string | undefined) {
+    validate(cookieValue: string | undefined, ip?: string) {
       const session = find(cookieValue)
       if (session === undefined) return undefined
       if (expired(session)) {
@@ -209,6 +216,12 @@ export function createSessionStore(options: {
         return undefined
       }
       if (session.status !== 'active') return undefined
+      // A changed source IP is security-relevant: record it immediately,
+      // outside the lastSeen throttle.
+      if (ip !== undefined && ip !== '' && session.lastSeenIp !== ip) {
+        session.lastSeenIp = ip
+        changed()
+      }
       touch(session)
       return publicShape(session)
     },
@@ -293,6 +306,10 @@ export function createSessionStore(options: {
         if (typeof entry?.label !== 'string' || entry.label.length > 128) continue
         if (entry.status !== 'active' && entry.status !== 'pending') continue
         if (!Number.isFinite(entry.createdAt) || !Number.isFinite(entry.lastSeenAt)) continue
+        // IP fields are optional (records from before IP tracking lack them);
+        // a malformed one is dropped individually, never the whole record.
+        const validIp = (value: unknown) =>
+          typeof value === 'string' && value.length > 0 && value.length <= 64 ? value : undefined
         sessions.set(entry.id, {
           id: entry.id,
           secretHash: entry.secretHash,
@@ -300,6 +317,8 @@ export function createSessionStore(options: {
           status: entry.status,
           createdAt: entry.createdAt as number,
           lastSeenAt: entry.lastSeenAt as number,
+          ...(validIp(entry.createdIp) !== undefined ? { createdIp: validIp(entry.createdIp) } : {}),
+          ...(validIp(entry.lastSeenIp) !== undefined ? { lastSeenIp: validIp(entry.lastSeenIp) } : {}),
         })
       }
     },
@@ -315,6 +334,8 @@ export function createSessionStore(options: {
           status: session.status,
           createdAt: session.createdAt,
           lastSeenAt: session.lastSeenAt,
+          ...(session.createdIp !== undefined ? { createdIp: session.createdIp } : {}),
+          ...(session.lastSeenIp !== undefined ? { lastSeenIp: session.lastSeenIp } : {}),
         }))
     },
   }

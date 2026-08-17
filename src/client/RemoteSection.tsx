@@ -314,7 +314,7 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
     if (auditLoading) return
     setAuditLoading(true)
     try {
-      const rawLimit = Number(auditLimit)
+      const rawLimit = auditLimit.trim() === '' ? 50 : Number(auditLimit)
       const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(rawLimit, 1), 200) : 50
       const result = await api.audit(limit, auditFilter.trim() || undefined)
       if (mounted.current) setAudit(result)
@@ -335,7 +335,9 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
       document.body.appendChild(link)
       link.click()
       link.remove()
-      URL.revokeObjectURL(url)
+      // Revoking synchronously can cancel the download in some browsers
+      // (Firefox); give the navigation a beat to start first.
+      window.setTimeout(() => { URL.revokeObjectURL(url) }, 1000)
       showToast({ kind: 'success', text: t('audit.exported') })
     } catch (reason) {
       showToast(toastFromCaught(reason, t))
@@ -484,11 +486,19 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
           />
         </label>
         <div className={css.tokenRow}>
-          <button className={css.secondaryButton} type="button" disabled={busy} onClick={() => { void generateInvite() }}>{inviteLabel}</button>
+          <button
+            className={css.secondaryButton}
+            type="button"
+            disabled={busy || (statusReady && !running)}
+            onClick={() => { void generateInvite() }}
+          >{inviteLabel}</button>
           {invite !== undefined && (
             <button className={css.secondaryButton} type="button" onClick={() => { void copy(invite.inviteUrl, t('invite.copy'), 'invite.copied') }}>{t('invite.copy')}</button>
           )}
         </div>
+        {statusReady && !running && (
+          <p className={css.hint}>{t('invite.requiresRunning')}</p>
+        )}
         {qrSvg !== undefined && (
           <div
             className={css.qr}

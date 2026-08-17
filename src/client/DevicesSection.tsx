@@ -40,6 +40,11 @@ export function DevicesSection({
                 <span className={css.deviceMeta}>
                   {t('devices.lastSeen', { time: new Date(session.lastSeenAt).toLocaleString() })}
                 </span>
+                {session.lastSeenIp !== undefined && (
+                  <span className={css.deviceMeta}>
+                    {t('devices.lastSeenIp', { ip: session.lastSeenIp })}
+                  </span>
+                )}
               </div>
               <div className={css.deviceActions}>
                 {session.status === 'pending' ? (

@@ -3,20 +3,29 @@
  *
  * Failures to write never throw into the request path; they warn through
  * the supplied logger. Disabled when auditLog is empty/false.
+ *
+ * The log is size-capped: past `maxBytes` it rotates to `<path>.1` (one
+ * generation kept, older events discarded). Writes are serialized through a
+ * queue so concurrent events cannot interleave a rotation.
  */
-import { appendFile, mkdir, open, readFile } from 'node:fs/promises'
+import { appendFile, mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises'
 import { dirname } from 'node:path'
+
+/** Default rotation threshold for the append-only audit log. */
+const DEFAULT_MAX_AUDIT_BYTES = 8 * 1024 * 1024
 
 /**
  * @param {{
  *   path?: string,
  *   enabled?: boolean,
+ *   maxBytes?: number,
  *   warn?: (error: Error) => void,
  * }} options
  */
 export function createAuditLog(options: {
   path?: string
   enabled?: boolean
+  maxBytes?: number
   warn?: (error: Error) => void
 } = {}) {
   const enabled = options.enabled === true
@@ -24,20 +33,34 @@ export function createAuditLog(options: {
     && options.path !== ''
   const path = options.path
   const warn = options.warn
+  const maxBytes = typeof options.maxBytes === 'number' && options.maxBytes > 0
+    ? options.maxBytes
+    : DEFAULT_MAX_AUDIT_BYTES
 
-  const write = async (event: string, fields: Record<string, unknown> = {}) => {
-    if (!enabled || path === undefined) return
+  let queue: Promise<void> = Promise.resolve()
+  const write = (event: string, fields: Record<string, unknown> = {}) => {
+    if (!enabled || path === undefined) return queue
     const line = `${JSON.stringify({
       ts: new Date().toISOString(),
       event,
       ...fields,
     })}\n`
-    try {
-      await mkdir(dirname(path), { recursive: true })
-      await appendFile(path, line, { encoding: 'utf8', mode: 0o600 })
-    } catch (error) {
-      warn?.(error instanceof Error ? error : new Error(String(error)))
-    }
+    queue = queue.then(async () => {
+      try {
+        await mkdir(dirname(path), { recursive: true })
+        const size = await stat(path).then(info => info.size, () => 0)
+        if (size >= maxBytes) {
+          // Single-generation rotation; rm first because rename(2) cannot
+          // replace an existing file on Windows.
+          await rm(`${path}.1`, { force: true })
+          await rename(path, `${path}.1`)
+        }
+        await appendFile(path, line, { encoding: 'utf8', mode: 0o600 })
+      } catch (error) {
+        warn?.(error instanceof Error ? error : new Error(String(error)))
+      }
+    })
+    return queue
   }
 
   return {
@@ -86,7 +109,9 @@ export async function readAuditLog(
     }
     const lines = text.split('\n').filter(line => line.trim() !== '')
     const events: unknown[] = []
-    for (const line of lines.slice(-limit)) {
+    // Filter first, then take the newest `limit`: slicing raw lines first
+    // would hide matching events that sit just beyond the last `limit` lines.
+    for (const line of lines) {
       try {
         const parsed = JSON.parse(line) as { event?: unknown }
         if (event !== undefined && parsed.event !== event) continue
@@ -95,7 +120,7 @@ export async function readAuditLog(
         // Skip malformed lines; the audit log is append-only and best-effort.
       }
     }
-    return events
+    return events.slice(-limit)
   } catch {
     return []
   } finally {

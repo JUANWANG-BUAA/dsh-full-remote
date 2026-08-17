@@ -11,9 +11,11 @@
  */
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse, type ClientRequest } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
+import { isIP } from 'node:net'
 import type { Duplex } from 'node:stream'
 import { parseCookies, safeEqual } from './security.ts'
 import { createSessionStore, encodeSessionCookie } from './sessions.ts'
+import { normalizeRemoteIp } from './cidr.ts'
 import { isLoopbackHost, readBody, sendHtml, pathnameOf, rewriteLoopbackAuthority } from './http-util.ts'
 import { LOGIN_COPY, LOGIN_PATH, loginLocale, loginPage, waitPage } from './pages.ts'
 
@@ -77,6 +79,8 @@ type RuntimeSpec = ProxySpec & {
   trackUpstream: (up: ClientRequest | Duplex) => void
   loginTracker: LoginTracker
   sessionStore: ReturnType<typeof createSessionStore>
+  /** Resolved (never undefined) so the login cookie always gets a numeric Max-Age. */
+  sessionMaxAgeSeconds: number
 }
 
 const HOP_BY_HOP = new Set([
@@ -107,6 +111,9 @@ const SPOOFABLE_FORWARDING = new Set([
 const INTERNAL_HEADERS = new Set(['cookie', 'referer', 'referrer'])
 const LOGIN_FAILURE_DELAY_MS = 250
 const MAX_TRACKED_LOGIN_IPS = 4096
+/** Mirrors the createSessionStore default so a caller that omits
+ *  sessionMaxAgeSeconds still gets a valid cookie Max-Age. */
+const DEFAULT_SESSION_MAX_AGE_SECONDS = 30 * 24 * 3600
 
 /**
  * The last address in an X-Forwarded-For list. Empty/missing becomes undefined.
@@ -130,6 +137,21 @@ function firstHeaderValue(value: string | string[] | undefined): string | undefi
 }
 
 /**
+ * A forwarded value is an edge claim, so only a literal, non-loopback IP is
+ * accepted. `CF-Connecting-IP` is sanitized by Cloudflare's edge, but on any
+ * other tunnel (ngrok/frp/SSH) the remote client can inject it themselves:
+ * trusting a spoofed `127.0.0.1` would bypass the CIDR allowlist (loopback
+ * is always allowed) and merge the attacker into the loopback rate-limit
+ * bucket. Malformed or loopback values fall through to the next source.
+ */
+function trustedForwardedIp(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined
+  const ip = normalizeRemoteIp(value)
+  if (isIP(ip) === 0 || isLoopbackHost(ip)) return undefined
+  return ip
+}
+
+/**
  * The client IP used for CIDR checks, login rate limiting, audit and logs.
  *
  * A local tunnel (cloudflared/ngrok/frp/SSH) connects from 127.0.0.1, so the
@@ -145,9 +167,9 @@ function firstHeaderValue(value: string | string[] | undefined): string | undefi
 export function effectiveRemoteAddress(req: IncomingMessage, spec: RuntimeSpec): string {
   const direct = req.socket.remoteAddress ?? ''
   if (spec.trustForwardedFor === true && isLoopbackHost(direct)) {
-    const cf = firstHeaderValue(req.headers['cf-connecting-ip'])
+    const cf = trustedForwardedIp(firstHeaderValue(req.headers['cf-connecting-ip']))
     if (cf !== undefined) return cf
-    const forwarded = lastForwardedIp(req.headers['x-forwarded-for'])
+    const forwarded = trustedForwardedIp(lastForwardedIp(req.headers['x-forwarded-for']))
     if (forwarded !== undefined) return forwarded
   }
   return direct
@@ -339,6 +361,9 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
     received += chunk.length
     if (!overflow && received > spec.maxRequestBytes) {
       overflow = true
+      // The upstream request is dead from here on; disarm its connect timer
+      // so it cannot fire a second destroy up to upstreamTimeoutMs later.
+      clearTimeout(connectTimer)
       req.unpipe(up)
       up.destroy()
       if (!res.headersSent) {
@@ -417,7 +442,7 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse, spec: Runt
       return
     }
     spec.loginTracker.success(remote)
-    const session = spec.sessionStore.login({ userAgent: req.headers['user-agent'] })
+    const session = spec.sessionStore.login({ userAgent: req.headers['user-agent'], ip: remote })
     spec.audit?.('login.ok', {
       remote,
       sessionId: session.id,
@@ -485,6 +510,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     trackUpstream,
     loginTracker: createLoginTracker(spec),
     sessionStore: spec.sessionStore ?? createSessionStore({ maxAgeSeconds: spec.sessionMaxAgeSeconds }),
+    sessionMaxAgeSeconds: spec.sessionMaxAgeSeconds ?? DEFAULT_SESSION_MAX_AGE_SECONDS,
   }
   const upgradeTracker = createLoginTracker({
     loginMaxAttempts: spec.upgradeMaxAttempts ?? 10,
@@ -552,7 +578,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
       res.end('forbidden\n')
       return
     }
-    if (runtimeSpec.sessionStore.validate(cookie) === undefined) {
+    if (runtimeSpec.sessionStore.validate(cookie, effectiveRemoteAddress(req, runtimeSpec)) === undefined) {
       drainRequest(req)
       if (req.method === 'GET' || req.method === 'HEAD') {
         res.writeHead(303, { location: LOGIN_PATH, 'cache-control': 'no-store' })
@@ -596,7 +622,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     }
     const path = pathnameOf(req.url)
     const cookie = parseCookies(req.headers.cookie)[spec.cookieName]
-    if (path.startsWith(spec.controlPrefix) || runtimeSpec.sessionStore.validate(cookie) === undefined) {
+    if (path.startsWith(spec.controlPrefix) || runtimeSpec.sessionStore.validate(cookie, upgradeRemote) === undefined) {
       upgradeTracker.fail(upgradeRemote)
       denySocket(socket, '401 Unauthorized')
       spec.audit?.('access.denied', { reason: 'auth', remote: upgradeRemote, path: req.url ?? '/', upgrade: true })

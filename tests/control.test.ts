@@ -194,13 +194,15 @@ describe('device session control', () => {
     assert.equal(login.status, 303)
     assert.match(login.headers.location!, /^\/_dsh_reverse_proxy\/wait\//)
 
-    // The control surface lists the pending device.
+    // The control surface lists the pending device, with its source IP.
     const listed = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET', headers: CONTROL })
     assert.equal(listed.status, 200)
-    const sessions = listed.body as { sessions: Array<{ id: string, status: string, label: string }> }
+    const sessions = listed.body as { sessions: Array<{ id: string, status: string, label: string, createdIp?: string, lastSeenIp?: string }> }
     assert.equal(sessions.sessions.length, 1)
     assert.equal(sessions.sessions[0].status, 'pending')
     assert.equal(sessions.sessions[0].label, 'Chrome on macOS')
+    assert.equal(sessions.sessions[0].createdIp, '127.0.0.1')
+    assert.equal(sessions.sessions[0].lastSeenIp, '127.0.0.1')
     const id = sessions.sessions[0].id
 
     // Mutations require the control header; approve without it is rejected.
@@ -380,6 +382,53 @@ describe('runtime control surface', () => {
     })
     assert.equal(res.status, 403)
     assert.equal((res.body as { error: string }).error, 'loopback-required')
+  })
+
+  it('accepts control routes from any 127/8 loopback alias', async () => {
+    const { runtime } = await makeRuntime()
+    const res = await call(runtime, {
+      path: '/dsh-reverse-proxy/status',
+      headers: { 'x-dsh-reverse-proxy-control': '1', origin: 'http://127.0.0.2:3080' },
+      remoteAddress: '127.0.0.2',
+    })
+    assert.equal(res.status, 200)
+  })
+
+  it('rejects invite bases that are not http(s) origins', async () => {
+    const { runtime } = await makeRuntime()
+    const res = await call(runtime, {
+      path: '/dsh-reverse-proxy/invite',
+      method: 'POST',
+      headers: CONTROL,
+      body: JSON.stringify({ publicBase: 'ftp://example.com' }),
+    })
+    assert.equal(res.status, 400)
+    assert.equal((res.body as { error: string }).error, 'invalid-base')
+  })
+
+  it('refuses to build invites while the proxy is stopped', async () => {
+    const { runtime } = await makeRuntime()
+    const stopped = await call(runtime, {
+      path: '/dsh-reverse-proxy/invite',
+      method: 'POST',
+      headers: CONTROL,
+      body: '{}',
+    })
+    assert.equal(stopped.status, 409)
+    assert.equal((stopped.body as { error: string }).error, 'not-running')
+
+    await runtime.start()
+    const running = await call(runtime, {
+      path: '/dsh-reverse-proxy/invite',
+      method: 'POST',
+      headers: CONTROL,
+      body: '{}',
+    })
+    assert.equal(running.status, 200)
+    assert.match(
+      (running.body as { inviteUrl: string }).inviteUrl,
+      /^http:\/\/127\.0\.0\.1:\d+\/_dsh_reverse_proxy\/login\?invite=\S+$/,
+    )
   })
 
   it('requires the control header and a loopback origin for mutations', async () => {

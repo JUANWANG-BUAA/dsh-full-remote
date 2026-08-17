@@ -97,7 +97,8 @@ flowchart LR
   rotation are performed from the local panel
 - Per-device sessions: each login creates an independent device
   credential, and only a hash is persisted. Devices can be renamed or
-  revoked from the panel.
+  revoked from the panel, which also shows each device's source IP
+  (at login and most recently seen).
 - Optional first-visit approval: a new device waits on a page until it is
   approved from the local panel
 - Phone invite: a QR code or a one-time link (single use, 15-minute
@@ -106,7 +107,9 @@ flowchart LR
 - Optional CIDR allowlist for remote IPs
 - Optional `trustForwardedFor` to use real client IPs from a trusted local
   tunnel in CIDR / rate-limit / audit, preferring `CF-Connecting-IP` and
-  otherwise using the rightmost `X-Forwarded-For` value
+  otherwise using the rightmost `X-Forwarded-For` value; loopback or
+  malformed forwarded values are never trusted, so a client-injected
+  `CF-Connecting-IP` on a non-Cloudflare edge cannot impersonate loopback
 
 ### Operation
 
@@ -114,7 +117,8 @@ flowchart LR
   rewrite the proxy uses
 - Structured JSONL audit log (login, approval, revocation, token rotation,
   start, stop, WebSocket open/deny/reject) with an in-panel viewer for
-  recent events and JSON export
+  recent events and JSON export; rotates past 8 MB, keeping one previous
+  generation
 - Runtime listen-address changes with automatic rollback when a bind fails
 - Optional local TLS (`tlsCertFile` / `tlsKeyFile`)
 - Health endpoint at `/_dsh_reverse_proxy/healthz`
@@ -199,7 +203,8 @@ phone would open its own loopback and never reach the proxy.
 
 Then press **Generate invite**. After a scan (or opening the link) the
 login page submits once. The invite expires in 15 minutes, works once, and
-does not contain the standing token.
+does not contain the standing token. Invites can only be generated while
+the proxy is running.
 
 ### Upgrade
 
@@ -214,25 +219,27 @@ dsh plugin --profile web update --latest dsh-full-remote
 
 Then restart `dsh web`. `--latest` ignores the current range, installs the
 newest version, and rewrites `package.json`. For a specific version use
-`dsh plugin --profile web update dsh-full-remote@0.2.5`.
+`dsh plugin --profile web update dsh-full-remote@0.3.0`.
 
 ## Screenshots
 
 ### Desktop
 
-| Control panel | Fence self-check |
-|---|---|
-| ![Control panel](./docs/screenshots/preview-desktop.png) | ![Fence self-check](./docs/screenshots/preview-self-check.png) |
+The full settings page: running status and fence self-check, tunnel
+target, one-time invite QR, listen address, access token, connected
+devices with source IPs, and the audit viewer.
 
-| Phone invite (QR) | Access token | Listen address |
-|---|---|---|
-| ![Phone invite](./docs/screenshots/preview-invite.png) | ![Access token](./docs/screenshots/preview-token.png) | ![Listen address](./docs/screenshots/preview-listen-address.png) |
+![Reverse proxy control panel](./docs/screenshots/preview-desktop.png)
+
+| One-time phone invite (QR) | Connected devices with source IP |
+|---|---|
+| ![Phone invite](./docs/screenshots/preview-invite.png) | ![Connected devices](./docs/screenshots/preview-devices.png) |
 
 ### Mobile
 
-| Login page (phone) | Add workspace on phone | Mobile control panel |
+| Login page | Control panel | Add workspace |
 |---|---|---|
-| ![Mobile login](./docs/screenshots/preview-mobile-login.png) | ![Mobile workspace](./docs/screenshots/preview-mobile.png) | ![Mobile panel](./docs/screenshots/preview-mobile-panel.png) |
+| ![Mobile login](./docs/screenshots/preview-mobile-login.png) | ![Mobile panel](./docs/screenshots/preview-mobile-panel.png) | ![Mobile workspace](./docs/screenshots/preview-mobile.png) |
 
 ## Configuration
 
@@ -287,7 +294,9 @@ access-control layer provided by this plugin consists of:
   forwarding headers are trusted for CIDR / rate-limit / audit, so a local
   tunnel can see real client IPs. It prefers `CF-Connecting-IP` and
   otherwise uses the rightmost `X-Forwarded-For` value to avoid client-side
-  spoofing. Keep it disabled for direct LAN access.
+  spoofing; loopback or malformed forwarded values are never trusted, so a
+  client-injected `CF-Connecting-IP` on a non-Cloudflare edge cannot
+  impersonate loopback. Keep it disabled for direct LAN access.
 
 The access token must be treated as a secret. Terminate TLS on the public
 side of the tunnel. For LAN use without a tunnel, set
@@ -321,7 +330,7 @@ side of the tunnel. For LAN use without a tunnel, set
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.2.5.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.0.tgz
 ```
 
 Git installs run the `prepare` build. On pnpm ≥ 10 allow it:

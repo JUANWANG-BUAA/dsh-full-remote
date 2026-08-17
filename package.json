@@ -1,7 +1,7 @@
 {
   "name": "dsh-full-remote",
-  "version": "0.2.5",
-  "description": "Remote DeepSeek Harness with full server-side API access: Host/Origin rewrite restores settings.*, credentials.*, and host.listDirectory that other tunnels 403. Token-gated reverse proxy plus mobile control UI.",
+  "version": "0.3.0",
+  "description": "DeepSeek Harness plugin for remote access: a token-gated reverse proxy keeps settings, credentials, and file access working over public tunnels and on other devices instead of returning 403. Per-device sessions.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {

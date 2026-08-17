@@ -3,7 +3,51 @@
 All notable changes to dsh-full-remote (formerly dsh-reverse-proxy) are
 documented in this file.
 
-## Unreleased
+## 0.3.0 (2026-08-17)
+
+### Added
+
+- Device sessions now record the remote IP at login and the most recent
+  validated request IP (`createdIp` / `lastSeenIp`), shown in the settings
+  panel device list as "Source IP". Records persisted before this change
+  keep working and simply have no IP fields.
+- The audit log rotates past 8 MB, keeping one previous generation as
+  `<auditFile>.1`, so the append-only JSONL can no longer grow without
+  bound. Writes are serialized through a queue so concurrent events cannot
+  interleave a rotation.
+
+### Changed
+
+- Invites can only be generated while the proxy is running: the control
+  route answers `409 not-running` and the panel disables the generate
+  button with an explanatory hint. A QR for a stopped proxy could only
+  produce a connection-refused (or a literal `:0` URL with an
+  auto-assigned port).
+- `trustForwardedFor`: forwarded values are only trusted when they are
+  literal, non-loopback IPs. A client-injected `CF-Connecting-IP` on a
+  non-Cloudflare edge (ngrok/frp/SSH) can no longer impersonate loopback to
+  bypass the CIDR allowlist or evade per-IP rate limiting.
+
+### Fixed
+
+- Audit viewer: the result limit now applies after the event filter, not
+  before — filtered queries no longer miss matching events that sit just
+  beyond the last N raw lines.
+- Control actions (start/stop/rotate) answer `500 action-failed` instead
+  of hanging the panel when the underlying operation rejects (e.g. a
+  close-timeout during stop).
+- Login cookie: omitting `sessionMaxAgeSeconds` in a direct `listenProxy`
+  call no longer emits an invalid `Max-Age=undefined` attribute.
+- Control routes now accept every 127/8 loopback alias (e.g. `127.0.0.2`),
+  not just `127.0.0.1` / `::1`.
+- Invite bases with a non-http(s) scheme are rejected with `invalid-base`.
+- The upstream connect timer is disarmed on the body-overflow path instead
+  of firing a second destroy up to `upstreamTimeoutMs` later.
+- Concurrent first state loads share one read instead of racing two token
+  generations and two state-file writes.
+- Audit export: the object URL is revoked after a short delay so the
+  download is not cancelled in some browsers (Firefox).
+- Audit viewer: an empty limit input now means the default (50), not 1.
 
 ### Documentation
 

@@ -67,6 +67,30 @@ describe('audit log', () => {
     }
   })
 
+  it('rotates the log past the size cap, keeping one generation', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-audit-rotate-'))
+    const path = join(dir, 'events.jsonl')
+    try {
+      // ~190-byte lines: two lines cross the 300-byte cap, one never does.
+      const pad = 'x'.repeat(120)
+      const audit = createAuditLog({ enabled: true, path, maxBytes: 300 })
+      const events = ['e1', 'e2', 'e3', 'e4', 'e5']
+      for (const [n, event] of events.entries()) {
+        await audit.record(event, { pad, n: n + 1 })
+      }
+      // The last rotation kept e3+e4; e5 alone lives in the current file.
+      const rotated = await readFile(`${path}.1`, 'utf8')
+      const current = await readFile(path, 'utf8')
+      assert.match(rotated, /"e3"/)
+      assert.match(rotated, /"e4"/)
+      assert.doesNotMatch(rotated, /"e1"/)
+      assert.match(current, /"e5"/)
+      assert.doesNotMatch(current, /"e3"/)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('reads only the tail of a large audit file', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-audit-tail-'))
     const path = join(dir, 'events.jsonl')
@@ -110,6 +134,25 @@ describe('audit log', () => {
       const events = await readAuditLog(path, 50, 'login.ok') as Array<{ event: string }>
       assert.equal(events.length, 2)
       assert.equal(events.every(event => event.event === 'login.ok'), true)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('applies the limit after filtering, not before', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-audit-limit-'))
+    const path = join(dir, 'events.jsonl')
+    try {
+      await writeFile(path, [
+        JSON.stringify({ event: 'login.ok', n: 1 }),
+        JSON.stringify({ event: 'proxy.start' }),
+        JSON.stringify({ event: 'proxy.stop' }),
+      ].join('\n') + '\n')
+      // limit 1 with a filter must still find the matching event that sits
+      // before the last raw line.
+      const events = await readAuditLog(path, 1, 'login.ok') as Array<{ event: string, n: number }>
+      assert.equal(events.length, 1)
+      assert.equal(events[0].n, 1)
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

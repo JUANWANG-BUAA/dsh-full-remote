@@ -544,6 +544,44 @@ describe('authenticated reverse proxy', () => {
     assert.equal(logged.some(e => e.method === 'GET' && e.path === '/dsh-reverse-proxy/status' && e.status === 403), true)
   })
 
+  it('falls back to the default session max-age in the login cookie', async () => {
+    const backend = createServer((req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      res.end('ok')
+    })
+    await new Promise<void>((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
+    const token = generateAccessToken()
+    // Deliberately omit sessionMaxAgeSeconds: the login cookie must still
+    // carry a numeric Max-Age, never `Max-Age=undefined`.
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: portOf(backend),
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 1024,
+      upstreamTimeoutMs: 2000,
+      loginDelayMs: 0,
+    })
+    cleanups.push(proxy.close)
+
+    const login = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    assert.equal(login.status, 303)
+    assert.match(login.headers['set-cookie']![0], /Max-Age=2592000/)
+  })
+
   it('rewrites Host to loopback when backendHost is the 0.0.0.0 wildcard', async () => {
     const seen: Array<{ host: string | undefined, origin: string | undefined }> = []
     const backend = createServer((req, res) => {
@@ -1039,6 +1077,44 @@ describe('trustForwardedFor', () => {
     } as unknown as IncomingMessage
     const spec = { trustForwardedFor: true } as Parameters<typeof effectiveRemoteAddress>[1]
     assert.equal(effectiveRemoteAddress(req, spec), '198.51.100.7')
+  })
+
+  it('ignores a loopback or malformed CF-Connecting-IP (client-injectable on non-Cloudflare edges)', () => {
+    // A non-Cloudflare tunnel (ngrok/frp) does not sanitize CF-Connecting-IP:
+    // the remote client can send it themselves. Loopback or garbage values
+    // must fall through to the rightmost XFF instead of being trusted.
+    const spoofedLoopback = {
+      headers: {
+        'cf-connecting-ip': '127.0.0.1',
+        'x-forwarded-for': '203.0.113.5, 10.0.0.1',
+      },
+      socket: { remoteAddress: '127.0.0.1' },
+    } as unknown as IncomingMessage
+    const spec = { trustForwardedFor: true } as Parameters<typeof effectiveRemoteAddress>[1]
+    assert.equal(effectiveRemoteAddress(spoofedLoopback, spec), '10.0.0.1')
+
+    const garbage = {
+      headers: {
+        'cf-connecting-ip': 'not-an-ip',
+        'x-forwarded-for': '203.0.113.5, 10.0.0.1',
+      },
+      socket: { remoteAddress: '127.0.0.1' },
+    } as unknown as IncomingMessage
+    assert.equal(effectiveRemoteAddress(garbage, spec), '10.0.0.1')
+  })
+
+  it('falls back to the socket when the rightmost XFF is loopback or malformed', () => {
+    const spec = { trustForwardedFor: true } as Parameters<typeof effectiveRemoteAddress>[1]
+    const loopback = {
+      headers: { 'x-forwarded-for': '10.0.0.1, ::1' },
+      socket: { remoteAddress: '127.0.0.1' },
+    } as unknown as IncomingMessage
+    assert.equal(effectiveRemoteAddress(loopback, spec), '127.0.0.1')
+    const garbage = {
+      headers: { 'x-forwarded-for': '10.0.0.1, unknown' },
+      socket: { remoteAddress: '127.0.0.1' },
+    } as unknown as IncomingMessage
+    assert.equal(effectiveRemoteAddress(garbage, spec), '127.0.0.1')
   })
 
   it('only trusts X-Forwarded-For from a loopback peer when enabled', async () => {

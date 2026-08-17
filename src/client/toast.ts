@@ -82,6 +82,10 @@ export function toastFromCaught(error: unknown, t: ReverseProxyTranslate): Panel
   if (message === 'token-read-disabled') return { kind: 'error', text: t('error.tokenReadDisabled') }
   if (message === 'invalid-request') return { kind: 'error', text: t('error.invalidRequest') }
   if (message === 'invalid-base') return { kind: 'error', text: t('error.invalidInviteBase') }
+  if (message === 'not-running') return { kind: 'error', text: t('error.notRunning') }
+  // Server-side action failure (500): the generic copy already tells the
+  // user to retry / check the log; a raw code would not.
+  if (message === 'action-failed') return { kind: 'error', text: t('error.generic') }
   if (message !== '') return { kind: 'error', text: t('error.network', { detail: message }) }
   return { kind: 'error', text: t('error.generic') }
 }

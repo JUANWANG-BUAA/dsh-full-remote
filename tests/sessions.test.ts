@@ -133,4 +133,42 @@ describe('session store', () => {
     assert.equal(store.validate(encodeSessionCookie(session.id, session.secret)), undefined)
     assert.equal(store.list().length, 0)
   })
+
+  it('records login and last-seen IPs and carries them through persistence', () => {
+    const store = createSessionStore()
+    const session = store.login({ userAgent: 'Chrome/126', ip: '203.0.113.9' })
+    const cookie = encodeSessionCookie(session.id, session.secret)
+    assert.equal(store.list()[0].createdIp, '203.0.113.9')
+    assert.equal(store.list()[0].lastSeenIp, '203.0.113.9')
+
+    // A later request from a different network updates only lastSeenIp.
+    assert.notEqual(store.validate(cookie, '198.51.100.2'), undefined)
+    assert.equal(store.list()[0].lastSeenIp, '198.51.100.2')
+    assert.equal(store.list()[0].createdIp, '203.0.113.9')
+
+    const restored = createSessionStore()
+    restored.hydrate(store.serialize())
+    assert.equal(restored.list()[0].createdIp, '203.0.113.9')
+    assert.equal(restored.list()[0].lastSeenIp, '198.51.100.2')
+    assert.notEqual(restored.validate(cookie)?.id, undefined)
+  })
+
+  it('drops malformed IP fields on hydrate but keeps the record', () => {
+    const store = createSessionStore()
+    const now = Date.now()
+    store.hydrate([{
+      id: 'd1',
+      secretHash: 'h',
+      label: 'Chrome on macOS',
+      status: 'active',
+      createdAt: now,
+      lastSeenAt: now,
+      createdIp: 42,
+      lastSeenIp: '203.0.113.9',
+    }])
+    const listed = store.list()
+    assert.equal(listed.length, 1)
+    assert.equal(listed[0].createdIp, undefined)
+    assert.equal(listed[0].lastSeenIp, '203.0.113.9')
+  })
 })

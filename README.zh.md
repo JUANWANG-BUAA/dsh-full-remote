@@ -72,17 +72,17 @@ flowchart LR
 ### 访问控制
 
 - 192 位访问令牌，状态文件权限 `0600`，在本地面板查看与轮换
-- 按设备会话：每次登录生成独立的设备凭据，持久化时只保存其哈希；可在面板中重命名或撤销设备
+- 按设备会话：每次登录生成独立的设备凭据，持久化时只保存其哈希；可在面板中重命名或撤销设备，并查看每台设备的来源 IP（登录时与最近活跃）
 - 可选首访审批：新设备停留在等待页，直至本机批准
 - 手机邀请：二维码或一次性链接（单次有效，15 分钟过期），链接中不含长期令牌
 - 登录失败计入固定延时，并按 IP 累计锁定
 - 可选 CIDR 白名单，限制远程 IP
-- 可选 `trustForwardedFor`：在可信本地隧道后使用真实客户端 IP 进行 CIDR / 限流 / 审计，优先 `CF-Connecting-IP`，否则取 `X-Forwarded-For` 最右值
+- 可选 `trustForwardedFor`：在可信本地隧道后使用真实客户端 IP 进行 CIDR / 限流 / 审计，优先 `CF-Connecting-IP`，否则取 `X-Forwarded-For` 最右值；回环或非法的转发值一律不信任，因此在非 Cloudflare 边缘上客户端自行注入的 `CF-Connecting-IP` 无法冒充回环地址
 
 ### 运维
 
 - 栅栏自检：使用与代理相同的 Host/Origin 改写探测 `settings.describe`
-- 结构化 JSONL 审计日志（登录、审批、撤销、令牌轮换、启动、停止、WebSocket 打开/拒绝），并支持在面板内查看最近事件与导出 JSON
+- 结构化 JSONL 审计日志（登录、审批、撤销、令牌轮换、启动、停止、WebSocket 打开/拒绝），并支持在面板内查看最近事件与导出 JSON；超过 8 MB 自动轮转，保留上一代
 - 监听地址可在运行时修改，绑定失败自动回滚
 - 可选本地 TLS（`tlsCertFile` / `tlsKeyFile`）
 - 健康检查接口 `/_dsh_reverse_proxy/healthz`
@@ -148,7 +148,7 @@ ngrok http 3081
 
 不要把 `127.0.0.1` 写入 Origin。那是运行 Harness 的机器；手机扫码后会访问手机自己的回环地址，连不上本机代理。
 
-然后点击 **生成邀请**。扫码或打开链接后，登录页会自动提交。链接单次有效、15 分钟过期，不含长期令牌。
+然后点击 **生成邀请**。扫码或打开链接后，登录页会自动提交。链接单次有效、15 分钟过期，不含长期令牌。只有代理运行时才能生成邀请。
 
 ### 升级
 
@@ -158,25 +158,26 @@ ngrok http 3081
 dsh plugin --profile web update --latest dsh-full-remote
 ```
 
-然后重启 `dsh web`。`--latest` 会忽略现有版本范围，装上最新版并改写 `package.json`。指定某一版用 `dsh plugin --profile web update dsh-full-remote@0.2.5`。
+然后重启 `dsh web`。`--latest` 会忽略现有版本范围，装上最新版并改写 `package.json`。指定某一版用 `dsh plugin --profile web update dsh-full-remote@0.3.0`。
 
 ## 截图
 
 ### 桌面端
 
-| 控制面板 | 栅栏自检 |
-|---|---|
-| ![控制面板](./docs/screenshots/preview-desktop.png) | ![栅栏自检](./docs/screenshots/preview-self-check.png) |
+完整设置页一图览：运行状态与栅栏自检、隧道目标、一次性邀请二维码、
+发布地址、访问令牌、带来源 IP 的已连接设备，以及审计查看器。
 
-| 手机邀请（二维码） | 访问令牌 | 监听地址 |
-|---|---|---|
-| ![手机邀请](./docs/screenshots/preview-invite.png) | ![访问令牌](./docs/screenshots/preview-token.png) | ![监听地址](./docs/screenshots/preview-listen-address.png) |
+![反向代理控制面板](./docs/screenshots/preview-desktop.png)
+
+| 一次性手机邀请（二维码） | 带来源 IP 的已连接设备 |
+|---|---|
+| ![手机邀请](./docs/screenshots/preview-invite.png) | ![已连接设备](./docs/screenshots/preview-devices.png) |
 
 ### 移动端
 
-| 手机登录页 | 手机添加工作区 | 移动控制面板 |
+| 手机登录页 | 移动控制面板 | 手机添加工作区 |
 |---|---|---|
-| ![移动端登录](./docs/screenshots/preview-mobile-login.png) | ![手机工作区](./docs/screenshots/preview-mobile.png) | ![移动面板](./docs/screenshots/preview-mobile-panel.png) |
+| ![移动端登录](./docs/screenshots/preview-mobile-login.png) | ![移动面板](./docs/screenshots/preview-mobile-panel.png) | ![手机工作区](./docs/screenshots/preview-mobile.png) |
 
 ## 常用配置
 
@@ -216,7 +217,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 - 登录失败计入固定延时，并按 IP 返回 `429` 锁定；
 - 控制接口（`/dsh-reverse-proxy/*`）仅限回环地址访问，需要控制头，且永远不会被公网代理转发；
 - 剥离可伪造的转发头与逐跳头，代理自身的 Cookie 不会到达后端；
-- 可选 `trustForwardedFor`：开启后仅信任回环对端传来的转发头，用于 CIDR / 限流 / 审计，使本地隧道能识别真实客户端 IP。优先 `CF-Connecting-IP`，否则取 `X-Forwarded-For` 最右值，避免客户端伪造前缀。局域网直连请保持关闭。
+- 可选 `trustForwardedFor`：开启后仅信任回环对端传来的转发头，用于 CIDR / 限流 / 审计，使本地隧道能识别真实客户端 IP。优先 `CF-Connecting-IP`，否则取 `X-Forwarded-For` 最右值，避免客户端伪造前缀；回环或非法的转发值一律不信任，因此在非 Cloudflare 边缘上客户端自行注入的 `CF-Connecting-IP` 无法冒充回环地址。局域网直连请保持关闭。
 
 访问令牌须按机密保管。公网侧应终止 TLS。局域网直连可配置 `tlsCertFile` / `tlsKeyFile`（例如用 [mkcert](https://github.com/FiloSottile/mkcert) 生成）。
 
@@ -234,7 +235,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.2.5.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.0.tgz
 ```
 
 git 安装会执行 `prepare` 构建，pnpm ≥ 10 需要放行：
