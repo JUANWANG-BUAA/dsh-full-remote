@@ -21,6 +21,7 @@
     "typecheck:ci": "tsc -p tsconfig.ci.json",
     "test:unit": "node --experimental-strip-types --test tests/*.test.ts",
     "test:client": "vitest run",
+    "audit:prod": "pnpm audit --prod --audit-level moderate",
     "screenshots": "node --experimental-strip-types scripts/capture-screenshots.ts",
     "test": "pnpm run test:unit && pnpm run test:client",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
