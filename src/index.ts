@@ -195,6 +195,9 @@ function validateRuntimeConfig(config: RuntimeConfig) {
   if (hasCert !== hasKey) {
     throw new Error('reverse-proxy: tlsCertFile and tlsKeyFile must be configured together.')
   }
+  if (config.trustCloudflareConnectingIp === true && config.trustForwardedFor !== true) {
+    throw new Error('reverse-proxy: trustCloudflareConnectingIp requires trustForwardedFor to be enabled.')
+  }
   const rawCidrs = Array.isArray(config.allowedCidrs) ? config.allowedCidrs : []
   const invalidCidrs = rawCidrs.filter(entry => parseCidr(entry) === undefined)
   if (invalidCidrs.length > 0) {

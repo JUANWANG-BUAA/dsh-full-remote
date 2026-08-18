@@ -156,6 +156,10 @@ describe('Cordis lifecycle', () => {
         async () => { await ctx.plugin(plugin, { ...base, allowedCidrs: ['not-an-ip'] }) },
         /allowedCidrs contains invalid CIDR/,
       )
+      await assert.rejects(
+        async () => { await ctx.plugin(plugin, { ...base, trustCloudflareConnectingIp: true }) },
+        /trustCloudflareConnectingIp requires trustForwardedFor/,
+      )
     } finally {
       await rm(dir, { recursive: true, force: true })
     }

@@ -1200,6 +1200,30 @@ describe('trustForwardedFor', () => {
     assert.equal((await bad('203.0.113.1')).status, 429)
     assert.equal((await bad('203.0.113.2')).status, 401)
   })
+
+  it('does not let a client-supplied CF header evade generic-tunnel rate limiting', async () => {
+    const proxy = await proxyWith({
+      trustForwardedFor: true,
+      loginMaxAttempts: 3,
+      loginLockoutMs: 60_000,
+    })
+    const bad = (cf: string) => http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-forwarded-for': '203.0.113.9',
+        // A generic local edge might relay this client-controlled field.
+        'cf-connecting-ip': cf,
+      },
+      body: 'token=wrong',
+    })
+    assert.equal((await bad('198.51.100.1')).status, 401)
+    assert.equal((await bad('198.51.100.2')).status, 401)
+    assert.equal((await bad('198.51.100.3')).status, 401)
+    assert.equal((await bad('198.51.100.4')).status, 429)
+  })
 })
 
 describe('websocket upgrade', () => {

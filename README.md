@@ -312,7 +312,7 @@ Common options:
     approvalMode: false          # true: approve each new device locally
     allowedCidrs: []             # e.g. ["192.168.1.0/24"]; empty: any IP after login
     trustForwardedFor: false     # true: trust rightmost X-Forwarded-For from a trusted local tunnel
-    trustCloudflareConnectingIp: false # true only for a local Cloudflare connector
+    trustCloudflareConnectingIp: false # true only with trustForwardedFor for a local Cloudflare connector
     upgradeMaxAttempts: 10       # failed WebSocket upgrades before lockout
     upgradeLockoutSeconds: 300   # lockout for repeated failed WebSocket upgrades
     headersTimeoutMs: 15000      # timeout for request headers
