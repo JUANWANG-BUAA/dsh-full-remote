@@ -110,6 +110,7 @@ export function deviceLabel(userAgent: string | undefined, fallback = 'Unknown d
  *   idleSeconds?: number,
  *   approvalRequired?: boolean,
  *   onChange?: () => void,
+ *   now?: () => number,
  * }} options
  */
 export function createSessionStore(options: {
@@ -118,6 +119,8 @@ export function createSessionStore(options: {
   idleSeconds?: number
   approvalRequired?: boolean
   onChange?: () => void
+  /** Testable clock seam; production defaults to Date.now. */
+  now?: () => number
 } = {}) {
   const maxSessions = options.maxSessions ?? 16
   const maxAgeSeconds = options.maxAgeSeconds ?? 30 * 24 * 3600
@@ -126,6 +129,7 @@ export function createSessionStore(options: {
   const idleSeconds = options.idleSeconds ?? 0
   const approvalRequired = options.approvalRequired === true
   const onChange = options.onChange
+  const now = options.now ?? Date.now
   const maxAgeMs = maxAgeSeconds * 1000
   const idleMs = idleSeconds > 0 ? idleSeconds * 1000 : 0
   /** @type {Map<string, { id: string, secretHash: string, label: string, status: 'active'|'pending'|'rejected', createdAt: number, lastSeenAt: number }>} */
@@ -133,17 +137,17 @@ export function createSessionStore(options: {
 
   const changed = () => { onChange?.() }
 
-  const expired = (session: SessionRecord, now = Date.now()) => {
-    if (now - session.createdAt > maxAgeMs) return true
-    if (idleMs > 0 && now - session.lastSeenAt > idleMs) return true
+  const expired = (session: SessionRecord, at = now()) => {
+    if (at - session.createdAt > maxAgeMs) return true
+    if (idleMs > 0 && at - session.lastSeenAt > idleMs) return true
     // Back-compat: when idle is unset, keep prior "maxAge from lastSeen" behaviour.
-    if (idleMs === 0 && now - session.lastSeenAt > maxAgeMs) return true
+    if (idleMs === 0 && at - session.lastSeenAt > maxAgeMs) return true
     return false
   }
 
-  const sweep = (now = Date.now()) => {
+  const sweep = (at = now()) => {
     for (const [id, session] of sessions) {
-      if (expired(session, now)) sessions.delete(id)
+      if (expired(session, at)) sessions.delete(id)
     }
   }
 
@@ -167,18 +171,11 @@ export function createSessionStore(options: {
     ...(session.lastSeenIp !== undefined ? { lastSeenIp: session.lastSeenIp } : {}),
   })
 
-  // Keep lastSeen fresh enough for short idle windows (default 60s throttle
-  // would otherwise outlive sessionIdleSeconds < 60).
-  const touchThrottleMs = idleMs > 0
-    ? Math.min(60_000, Math.max(1_000, Math.floor(idleMs / 3)))
-    : 60_000
-
-  const touch = (session: SessionRecord, now = Date.now()) => {
-    // Throttle: lastSeen is persisted and displayed, not an audit trail.
-    if (now - session.lastSeenAt > touchThrottleMs) {
-      session.lastSeenAt = now
-      changed()
-    }
+  const touch = (session: SessionRecord, at = now()) => {
+    // Idle expiry is a security boundary, so every authenticated request
+    // advances it. The host already debounces persistence via onChange.
+    session.lastSeenAt = at
+    changed()
   }
 
   const find = (cookieValue: string | undefined) => {
@@ -193,8 +190,8 @@ export function createSessionStore(options: {
   return {
     /** Login a new device after the access token already checked out. */
     login({ userAgent, ip }: { userAgent: string | undefined, ip?: string }) {
-      const now = Date.now()
-      sweep(now)
+      const at = now()
+      sweep(at)
       const secret = newSessionSecret()
       const id = newSessionId()
       const record: SessionRecord = {
@@ -202,8 +199,8 @@ export function createSessionStore(options: {
         secretHash: hashSessionSecret(secret),
         label: deviceLabel(userAgent),
         status: approvalRequired ? 'pending' : 'active',
-        createdAt: now,
-        lastSeenAt: now,
+        createdAt: at,
+        lastSeenAt: at,
         ...(ip !== undefined && ip !== '' ? { createdIp: ip, lastSeenIp: ip } : {}),
       }
       sessions.set(id, record)
@@ -226,13 +223,13 @@ export function createSessionStore(options: {
      * device. Undefined when the session is gone, expired, or rejected.
      */
     reissue(id: string, ip?: string) {
-      const now = Date.now()
-      sweep(now)
+      const at = now()
+      sweep(at)
       const session = sessions.get(id)
-      if (session === undefined || expired(session, now) || session.status === 'rejected') return undefined
+      if (session === undefined || expired(session, at) || session.status === 'rejected') return undefined
       const secret = newSessionSecret()
       session.secretHash = hashSessionSecret(secret)
-      session.lastSeenAt = now
+      session.lastSeenAt = at
       if (ip !== undefined && ip !== '') session.lastSeenIp = ip
       changed()
       return { id, secret, status: session.status, label: session.label }
@@ -287,7 +284,7 @@ export function createSessionStore(options: {
       // the rejection copy instead of a generic "expired" unknown.
       if (session.status === 'pending') {
         session.status = 'rejected'
-        session.lastSeenAt = Date.now()
+        session.lastSeenAt = now()
         changed()
         return true
       }
@@ -300,7 +297,7 @@ export function createSessionStore(options: {
       const session = sessions.get(id)
       if (session === undefined || session.status !== 'pending') return false
       session.status = 'active'
-      session.lastSeenAt = Date.now()
+      session.lastSeenAt = now()
       changed()
       return true
     },

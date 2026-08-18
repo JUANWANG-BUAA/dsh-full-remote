@@ -131,4 +131,33 @@ describe('Cordis lifecycle', () => {
       await rm(dir, { recursive: true, force: true })
     }
   })
+
+  it('rejects partial TLS and malformed CIDR configuration at apply()', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-security-config-'))
+    try {
+      const ctx = new Context()
+      await ctx.plugin(TestWebServer)
+      const base = {
+        listenHost: '127.0.0.1',
+        listenPort: 0,
+        backendHost: '127.0.0.1',
+        backendPort: 3080,
+        stateFile: join(dir, 'state.json'),
+        autoRestore: false,
+        maxRequestBytes: 1024,
+        upstreamTimeoutMs: 1000,
+        cookieName: 'test_session',
+      }
+      await assert.rejects(
+        async () => { await ctx.plugin(plugin, { ...base, tlsCertFile: '/tmp/cert.pem' }) },
+        /tlsCertFile and tlsKeyFile/,
+      )
+      await assert.rejects(
+        async () => { await ctx.plugin(plugin, { ...base, allowedCidrs: ['not-an-ip'] }) },
+        /allowedCidrs contains invalid CIDR/,
+      )
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 })

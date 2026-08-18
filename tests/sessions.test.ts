@@ -97,15 +97,16 @@ describe('session store', () => {
     assert.equal(store.list().length, 0)
   })
 
-  it('refreshes lastSeen under short idle windows so active traffic survives', async () => {
-    const store = createSessionStore({ maxAgeSeconds: 3600, idleSeconds: 1 })
+  it('keeps continuously active sessions alive beyond a short idle window', () => {
+    let at = 0
+    const store = createSessionStore({ maxAgeSeconds: 3600, idleSeconds: 1, now: () => at })
     const session = store.login({ userAgent: 'Chrome/126' })
     const cookie = encodeSessionCookie(session.id, session.secret)
-    await new Promise(resolve => setTimeout(resolve, 400))
-    assert.equal(store.validate(cookie)?.id, session.id)
-    await new Promise(resolve => setTimeout(resolve, 400))
-    assert.equal(store.validate(cookie)?.id, session.id)
-    await new Promise(resolve => setTimeout(resolve, 1100))
+    for (const next of [400, 800, 1_200, 1_600, 2_000]) {
+      at = next
+      assert.equal(store.validate(cookie)?.id, session.id)
+    }
+    at = 3_001
     assert.equal(store.validate(cookie), undefined)
   })
 

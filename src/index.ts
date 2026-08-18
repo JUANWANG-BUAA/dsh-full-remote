@@ -183,7 +183,26 @@ function isValidListenHost(value: string) {
   return !/[\s/\\]/.test(value)
 }
 
+/** Reject security-sensitive partial or malformed configuration at load time. */
+function validateRuntimeConfig(config: RuntimeConfig) {
+  // createRuntime() is also a testable library surface, so tolerate callers
+  // that bypass Schemastery's default materialisation.
+  const certFile = typeof config.tlsCertFile === 'string' ? config.tlsCertFile : ''
+  const keyFile = typeof config.tlsKeyFile === 'string' ? config.tlsKeyFile : ''
+  const hasCert = certFile.trim() !== ''
+  const hasKey = keyFile.trim() !== ''
+  if (hasCert !== hasKey) {
+    throw new Error('reverse-proxy: tlsCertFile and tlsKeyFile must be configured together.')
+  }
+  const rawCidrs = Array.isArray(config.allowedCidrs) ? config.allowedCidrs : []
+  const invalidCidrs = rawCidrs.filter(entry => parseCidr(entry) === undefined)
+  if (invalidCidrs.length > 0) {
+    throw new Error(`reverse-proxy: allowedCidrs contains invalid CIDR entries: ${invalidCidrs.map(entry => JSON.stringify(entry)).join(', ')}`)
+  }
+}
+
 export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: RuntimeDeps = {}) {
+  validateRuntimeConfig(config)
   let bound: ProxyServer | undefined
   let disposed = false
   let state: RuntimeState | undefined
@@ -205,15 +224,6 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
   const statePath = config.stateFile || defaultStateFile()
   const rawCidrs = Array.isArray(config.allowedCidrs) ? config.allowedCidrs : []
   const cidrRules = compileCidrList(rawCidrs)
-  if (rawCidrs.length > 0) {
-    const dropped = rawCidrs.filter(entry => parseCidr(entry) === undefined)
-    for (const entry of dropped) {
-      ctx.logger.warn(`reverse-proxy: ignoring invalid CIDR "${entry}"`)
-    }
-    if (cidrRules.length === 0) {
-      ctx.logger.warn('reverse-proxy: allowedCidrs had no valid entries — allowlist is inactive (all IPs allowed after login)')
-    }
-  }
   const audit = createAuditLog({
     enabled: config.auditLog === true,
     path: config.auditLogFile || defaultAuditPath(statePath),

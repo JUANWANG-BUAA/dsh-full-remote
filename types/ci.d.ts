@@ -37,6 +37,44 @@ declare module '@deepseek-ai/dsh-client-runtime/client' {
   }
 
   export function defineStore<S, A>(decl: { init: () => S, actions: A }): EngineStoreHandle<S, A>
+
+  type PendingKind = 'approval' | 'question'
+
+  type PendingPayload<K extends PendingKind> = K extends 'approval'
+    ? { approvalId: string, toolName: string, reason?: string }
+    : { questions: unknown[] }
+
+  /** Minimal pending-interaction contract consumed by the mobile overlay. */
+  export type PendingWait<K extends PendingKind = PendingKind> = K extends PendingKind ? {
+    kind: K
+    key: string
+    sessionId: string
+    payload: PendingPayload<K>
+    respond(result: { ok: boolean, value?: Record<string, unknown>, error?: unknown }): Promise<{ accepted: boolean, reason?: string }>
+  } : never
+
+  type SessionListSnapshot = {
+    ids: string[]
+    byId: Record<string, {
+      displayTitle: string
+      pendingInteraction?: 'approval' | 'plan-review' | 'question'
+    }>
+    current: string | undefined
+  }
+
+  type ObservableSnapshot<T> = {
+    getSnapshot(): T
+    subscribe(fn: () => void): () => void
+  }
+
+  /** Minimal sessions-service contract consumed by the mobile overlay. */
+  export interface ISessions {
+    readonly list: ObservableSnapshot<SessionListSnapshot>
+    open(id: string): void
+    binding(id: string): {
+      session: ObservableSnapshot<{ pending?: PendingWait[] }>
+    } | undefined
+  }
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -45,4 +83,16 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
   /** The store share: our handles expose exactly useStore + actions. */
   export type PropsStore<H> = H
+
+  /** Mirrors the hook synthesis used by injected slot faces. */
+  export type InjectFace<I extends object> = I extends { hooks: infer H extends object }
+    ? Omit<I, 'hooks'> & {
+      [K in keyof H & string as `use${Capitalize<K>}`]: H[K] extends {
+        getSnapshot(): infer S
+        subscribe(fn: () => void): () => void
+      }
+        ? <T>(selector: (state: S) => T) => T
+        : never
+    }
+    : I
 }

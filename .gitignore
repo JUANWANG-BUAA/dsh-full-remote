@@ -15,3 +15,4 @@ test-results/
 .env.*
 !.env.example
 .dsh-vision-toolkit/
+.learnings/
