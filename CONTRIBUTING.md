@@ -20,14 +20,20 @@ Dependencies install from npm — no special layout is required.
 pnpm run check       # lint + typecheck + tests + build
 pnpm run check:ci    # same CI-oriented gates using published client types
 pnpm run audit:prod  # production dependency audit
+pnpm run test:unit:coverage   # Node coverage (80/70/80 thresholds)
+pnpm run test:client:coverage # client coverage (70/60/60/65 thresholds)
+pnpm run test:browser         # Chromium smoke (install a Playwright browser first)
+pnpm run test:composition     # patch-row collision check; set HARNESS_DIR for a real checkout
 ```
 
 Host sources are fully type-annotated and compiled with `noImplicitAny`
 enabled. Keep new parameters and fields typed rather than adding `any`.
 
-CI runs `pnpm run check:ci` on every push and pull request, plus a real-boot
-smoke job (`scripts/smoke.mjs`) that installs the packed npm tarball through
-`dsh plugin add` and exercises it against a live harness composition.
+CI runs `pnpm run check:ci` on every push and pull request across Node 22/24
+and Ubuntu/macOS/Windows, plus coverage, Chromium, composition, and a
+real-boot smoke job (`scripts/smoke.mjs`) that installs the packed npm
+tarball through `dsh plugin add` and exercises it against a live Harness
+composition.
 
 ## Tests
 

@@ -433,8 +433,10 @@ describe('remote settings section', () => {
     const service = api({ exportAudit })
     const originalCreate = URL.createObjectURL
     const originalRevoke = URL.revokeObjectURL
+    const anchorClick = HTMLAnchorElement.prototype.click
     URL.createObjectURL = vi.fn().mockReturnValue('blob:test') as unknown as typeof URL.createObjectURL
     URL.revokeObjectURL = vi.fn() as unknown as typeof URL.revokeObjectURL
+    HTMLAnchorElement.prototype.click = vi.fn() as unknown as typeof HTMLAnchorElement.prototype.click
     try {
       render(<RemoteSection {...sectionProps(service)} />)
       expect(await screen.findByText('代理尚未运行')).toBeTruthy()
@@ -444,6 +446,7 @@ describe('remote settings section', () => {
     } finally {
       URL.createObjectURL = originalCreate
       URL.revokeObjectURL = originalRevoke
+      HTMLAnchorElement.prototype.click = anchorClick
     }
   })
 

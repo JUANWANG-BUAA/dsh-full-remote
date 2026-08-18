@@ -1,5 +1,5 @@
 /**
- * Recapture README / npm screenshots from the live React settings section
+ * Recapture README / repository screenshots from the live React settings section
  * and the gate HTML in src/pages.ts. Requires Google Chrome.
  *
  *   pnpm run screenshots
@@ -361,7 +361,7 @@ async function main() {
     await waitForText(cdp, '等待批准中')
     await screenshotClip(cdp, '.card', join(shots, 'preview-wait.png'), 16)
 
-    console.log('screenshots written under docs/screenshots and docs/rp-demo-*.png')
+    console.log('screenshots written under docs/screenshots and docs/rp-demo-*.png; the npm package links to the repository gallery')
   } finally {
     chrome?.child.kill('SIGKILL')
     await vite?.close()

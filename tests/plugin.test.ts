@@ -340,12 +340,14 @@ describe('real index fixture', () => {
 })
 
 describe('bundle patch', () => {
-  it('disables the native directory picker and pins the in-app browse pair', async () => {
+  it('conditionally selects one directory-picker implementation and pins the browse pair', async () => {
     const yaml = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
-    assert.match(yaml, /id: directory-picker\n {2}disabled: true/)
-    assert.match(yaml, /id: directory-picker-browse\n {6}name: '@deepseek-ai\/dsh-host-directory-picker-browse'/)
-    assert.match(yaml, /id: ui-directory-picker-browse\n {6}name: '@deepseek-ai\/dsh-client-ui-directory-picker-browse'/)
+    assert.match(yaml, /id: directory-picker\n {2}disabled: !!js process\.env\.DSH_FULL_REMOTE_USE_NATIVE_PICKER !== '1'/)
+    assert.match(yaml, /id: directory-picker-browse\n {6}name: '@deepseek-ai\/dsh-host-directory-picker-browse'[\s\S]*disabled: !!js process\.env\.DSH_FULL_REMOTE_USE_NATIVE_PICKER === '1'/)
+    assert.match(yaml, /id: ui-directory-picker-browse\n {6}name: '@deepseek-ai\/dsh-client-ui-directory-picker-browse'[\s\S]*disabled: !!js process\.env\.DSH_FULL_REMOTE_USE_NATIVE_PICKER === '1'/)
     assert.match(yaml, /id: reverse-proxy\n {6}name: dsh-full-remote/)
+    const ids = [...yaml.matchAll(/^\s*- id: ([^\s#]+)/gm)].map(match => match[1])
+    assert.equal(new Set(ids).size, ids.length)
   })
 })
 
@@ -1496,6 +1498,73 @@ describe('websocket upgrade', () => {
 })
 
 describe('proxy teardown', () => {
+  it('keeps an authenticated SSE stream open across delayed events', { timeout: 5_000 }, async () => {
+    let timer: NodeJS.Timeout | undefined
+    const backend = createServer((_req, res) => {
+      res.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+      })
+      res.write('data: first\n\n')
+      timer = setTimeout(() => {
+        res.write('data: second\n\n')
+        res.end()
+      }, 250)
+    })
+    await new Promise<void>((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise<void>(resolve => {
+      if (timer !== undefined) clearTimeout(timer)
+      backend.closeAllConnections?.()
+      backend.close(() => resolve())
+    }))
+    const token = generateAccessToken()
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: portOf(backend),
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 1024,
+      upstreamTimeoutMs: 2_000,
+      loginDelayMs: 0,
+    })
+    cleanups.push(proxy.close)
+    const login = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    const cookie = login.headers['set-cookie']![0].split(';', 1)[0]
+    const requestForStream = request({
+      hostname: '127.0.0.1',
+      port: proxy.port,
+      path: '/events',
+      headers: { cookie },
+    })
+    requestForStream.end()
+    const response = await new Promise<IncomingMessage>((resolve, reject) => {
+      requestForStream.once('response', resolve)
+      requestForStream.once('error', reject)
+    })
+    const chunks: Buffer[] = []
+    const body = await new Promise<string>((resolve, reject) => {
+      response.on('data', chunk => chunks.push(Buffer.from(chunk)))
+      response.once('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+      response.once('error', reject)
+    })
+    assert.equal(response.statusCode, 200)
+    assert.match(String(response.headers['content-type']), /text\/event-stream/)
+    assert.equal(body, 'data: first\n\ndata: second\n\n')
+  })
+
   it('close() returns while a proxied response is still streaming', async () => {
     const backend = createServer((_req, res) => {
       res.writeHead(200, { 'content-type': 'text/plain' })

@@ -17,6 +17,14 @@ documented in this file.
 - CIDR parsing, cookie/config bounds, tunnel download limits, cache digests,
   and audit paths are validated more strictly.
 - Release smoke installs the packed tarball and CI covers Node 22 and 24.
+- CI actions are SHA-pinned; checks run on Ubuntu, macOS, and Windows, with
+  Node and client coverage thresholds, a Chromium browser smoke, and an
+  effective-composition collision check.
+- The proxy now has an explicit delayed-event SSE regression test. The
+  directory-picker patch defaults to remote-safe browse mode and supports an
+  explicit native-picker opt-out without duplicate providers.
+- Screenshot gallery files are no longer shipped in the npm tarball; README
+  images use the repository-hosted copies instead.
 
 ### Documentation
 

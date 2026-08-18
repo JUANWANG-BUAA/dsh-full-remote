@@ -41,11 +41,11 @@ to the Internet. For composition details, see
 
 | Desktop control panel | Mobile workspace |
 |---|---|
-| ![Desktop control panel](./docs/screenshots/preview-desktop.png) | ![Mobile workspace](./docs/screenshots/preview-mobile.png) |
+| ![Desktop control panel](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-desktop.png) | ![Mobile workspace](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile.png) |
 
 | Phone confirmation sheet | Remote desktop confirmation |
 |---|---|
-| ![Phone confirmation sheet](./docs/screenshots/preview-remote-confirm-mobile.png) | ![Remote desktop confirmation](./docs/screenshots/preview-remote-confirm-desktop.png) |
+| ![Phone confirmation sheet](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-remote-confirm-mobile.png) | ![Remote desktop confirmation](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-remote-confirm-desktop.png) |
 
 ## Problem
 
@@ -281,6 +281,9 @@ newest version, and rewrites `package.json`. For a specific version use
 
 ## Screenshots
 
+The gallery is hosted in the repository; the npm package keeps only runtime
+files and links back here so installation stays small.
+
 ### Desktop
 
 The full settings page: running status and fence self-check, listen
@@ -288,17 +291,17 @@ address, recommended setup, tunnel target, one-click quick tunnel,
 one-time invite QR, access token, connected devices with source IPs
 (inline rename), and the audit viewer.
 
-![Reverse proxy control panel](./docs/screenshots/preview-desktop.png)
+![Reverse proxy control panel](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-desktop.png)
 
 | One-time phone invite (QR) | Connected devices with inline rename |
 |---|---|
-| ![Phone invite](./docs/screenshots/preview-invite.png) | ![Connected devices](./docs/screenshots/preview-devices.png) |
+| ![Phone invite](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-invite.png) | ![Connected devices](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-devices.png) |
 
 ### Mobile
 
 | Login page | Control panel | Add workspace |
 |---|---|---|
-| ![Mobile login](./docs/screenshots/preview-mobile-login.png) | ![Mobile panel](./docs/screenshots/preview-mobile-panel.png) | ![Mobile workspace](./docs/screenshots/preview-mobile.png) |
+| ![Mobile login](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-login.png) | ![Mobile panel](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-panel.png) | ![Mobile workspace](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile.png) |
 
 ### Remote confirmation
 
@@ -308,7 +311,7 @@ look at the host display.
 
 | Phone bottom sheet | Remote desktop card |
 |---|---|
-| ![Phone confirmation sheet](./docs/screenshots/preview-remote-confirm-mobile.png) | ![Remote desktop confirmation](./docs/screenshots/preview-remote-confirm-desktop.png) |
+| ![Phone confirmation sheet](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-remote-confirm-mobile.png) | ![Remote desktop confirmation](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-remote-confirm-desktop.png) |
 
 ### Gate pages
 
@@ -317,7 +320,7 @@ itself, and the first-visit approval wait page.
 
 | Device home | Waiting for approval |
 |---|---|
-| ![Device home](./docs/screenshots/preview-home.png) | ![Waiting for approval](./docs/screenshots/preview-wait.png) |
+| ![Device home](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-home.png) | ![Waiting for approval](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-wait.png) |
 
 ## Configuration
 
@@ -352,8 +355,10 @@ package `Config` schema (`src/config.ts`) and
 Two points to note:
 
 - Installing the plugin pins the in-app directory picker so that a phone
-  can add workspaces. Do not re-enable the stock `directory-picker` row in
-  the same profile.
+  can add workspaces. By default the stock adaptive picker is disabled and
+  the browse pair is enabled; set `DSH_FULL_REMOTE_USE_NATIVE_PICKER=1`
+  before boot only when you deliberately want the host's native chooser and
+  do not need remote directory browsing.
 - `backendHost` must remain a loopback address. A wildcard or non-loopback
   value is rejected at load time.
 

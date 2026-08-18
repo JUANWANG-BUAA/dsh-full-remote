@@ -103,11 +103,9 @@ async function main() {
   }
 
   // 2. Community-standard install: web-app first, then this plugin.
-  // `dsh plugin add` appends to `dsh.profile.bundles`. Our patch disables
-  // `directory-picker-auto` and pins the browse pair; that only wins if
-  // web-app's insert of `-auto` is already in the layer stack. Adding this
-  // plugin first lets web-app re-insert `-auto` on top → duplicate
-  // `directoryPicker` → boot fails the activation gate.
+  // `dsh plugin add` appends to `dsh.profile.bundles`. Our later patch layer
+  // conditionally disables the adaptive picker and enables the browse pair;
+  // adding web-app first keeps the target row present for that override.
   await dsh(['plugin', '--profile', 'smoke', 'add', join(HARNESS_DIR, 'packages/bundle/web-app')])
   await dsh(['plugin', '--profile', 'smoke', 'add', pluginSource])
 

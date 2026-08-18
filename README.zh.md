@@ -32,11 +32,11 @@ dsh --profile web
 
 | 桌面控制面板 | 手机工作区 |
 |---|---|
-| ![桌面控制面板](./docs/screenshots/preview-desktop.png) | ![手机工作区](./docs/screenshots/preview-mobile.png) |
+| ![桌面控制面板](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-desktop.png) | ![手机工作区](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile.png) |
 
 | 手机端选项确认 | 远程桌面确认卡片 |
 |---|---|
-| ![手机确认浮层](./docs/screenshots/preview-remote-confirm-mobile.png) | ![远程桌面确认](./docs/screenshots/preview-remote-confirm-desktop.png) |
+| ![手机确认浮层](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-remote-confirm-mobile.png) | ![远程桌面确认](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-remote-confirm-desktop.png) |
 
 ## 问题
 
@@ -195,23 +195,26 @@ dsh plugin --profile web update --latest dsh-full-remote
 
 ## 截图
 
+截图画廊保留在 GitHub 仓库中；npm 包只携带运行所需文件并链接回这里，
+因此安装包更小。
+
 ### 桌面端
 
 完整设置页一图览：运行状态与栅栏自检、发布地址、推荐用法、隧道目标、
 一键快速隧道、一次性邀请二维码、访问令牌、带来源 IP 的已连接设备
 （行内改名），以及审计查看器。
 
-![反向代理控制面板](./docs/screenshots/preview-desktop.png)
+![反向代理控制面板](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-desktop.png)
 
 | 一次性手机邀请（二维码） | 行内改名的已连接设备 |
 |---|---|
-| ![手机邀请](./docs/screenshots/preview-invite.png) | ![已连接设备](./docs/screenshots/preview-devices.png) |
+| ![手机邀请](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-invite.png) | ![已连接设备](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-devices.png) |
 
 ### 移动端
 
 | 手机登录页 | 移动控制面板 | 手机添加工作区 |
 |---|---|---|
-| ![移动端登录](./docs/screenshots/preview-mobile-login.png) | ![移动面板](./docs/screenshots/preview-mobile-panel.png) | ![手机工作区](./docs/screenshots/preview-mobile.png) |
+| ![移动端登录](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-login.png) | ![移动面板](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-panel.png) | ![手机工作区](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile.png) |
 
 ### 远程确认
 
@@ -219,7 +222,7 @@ dsh plugin --profile web update --latest dsh-full-remote
 
 | 手机底部抽屉 | 远程桌面居中卡片 |
 |---|---|
-| ![手机确认浮层](./docs/screenshots/preview-remote-confirm-mobile.png) | ![远程桌面确认](./docs/screenshots/preview-remote-confirm-desktop.png) |
+| ![手机确认浮层](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-remote-confirm-mobile.png) | ![远程桌面确认](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-remote-confirm-desktop.png) |
 
 ### 门面页
 
@@ -227,7 +230,7 @@ dsh plugin --profile web update --latest dsh-full-remote
 
 | 设备主页 | 等待审批 |
 |---|---|
-| ![设备主页](./docs/screenshots/preview-home.png) | ![等待审批](./docs/screenshots/preview-wait.png) |
+| ![设备主页](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-home.png) | ![等待审批](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-wait.png) |
 
 ## 常用配置
 
@@ -258,7 +261,7 @@ dsh plugin --profile web update --latest dsh-full-remote
 
 两点说明：
 
-- 安装插件会钉住应用内目录选择器，使手机可以添加工作区。同一 profile 中不要重新启用官方 `directory-picker` 行。
+- 安装插件会钉住应用内目录选择器，使手机可以添加工作区。默认禁用官方自适应选择器并启用 browse 双面；只有明确需要宿主原生选择器、且不需要远程目录浏览时，才在启动前设置 `DSH_FULL_REMOTE_USE_NATIVE_PICKER=1`。
 - `backendHost` 必须是回环地址，通配地址或非回环地址在加载时会被拒绝。
 
 ## 安全模型

@@ -1,12 +1,13 @@
 # Pin the in-app directory picker so a phone can add a workspace.
-# directory-picker-auto would mount the macOS/Windows native chooser whenever
-# webServer binds 127.0.0.1 — that dialog opens on the host display, so a
-# remote "Add workspace" looks broken. Official overlay shape (apps/web/tests/
-# pin-browse-picker.overlay.yml): disable auto and insert the browse pair.
-# Patch cannot rename a row (name mismatch is skipped), so disable + insert.
+# directory-picker-auto chooses the native picker for an attended loopback
+# host, but that dialog opens on the host display and is unusable remotely.
+# Default to the browse backend; an operator who only wants the local native
+# chooser can set DSH_FULL_REMOTE_USE_NATIVE_PICKER=1 before boot. Both paths
+# are conditional and every row has one stable id, so another patch layer can
+# override or disable the choice without creating duplicate providers.
 # This layer must apply AFTER web-app (`dsh plugin --profile web add` appends).
 - id: directory-picker
-  disabled: true
+  disabled: !!js process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER !== '1'
 # Insert the authenticated reverse proxy into the Web composition.
 # Install with: dsh plugin --profile web add dsh-full-remote
 - insert:
@@ -17,5 +18,7 @@
         listenPort: 3081
     - id: directory-picker-browse
       name: '@deepseek-ai/dsh-host-directory-picker-browse'
+      disabled: !!js process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER === '1'
     - id: ui-directory-picker-browse
       name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'
+      disabled: !!js process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER === '1'

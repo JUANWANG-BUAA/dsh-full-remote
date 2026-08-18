@@ -11,9 +11,16 @@ Install the normal Harness web bundle first, then this plugin. The shipped
 `cordis.patch.yml` is applied as a later layer and:
 
 - inserts the `reverse-proxy` host row;
-- disables the native `directory-picker` row;
-- inserts the in-app directory browser pair so remote “Add workspace” does
-  not open a desktop dialog.
+- conditionally disables the adaptive `directory-picker` row;
+- enables the in-app directory browser pair so remote “Add workspace” does
+  not open a desktop dialog;
+- keeps the rows uniquely identified so later profile patches can override
+  them without mounting two `ctx.directoryPicker` providers.
+
+The default is remote-safe browse mode. Set
+`DSH_FULL_REMOTE_USE_NATIVE_PICKER=1` before boot to disable the browse pair
+and keep the Harness adaptive/native picker for a host-only deployment. Do not
+combine that opt-out with a remote directory-browsing requirement.
 
 If another plugin also patches any of those rows, inspect the final profile
 composition. Do not add a second row with id `reverse-proxy`,
@@ -24,7 +31,7 @@ composition. Do not add a second row with id `reverse-proxy`,
 | Component | Interaction | Safe approach |
 |---|---|---|
 | `dsh-web-mobile` or another mobile layout | CSS/layout ownership may overlap; the remote interaction overlay is independent | Install both, keep one owner for global layout, and verify the directory drawer and settings section |
-| Native `directory-picker` | The patch disables it intentionally | Keep the in-app browse pair enabled for remote use |
+| Native/adaptive `directory-picker` | Disabled by default; opt-out is explicit | Keep the in-app browse pair enabled for remote use |
 | Another reverse proxy/auth gateway | A second gateway can rewrite `Host`/`Origin` or cookies twice | Put this plugin directly in front of Harness Web, or disable the duplicate rewrite/auth layer |
 | TLS terminator / tunnel | Forwarded headers are trusted only when explicitly configured | Set `trustForwardedFor` only behind a loopback edge that strips/rebuilds those headers; set `trustCloudflareConnectingIp` only for a real Cloudflare edge |
 | Plugin that changes Harness trust/bootstrap globals | The browser bootstrap is a compatibility seam | Test `settings.describe`, `credentials.describe`, directory browsing, SSE, and WebSocket after installing both |
@@ -42,5 +49,8 @@ After composing plugins, verify all of the following through the proxy:
 6. the host UI still opens its own directory picker when accessed locally.
 
 The CI real-Harness smoke installs the packed tarball and exercises the first,
-second, and session-control paths. Run the browser fixture when changing the
-client composition or `cordis.patch.yml`.
+second, and session-control paths. `test:composition` checks the effective
+Harness Web row IDs and rejects duplicate provider IDs; pass additional patch
+files through `EXTRA_PATCHES` when validating another bundle. The browser
+smoke mounts the real React settings fixture in Chromium. Run both when
+changing the client composition or `cordis.patch.yml`.
