@@ -11,12 +11,19 @@
  */
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse, type ClientRequest } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
-import { isIP } from 'node:net'
 import type { Duplex } from 'node:stream'
 import { parseCookies, safeEqual } from './security.ts'
 import { createSessionStore, encodeSessionCookie, sessionCookie } from './sessions.ts'
-import { normalizeRemoteIp } from './cidr.ts'
-import { isLoopbackHost, readBody, sendHtml, pathnameOf, rewriteLoopbackAuthority } from './http-util.ts'
+import { readBody, sendHtml, pathnameOf, rewriteLoopbackAuthority } from './http-util.ts'
+import {
+  cookieIsSecure,
+  effectiveRemoteAddress,
+  forwardHeaders,
+  sanitizeResponseHeaders,
+  sanitizeUpgradeResponseHeaders,
+  type ProxyHeaders,
+} from './proxy-headers.ts'
+export { effectiveRemoteAddress, forwardHeaders, sanitizeResponseHeaders, sanitizeUpgradeResponseHeaders } from './proxy-headers.ts'
 import {
   HOME_PATH,
   HOME_RENAME_PATH,
@@ -33,8 +40,6 @@ import {
 } from './pages.ts'
 
 /** Response header bag the proxy relays between client and upstream. */
-type ProxyHeaders = Record<string, string | string[] | number | undefined>
-
 /** Per-IP failed-login tracker surface. */
 interface LoginTracker {
   check(ip: string, now?: number): number
@@ -106,104 +111,11 @@ type RuntimeSpec = Omit<ProxySpec, 'trustForwardedProto' | 'trustForwardedFor' |
   sessionMaxAgeSeconds: number
 }
 
-const HOP_BY_HOP = new Set([
-  'connection',
-  'keep-alive',
-  'proxy-authenticate',
-  'proxy-authorization',
-  'te',
-  'trailer',
-  'trailers',
-  'transfer-encoding',
-  'upgrade',
-])
-const SPOOFABLE_FORWARDING = new Set([
-  'forwarded',
-  'x-forwarded-for',
-  'x-forwarded-host',
-  'x-forwarded-port',
-  'x-forwarded-proto',
-  'x-real-ip',
-  'x-dsh-reverse-proxy',
-])
-/**
- * The proxy's own session cookie never reaches the backend: the backend
- * cannot set cookies for the remote browser anyway (upstream `set-cookie`
- * is stripped), so forwarding it only risks credential confusion.
- */
-const INTERNAL_HEADERS = new Set(['cookie', 'referer', 'referrer'])
 const LOGIN_FAILURE_DELAY_MS = 250
 const MAX_TRACKED_LOGIN_IPS = 4096
 /** Mirrors the createSessionStore default so a caller that omits
  *  sessionMaxAgeSeconds still gets a valid cookie Max-Age. */
 const DEFAULT_SESSION_MAX_AGE_SECONDS = 30 * 24 * 3600
-
-function csvHeaderPart(value: string | string[] | undefined, pick: 'first' | 'last'): string | undefined {
-  const text = Array.isArray(value)
-    ? (pick === 'last' ? value[value.length - 1] : value[0])
-    : value
-  const parts = String(text ?? '').split(',').map(part => part.trim()).filter(Boolean)
-  const chosen = pick === 'last' ? parts[parts.length - 1] : parts[0]
-  return chosen === undefined || chosen === '' ? undefined : chosen
-}
-
-/**
- * The last address in an X-Forwarded-For list. Empty/missing becomes undefined.
- *
- * Using the rightmost value is safer than the leftmost: a client can prepend
- * arbitrary values, but only the trusted edge can append the address it
- * actually saw. (Cloudflare-style `CF-Connecting-IP` is handled separately.)
- */
-function lastForwardedIp(value: string | string[] | undefined): string | undefined {
-  return csvHeaderPart(value, 'last')
-}
-
-/** First value of a single-valued forwarding header such as CF-Connecting-IP. */
-function firstHeaderValue(value: string | string[] | undefined): string | undefined {
-  return csvHeaderPart(value, 'first')
-}
-
-/**
- * A forwarded value is an edge claim, so only a literal, non-loopback IP is
- * accepted. `CF-Connecting-IP` is sanitized by Cloudflare's edge, but on any
- * other tunnel (ngrok/frp/SSH) the remote client can inject it themselves:
- * trusting a spoofed `127.0.0.1` would bypass the CIDR allowlist (loopback
- * is always allowed) and merge the attacker into the loopback rate-limit
- * bucket. Malformed or loopback values fall through to the next source.
- */
-function trustedForwardedIp(value: string | undefined): string | undefined {
-  if (value === undefined) return undefined
-  const ip = normalizeRemoteIp(value)
-  if (isIP(ip) === 0 || isLoopbackHost(ip)) return undefined
-  return ip
-}
-
-/**
- * The client IP used for CIDR checks, login rate limiting, audit and logs.
- *
- * A local tunnel (cloudflared/ngrok/frp/SSH) connects from 127.0.0.1, so the
- * socket address is not the real remote user. When the operator explicitly
- * enables `trustForwardedFor` AND the immediate peer is loopback, we trust:
- *
- * 1. the rightmost `X-Forwarded-For` value, which is the address
- *    appended by the trusted edge rather than a client-controlled prefix.
- * 2. `CF-Connecting-IP` is only considered when the separate Cloudflare
- *    trust probe is enabled (the managed quick tunnel sets it while online).
- *
- * Direct non-loopback peers are never trusted with a spoofable header.
- */
-export function effectiveRemoteAddress(req: IncomingMessage, spec: RuntimeSpec): string {
-  const direct = req.socket.remoteAddress ?? ''
-  if (spec.trustForwardedFor() && isLoopbackHost(direct)) {
-    if (spec.trustCloudflareConnectingIp?.() === true) {
-      const cf = trustedForwardedIp(firstHeaderValue(req.headers['cf-connecting-ip']))
-      if (cf !== undefined) return cf
-    }
-    const forwarded = trustedForwardedIp(lastForwardedIp(req.headers['x-forwarded-for']))
-    if (forwarded !== undefined) return forwarded
-  }
-  return direct
-}
 
 /** Login / wait pages: allow the tiny auto-submit / poll scripts. */
 const GATE_PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
@@ -266,53 +178,6 @@ function createLoginTracker(spec: { loginMaxAttempts?: number, loginLockoutMs?: 
   }
 }
 
-export function forwardHeaders(req: IncomingMessage, backendHost: string, options: { tls?: boolean, trustForwardedProto?: boolean, forwardedFor?: string } = {}) {
-  const headers: Record<string, string | string[] | undefined> = {}
-  for (const [key, value] of Object.entries(req.headers)) {
-    const lower = key.toLowerCase()
-    if (value === undefined || value === null || lower === 'host' || HOP_BY_HOP.has(lower) || SPOOFABLE_FORWARDING.has(lower) || INTERNAL_HEADERS.has(lower)) continue
-    headers[lower] = value as string | string[]
-  }
-  const sourceHost = req.headers.host ?? ''
-  const remote = req.socket.remoteAddress ?? ''
-  const proto = requestIsHttps(req, options.tls === true, options.trustForwardedProto === true) ? 'https' : 'http'
-  headers.host = backendHost
-  headers.origin = `http://${backendHost}`
-  // Same-origin after Host/Origin rewrite. Upstream Caddy snippets often
-  // normalize this; without it a split front/API deploy can 403 privileged
-  // methods even when Host looks like loopback.
-  headers['sec-fetch-site'] = 'same-origin'
-  headers['x-forwarded-for'] = options.forwardedFor ?? remote
-  headers['x-forwarded-host'] = sourceHost
-  headers['x-forwarded-proto'] = proto
-  headers['x-dsh-reverse-proxy'] = '1'
-  return headers
-}
-
-function sanitizeHeaders(headers: ProxyHeaders | undefined, keep: ReadonlySet<string> = new Set()) {
-  const out: Record<string, string | string[] | number | undefined> = {}
-  for (const [key, value] of Object.entries(headers ?? {})) {
-    const lower = key.toLowerCase()
-    if (value === undefined || value === null || lower === 'set-cookie') continue
-    if (HOP_BY_HOP.has(lower) && !keep.has(lower)) continue
-    out[key] = value as string | string[] | number
-  }
-  return out
-}
-
-/** Drop hop-by-hop and set-cookie before relaying an upstream response. */
-export function sanitizeResponseHeaders(headers: ProxyHeaders | undefined) {
-  return sanitizeHeaders(headers)
-}
-
-/**
- * WebSocket 101 still needs Connection/Upgrade; strip Set-Cookie and the
- * other hop-by-hop fields the HTTP path already drops.
- */
-export function sanitizeUpgradeResponseHeaders(headers: ProxyHeaders | undefined) {
-  return sanitizeHeaders(headers, new Set(['connection', 'upgrade']))
-}
-
 function writeRawHead(socket: Duplex, statusCode: number, statusMessage: string, headers: ProxyHeaders) {
   const lines = [`HTTP/1.1 ${statusCode} ${statusMessage}`]
   for (const [key, value] of Object.entries(headers)) {
@@ -351,19 +216,6 @@ function sendText(
 function redirect(res: ServerResponse, location: string, extra: Record<string, string | number | string[]> = {}) {
   res.writeHead(303, { location, 'cache-control': 'no-store', ...extra })
   res.end()
-}
-
-/** Secure cookies / forwarded proto: own TLS, or a trusted loopback edge says https. */
-function requestIsHttps(req: IncomingMessage, tls: boolean, trustForwardedProto: boolean) {
-  return tls === true || (
-    trustForwardedProto
-    && isLoopbackHost(req.socket.remoteAddress ?? '')
-    && firstHeaderValue(req.headers['x-forwarded-proto'])?.toLowerCase() === 'https'
-  )
-}
-
-function cookieIsSecure(req: IncomingMessage, spec: RuntimeSpec) {
-  return requestIsHttps(req, spec.tls === true, spec.trustForwardedProto())
 }
 
 function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSpec) {
