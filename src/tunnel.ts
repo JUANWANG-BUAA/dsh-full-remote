@@ -216,6 +216,10 @@ export function createTunnelManager(options: TunnelManagerOptions): TunnelManage
 
   const spawnTunnel = (gen: number, bin: string) => {
     let spawned: ChildProcess
+    // ChildProcess streams may split a URL across arbitrary chunk boundaries.
+    // Keep only a small rolling tail: enough to join a log line without
+    // allowing noisy cloudflared output to grow this buffer indefinitely.
+    let logTail = ''
     try {
       spawned = spawnFn(bin, ['tunnel', '--url', options.target(), '--no-autoupdate'], {
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -227,7 +231,8 @@ export function createTunnelManager(options: TunnelManagerOptions): TunnelManage
     child = spawned
     const onData = (chunk: Buffer) => {
       if (gen !== generation || state !== 'starting') return
-      const url = parseTunnelUrl(chunk.toString('utf8'))
+      logTail = `${logTail}${chunk.toString('utf8')}`.slice(-4096)
+      const url = parseTunnelUrl(logTail)
       if (url === undefined) return
       clearConnectTimer()
       state = 'online'

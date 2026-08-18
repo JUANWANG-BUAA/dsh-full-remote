@@ -183,6 +183,20 @@ describe('tunnel manager state machine', () => {
     assert.equal(audit.some(e => e.event === 'tunnel.start' && e.fields?.publicUrl === 'https://abc123.trycloudflare.com'), true)
   })
 
+  it('recognizes a tunnel URL split across child output chunks', async () => {
+    const child = fakeChild()
+    const configured = join(await tempDir(), 'cloudflared')
+    await writeFile(configured, '#!/bin/sh')
+    await chmod(configured, 0o755)
+    const { manager } = await makeManager({ spawn: fakeSpawn(child), configuredPath: configured })
+    await manager.start()
+    await until(() => child.stderr.listenerCount('data') >= 1)
+    child.stderr.emit('data', Buffer.from('INF Visit https://split-example.trycloud'))
+    child.stderr.emit('data', Buffer.from('flare.com'))
+    await until(() => manager.status().state === 'online')
+    assert.equal(manager.status().publicUrl, 'https://split-example.trycloudflare.com')
+  })
+
   it('surfaces exit-after-online as an error with the exited token', async () => {
     const child = fakeChild()
     const configured = join(await tempDir(), 'cloudflared')

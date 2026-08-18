@@ -132,6 +132,17 @@ describe('Cordis lifecycle', () => {
     }
   })
 
+  it('keeps the backend loopback fence when createRuntime is called directly', () => {
+    assert.throws(
+      () => pluginModule.createRuntime({} as never, { backendHost: '192.168.1.10' } as never),
+      /loopback/,
+    )
+    assert.throws(
+      () => pluginModule.createRuntime({} as never, { backendHost: '0.0.0.0' } as never),
+      /wildcard/,
+    )
+  })
+
   it('rejects partial TLS and malformed CIDR configuration at apply()', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-security-config-'))
     try {
