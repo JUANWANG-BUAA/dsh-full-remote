@@ -1,0 +1,23 @@
+name: Deprecate legacy npm name
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: npm-deprecate-legacy
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  deprecate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          registry-url: https://registry.npmjs.org
+      - name: Mark legacy package as deprecated
+        run: npm deprecate 'dsh-reverse-proxy@0.1.0' 'Renamed to dsh-full-remote; install dsh-full-remote instead.'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
