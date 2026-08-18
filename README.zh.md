@@ -20,6 +20,10 @@
 |---|---|
 | ![桌面控制面板](./docs/screenshots/preview-desktop.png) | ![手机工作区](./docs/screenshots/preview-mobile.png) |
 
+| 手机端选项确认 | 远程桌面确认卡片 |
+|---|---|
+| ![手机确认浮层](./docs/screenshots/preview-remote-confirm-mobile.png) | ![远程桌面确认](./docs/screenshots/preview-remote-confirm-desktop.png) |
+
 ## 问题
 
 DeepSeek Harness 的 Web 服务只绑定回环地址，且仅当请求的 `Host`、`Origin` 头指向回环地址时才放行特权接口。经通用隧道访问时，这两个头携带的是公网域名，无法通过信任校验。页面可以加载，但以下接口返回 403：
@@ -107,6 +111,7 @@ flowchart LR
 
 - 通过隧道域名打开设置页时，改动正常持久化
 - 「添加工作区」使用应用内目录浏览，不会在宿主机显示器上弹出系统对话框
+- 工具审批、`ask_user_question` 选项确认、计划评审会在远程页面弹出确认浮层：手机为底部抽屉，较宽屏为居中卡片。可直接点选提交，不必回到宿主机。官方输入框接管仍只出现在当前会话底部
 - 想要手机友好的布局（会话区全宽、目录改抽屉、弹窗适配），建议搭配移动端布局插件使用，例如 [dsh-web-mobile](https://github.com/mexiaosqwq/dsh-web-mobile)
 
 ## 环境要求
@@ -193,6 +198,14 @@ dsh plugin --profile web update --latest dsh-full-remote
 | 手机登录页 | 移动控制面板 | 手机添加工作区 |
 |---|---|---|
 | ![移动端登录](./docs/screenshots/preview-mobile-login.png) | ![移动面板](./docs/screenshots/preview-mobile-panel.png) | ![手机工作区](./docs/screenshots/preview-mobile.png) |
+
+### 远程确认
+
+模型发起选项确认、工具审批或计划评审时，远程浏览器自己弹出浮层，无需回到宿主机显示器。
+
+| 手机底部抽屉 | 远程桌面居中卡片 |
+|---|---|
+| ![手机确认浮层](./docs/screenshots/preview-remote-confirm-mobile.png) | ![远程桌面确认](./docs/screenshots/preview-remote-confirm-desktop.png) |
 
 ### 门面页
 

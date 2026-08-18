@@ -5,9 +5,15 @@
  * Models, Plugins, Agent presets) and wires the loopback control API.
  * The locale service is OPTIONAL: present, the page follows the active
  * DSh locale; absent, it falls back to zh.
+ *
+ * Also registers a `shell.overlay` confirmation sheet so a remote/mobile
+ * browser can answer userQuestions and tool approvals that would otherwise
+ * only appear in the host conversation composer.
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, ISessions } from '@deepseek-ai/dsh-client-runtime/client'
 import { RemoteSection } from './RemoteSection.tsx'
+import { InteractionOverlay } from './InteractionOverlay.tsx'
+import { createPendingSource } from './pending-source.ts'
 import { bindTranslate } from './i18n.ts'
 import { trustSettingsPersistence } from './trust-settings.ts'
 import type { AuditResult, InviteResult, ProxyApi, ProxyStatus, SelfCheckResult, SessionInfo } from './types.ts'
@@ -128,4 +134,23 @@ export function apply(ctx: ClientContext): void {
     label: () => t('action.label'),
     inject: () => ({ api, t }),
   }, RemoteSection))
+  ctx.inject(['sessions'], (scope: ClientContext) => {
+    const sessions = scope.get('sessions') as ISessions | undefined
+    if (sessions === undefined) return
+    const source = createPendingSource(sessions)
+    scope.effect(() => () => { source.dispose() }, 'reverse-proxy: pending overlay')
+    scope.slots.inject('shell.overlay', () => scope.slots.register({
+      name: 'shell.overlay',
+      id: 'reverse-proxy-interact',
+      order: 40,
+      inject: () => ({
+        t,
+        openSession: (id: string) => { sessions.open(id as Parameters<ISessions['open']>[0]) },
+        answerApproval: (key: string, outcome: 'allowed-once' | 'rejected') => source.answerApproval(key, outcome),
+        answerQuestion: source.answerQuestion,
+        cancelQuestion: source.cancelQuestion,
+        hooks: { remotePending: source },
+      }),
+    }, InteractionOverlay))
+  })
 }

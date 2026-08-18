@@ -25,6 +25,10 @@ directory browsing remain available.
 |---|---|
 | ![Desktop control panel](./docs/screenshots/preview-desktop.png) | ![Mobile workspace](./docs/screenshots/preview-mobile.png) |
 
+| Phone confirmation sheet | Remote desktop confirmation |
+|---|---|
+| ![Phone confirmation sheet](./docs/screenshots/preview-remote-confirm-mobile.png) | ![Remote desktop confirmation](./docs/screenshots/preview-remote-confirm-desktop.png) |
+
 ## Problem
 
 DeepSeek Harness binds its Web server to a loopback address and only
@@ -161,6 +165,11 @@ flowchart LR
 - Settings edits persist when the page is opened through a tunnel hostname
 - Add workspace uses the in-app directory browser; no native dialog
   appears on the host display
+- Tool approvals, `ask_user_question` option lists, and plan reviews
+  appear as a confirmation sheet on the remote page: a bottom drawer
+  on a phone, a centered card on a wider remote window. You can choose
+  and submit there; you do not have to go back to the host. The
+  official composer still only sits on the current session
 - For a phone-friendly layout (full-width session area, directory drawer,
   adapted dialogs), pair it with a mobile-layout plugin such as
   [dsh-web-mobile](https://github.com/mexiaosqwq/dsh-web-mobile)
@@ -271,6 +280,16 @@ one-time invite QR, access token, connected devices with source IPs
 | Login page | Control panel | Add workspace |
 |---|---|---|
 | ![Mobile login](./docs/screenshots/preview-mobile-login.png) | ![Mobile panel](./docs/screenshots/preview-mobile-panel.png) | ![Mobile workspace](./docs/screenshots/preview-mobile.png) |
+
+### Remote confirmation
+
+When the model asks a question, requests a tool approval, or presents a
+plan review, the remote browser shows its own sheet. You do not have to
+look at the host display.
+
+| Phone bottom sheet | Remote desktop card |
+|---|---|
+| ![Phone confirmation sheet](./docs/screenshots/preview-remote-confirm-mobile.png) | ![Remote desktop confirmation](./docs/screenshots/preview-remote-confirm-desktop.png) |
 
 ### Gate pages
 

@@ -56,6 +56,8 @@
     "docs/screenshots/preview-mobile-login.png",
     "docs/screenshots/preview-mobile-panel.png",
     "docs/screenshots/preview-mobile.png",
+    "docs/screenshots/preview-remote-confirm-desktop.png",
+    "docs/screenshots/preview-remote-confirm-mobile.png",
     "docs/screenshots/preview-wait.png"
   ],
   "engines": {

@@ -5,6 +5,15 @@ documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Remote confirmation sheet: on a phone or any non-loopback browser,
+  pending tool approvals, `ask_user_question` option lists, and plan
+  reviews render as a `shell.overlay` bottom sheet so they can be
+  answered without being stuck on the host conversation composer.
+  README gallery includes live phone-drawer and remote-desktop-card
+  shots.
+
 ## 0.3.1 (2026-08-18)
 
 ### Added
