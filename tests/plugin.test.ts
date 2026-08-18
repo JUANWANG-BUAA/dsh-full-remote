@@ -1028,10 +1028,12 @@ describe('login rate limiting', () => {
   })
 
   it('expires the lockout after the configured window', async () => {
-    const proxy = await proxyWith({ loginLockoutMs: 40 })
+    // Leave enough margin for Windows/macOS CI scheduling before checking the
+    // expiry; the assertion is about the state transition, not timer latency.
+    const proxy = await proxyWith({ loginLockoutMs: 250 })
     for (let i = 0; i < 3; i++) await badLogin(proxy.port)
     assert.equal((await badLogin(proxy.port)).status, 429)
-    await new Promise<void>(resolve => setTimeout(resolve, 80))
+    await new Promise<void>(resolve => setTimeout(resolve, 400))
     const next = await badLogin(proxy.port)
     assert.notEqual(next.status, 429)
   })

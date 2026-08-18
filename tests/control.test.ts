@@ -307,7 +307,12 @@ describe('runtime control surface', () => {
     const updated = await runtime.setListen('0.0.0.0', 0)
     assert.deepEqual(updated.listen, { host: '0.0.0.0', port: 0 })
     const mode = (await stat(stateFile)).mode & 0o777
-    assert.equal(mode, 0o600)
+    // Windows does not expose POSIX file permission bits; Node reports the
+    // process default (0666) even though the runtime requests 0600. Keep the
+    // strict private-file assertion on POSIX and only verify the operation on
+    // Windows by accepting its synthetic mode.
+    if (process.platform === 'win32') assert.equal(mode, 0o666)
+    else assert.equal(mode, 0o600)
 
     const fresh = createRuntime(makeContext(), makeConfig(stateFile))
     cleanups.push(() => fresh.dispose())
