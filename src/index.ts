@@ -72,7 +72,7 @@ export const Config = Schema.object({
   auditLog: Schema.boolean().default(true).description('Append structured JSONL audit events (login, approve, revoke, rotate, token reveal) next to the state file.'),
   auditLogFile: Schema.string().default('').description('Audit JSONL path; empty uses <stateFile without .json>.audit.jsonl.'),
   allowedCidrs: Schema.array(Schema.string()).default([]).description('Optional remote IP allowlist (CIDR or bare IP). Empty = allow all authenticated clients. Loopback is always allowed.'),
-  allowTokenRead: Schema.boolean().default(true).description('When false, GET /token is disabled; the token is only returned from rotate-token (and the panel must rotate or use a prior reveal).'),
+  allowTokenRead: Schema.boolean().default(false).description('When true, GET /token reveals the standing access token over loopback. Keep false unless local tooling requires token re-read; rotate-token always returns the replacement token.'),
   tlsCertFile: Schema.string().default('').description('Optional PEM certificate path for local TLS on the proxy listen port (pair with tlsKeyFile). Empty = plain HTTP.'),
   tlsKeyFile: Schema.string().default('').description('Optional PEM private key path for local TLS (pair with tlsCertFile).'),
   trustForwardedProto: Schema.boolean().default(false).description('When true, trust inbound X-Forwarded-Proto from a reverse-edge for Secure cookies and upstream proto. Leave false unless a trusted TLS terminator sits in front.'),
@@ -563,7 +563,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
       fence,
       tls: scheme() === 'https',
       auditLog: audit.enabled,
-      allowTokenRead: config.allowTokenRead !== false,
+      allowTokenRead: config.allowTokenRead === true,
       trustForwardedFor: config.trustForwardedFor === true,
     }
   }
@@ -644,7 +644,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
     sendJson(res, 200, invite)
   }))
   route('GET', '/token', async (_req, res) => {
-    if (config.allowTokenRead === false) {
+    if (config.allowTokenRead !== true) {
       sendJson(res, 403, { error: 'token-read-disabled' })
       return
     }

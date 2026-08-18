@@ -404,11 +404,18 @@ describe('runtime control surface', () => {
     new URL(v6.target)
   })
 
-  it('requires the control header to reveal the access token', async () => {
+  it('disables standing token reads by default and permits an explicit local opt-in', async () => {
     const { runtime } = await makeRuntime()
     const bare = await call(runtime, { path: '/dsh-reverse-proxy/token' })
     assert.equal(bare.status, 403)
-    const ok = await call(runtime, { path: '/dsh-reverse-proxy/token', headers: CONTROL })
+    const disabled = await call(runtime, { path: '/dsh-reverse-proxy/token', headers: CONTROL })
+    assert.deepEqual(disabled.body, { error: 'token-read-disabled' })
+
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-token-read-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const optedIn = createRuntime(makeContext(), makeConfig(join(dir, 'state.json'), { allowTokenRead: true }))
+    cleanups.push(() => optedIn.dispose())
+    const ok = await call(optedIn, { path: '/dsh-reverse-proxy/token', headers: CONTROL })
     assert.equal(ok.status, 200)
     assert.match((ok.body as { accessToken: string }).accessToken, /^[A-Za-z0-9_-]{32}$/)
   })

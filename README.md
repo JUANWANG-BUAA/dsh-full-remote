@@ -319,7 +319,7 @@ Common options:
     requestTimeoutMs: 120000     # timeout for the complete request; effective value is >= headersTimeoutMs
     sessionIdleSeconds: 0        # 0: off; otherwise idle timeout in seconds
     auditLog: true
-    allowTokenRead: true         # false: token only returned on rotation
+    allowTokenRead: false        # safer default; enable only for local token re-read
     cloudflaredPath: ""          # optional path to cloudflared for the one-click tunnel
     tlsCertFile: ""              # optional local HTTPS
     tlsKeyFile: ""
@@ -369,10 +369,9 @@ side of the tunnel. For LAN use without a tunnel, set
 - Settings persistence on a remote page relies on a temporary trust pin
   until Harness provides a proper deployment trust field. "Open on host"
   from a phone acts on the machine running Harness.
-- With `allowTokenRead: true` (the default), `GET /token` is served over
-  loopback HTTP, so any local process that sends the control header can
-  read the token. Set `allowTokenRead: false` to receive the token only
-  when rotating.
+- `allowTokenRead` defaults to `false`. When explicitly enabled, `GET /token`
+  is served over loopback HTTP, so any local process that sends the control
+  header can read the token; rotation always returns the replacement token.
 - By default, a tunnel running on the same machine makes every remote
   client appear as `127.0.0.1` to the proxy. `allowedCidrs` and per-IP
   login lockout therefore apply to the tunnel as a whole unless

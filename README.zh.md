@@ -232,7 +232,7 @@ dsh plugin --profile web update --latest dsh-full-remote
     requestTimeoutMs: 120000     # 完整请求超时；实际值不会小于 headersTimeoutMs
     sessionIdleSeconds: 0        # 0 = 关闭；否则按空闲秒数过期
     auditLog: true
-    allowTokenRead: true         # false：令牌只在轮换时返回
+    allowTokenRead: false        # 更安全的默认值；仅本机工具需要重读时开启
     cloudflaredPath: ""          # 可选：一键隧道用的 cloudflared 路径
     tlsCertFile: ""              # 可选本地 HTTPS
     tlsKeyFile: ""
@@ -262,7 +262,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 
 - 控制操作（启动、停止、查看令牌、修改监听地址）仅可在本机 Harness 窗口执行，隧道地址下无效。
 - 远程页面上的设置持久化依赖临时的信任注入，待 Harness 提供正式的部署信任字段后可以移除。手机上的「在宿主机打开」作用于运行 Harness 的机器。
-- 默认 `allowTokenRead: true` 时，`GET /token` 通过回环 HTTP 提供，任何能发送控制头的本机进程均可读取。设为 `false` 后，令牌仅在轮换时返回。
+- `allowTokenRead` 默认 `false`。显式开启时，`GET /token` 会通过回环 HTTP 提供，任何能发送控制头的本机进程均可读取；轮换令牌始终会返回新令牌。
 - 默认情况下，运行在本机的隧道会让所有远程客户端在代理看来都是 `127.0.0.1`。因此 `allowedCidrs` 与按 IP 登录锁定只对“隧道整体”生效；如需按真实客户端 IP 生效，请在可信本地边缘后设置 `trustForwardedFor: true`。
 - 插件以自身的访问控制层替代 Harness 的远程信任校验，该层若存在缺陷，影响严重。若 Harness 未来提供官方远程访问能力，应重新评估本插件的定位。
 - 一键快速隧道：URL 每次启动随机变化（旧邀请与登录失效）、官方定位是临时/测试用途，非 HTML 大流量内容受 Cloudflare 条款限制；首次使用需按需下载 cloudflared（18–52 MB，取决于平台），Windows ARM64 没有官方构建（可自行安装后填 `cloudflaredPath`）。日常稳定入口仍建议自备 frp / ngrok / 命名隧道。
