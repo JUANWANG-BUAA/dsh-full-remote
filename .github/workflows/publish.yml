@@ -4,8 +4,10 @@ on:
   push:
     tags:
       - 'v*'
-  # Manual retry button on the Actions page (no new tag needed).
-  workflow_dispatch:
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -14,8 +16,11 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -28,8 +33,17 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: Verify release tag
+        run: |
+          test "${GITHUB_REF_TYPE}" = tag
+          test "${GITHUB_REF_NAME}" = "v$(node -p "require('./package.json').version")"
+          git fetch origin main --depth=1
+          git merge-base --is-ancestor HEAD origin/main
+
       - name: Verify
-        run: pnpm run check:ci
+        run: |
+          pnpm run check:ci
+          pnpm run audit:prod
 
       - name: Publish to npm (provenance)
         run: npm publish --provenance --access public

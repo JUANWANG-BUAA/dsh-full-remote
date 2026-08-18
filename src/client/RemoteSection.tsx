@@ -662,9 +662,14 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
         <h3 className={css.groupHead}>{t('token.label')}</h3>
         <p className={css.hint}>{t('token.description')}</p>
         {accessToken === undefined ? (
-          <button className={css.secondaryButton} type="button" disabled={busy} onClick={() => { void revealToken() }}>
-            {busyKind === 'token' ? t('busy') : t('token.reveal')}
-          </button>
+          <div className={css.tokenActions}>
+            <button className={css.secondaryButton} type="button" disabled={busy} onClick={() => { void revealToken() }}>
+              {busyKind === 'token' ? t('busy') : t('token.reveal')}
+            </button>
+            <button className={css.textButton} type="button" disabled={busy} onClick={() => { void rotate() }}>
+              {busyKind === 'token' ? t('busy') : t('token.rotate')}
+            </button>
+          </div>
         ) : (
           <div className={css.tokenRow}>
             <CopyField value={accessToken} action={t('tunnel.copy')} onCopy={() => { void copy(accessToken, t('token.copyLabel'), 'copied.token') }} />

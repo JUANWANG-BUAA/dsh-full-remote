@@ -27,6 +27,9 @@ package is a different product.
 
 - Publish every tagged release (`v*` → `npm publish --provenance`, the
   Publish workflow) so npm users can pin exact versions.
+- The workflow accepts only a tag exactly matching `package.json` and only
+  when that commit is reachable from `main`; manual/untagged publishes are
+  intentionally not supported.
 - Bump the peer range only when the harness publishes rc releases with the
   slot API this plugin uses; keep the range failing loudly rather than
   silently mounting nothing.
@@ -60,7 +63,8 @@ package is a different product.
 - [x] Tag `v0.3.0` (forwarded-IP spoofing fix, device source IPs, audit rotation).
 - [x] Tag `v0.3.1` (one-click Cloudflare quick tunnel, device home, invite retry reuse).
 - [x] Tag `v0.3.2` (security hardening, production audit command, and real Harness smoke coverage).
-- [ ] `npm deprecate dsh-reverse-proxy "Package renamed to dsh-full-remote."` (blocked until `npm login`).
+- [ ] Tag `v0.3.3` (durable-state rollback, real client contracts, tarball smoke, and compatibility hardening).
+- [ ] `npm deprecate dsh-reverse-proxy "Package renamed to dsh-full-remote; install dsh-full-remote instead."` (run once with npm publisher credentials).
 - [x] Apply GitHub topics from `docs/github-metadata.md` (applied 2026-08-16).
 - [x] PR the plugin into `awesome-dsh-plugin` as `dsh-full-remote` ([#833](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/833), updated 2026-08-16).
 - [ ] Upload social preview (`docs/rp-demo-panel.png`) — manual browser step, no API.

@@ -29,7 +29,19 @@ function parseIpv4(ip: string) {
 }
 
 function parseIpv6(ip: string) {
-  const normalized = ip.toLowerCase()
+  let normalized = ip.toLowerCase()
+  // WHATWG / node accept IPv4-embedded IPv6 literals, but treating the
+  // dotted tail as one hextet widens CIDR matches (parseInt stops at '.').
+  // Canonicalize the tail to two hextets before expansion.
+  if (normalized.includes('.')) {
+    const colon = normalized.lastIndexOf(':')
+    if (colon < 0) return undefined
+    const dotted = parseIpv4(normalized.slice(colon + 1))
+    if (dotted === undefined) return undefined
+    const high = ((dotted >>> 16) & 0xffff).toString(16)
+    const low = (dotted & 0xffff).toString(16)
+    normalized = `${normalized.slice(0, colon + 1)}${high}:${low}`
+  }
   if (isIP(normalized) !== 6) return undefined
   // Expand :: once, then split into 8 hextets.
   let full = normalized

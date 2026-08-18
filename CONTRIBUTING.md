@@ -8,26 +8,25 @@ bundle, so most changes are small and self-contained.
 
 Dependencies install from npm — no special layout is required.
 
-- `pnpm install` (frozen lockfile) + `pnpm run check:ci` works anywhere:
-  the CI fallback declarations in `types/ci.d.ts` stand in for the harness
-  client types.
+- `pnpm install` (frozen lockfile) + `pnpm run check:ci` works anywhere and
+  resolves the published Harness client declarations from `node_modules`.
 - `pnpm run bootstrap` (optional) clones a pinned DeepSeek Harness checkout
-  next to this repo and builds its client types, so `pnpm run check` runs
-  against the real type contracts. `tsconfig.json` maps the client
-  specifiers to that sibling checkout when present.
+  next to this repo for real-boot integration work; it is not required for
+  typechecking.
 
 ## Checks
 
 ```sh
-pnpm run check       # lint + typecheck (real harness types) + tests + build
-pnpm run check:ci    # lint + typecheck with the CI fallback declarations + tests + build
+pnpm run check       # lint + typecheck + tests + build
+pnpm run check:ci    # same CI-oriented gates using published client types
+pnpm run audit:prod  # production dependency audit
 ```
 
 Host sources are fully type-annotated and compiled with `noImplicitAny`
 enabled. Keep new parameters and fields typed rather than adding `any`.
 
 CI runs `pnpm run check:ci` on every push and pull request, plus a real-boot
-smoke job (`scripts/smoke.mjs`) that installs the bundle through
+smoke job (`scripts/smoke.mjs`) that installs the packed npm tarball through
 `dsh plugin add` and exercises it against a live harness composition.
 
 ## Tests
@@ -53,10 +52,10 @@ or English describing the change, e.g. `修复 …` / `Add …`.
    configuration, or docs change.
 3. Keep the two READMEs in sync — they are translations of each other.
 4. Do not commit build outputs (`lib/`), tarballs, or secrets.
-5. If you touch `src/client` and use more of the DeepSeek Harness client API,
-   keep `types/ci.d.ts` (the CI fallback declarations) in sync.
+5. If you touch `src/client`, compile against the published client-runtime
+   declarations and add a fixture/test for any changed wire contract.
 
 ## Release notes
 
 Unreleased changes go under an Unreleased heading of `CHANGELOG.md`
-until the next version is cut. The current release is `0.3.2`.
+until the next version is cut. The current release is `0.3.3`.

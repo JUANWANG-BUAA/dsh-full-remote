@@ -45,6 +45,14 @@ export function newSessionSecret() {
   return randomBytes(SECRET_BYTES).toString('base64url')
 }
 
+/** Thrown when approval mode has reached its hard session admission limit. */
+export class SessionCapacityError extends Error {
+  constructor() {
+    super('session capacity reached')
+    this.name = 'SessionCapacityError'
+  }
+}
+
 export function newSessionId() {
   return randomBytes(ID_BYTES).toString('base64url')
 }
@@ -192,6 +200,13 @@ export function createSessionStore(options: {
     login({ userAgent, ip }: { userAgent: string | undefined, ip?: string }) {
       const at = now()
       sweep(at)
+      if (approvalRequired) {
+        // Pending devices must never evict an active device. Rejected
+        // tombstones stay briefly visible to their wait page but do not count
+        // against admission capacity.
+        const liveCount = [...sessions.values()].filter(session => session.status !== 'rejected').length
+        if (liveCount >= maxSessions) throw new SessionCapacityError()
+      }
       const secret = newSessionSecret()
       const id = newSessionId()
       const record: SessionRecord = {
@@ -204,10 +219,9 @@ export function createSessionStore(options: {
         ...(ip !== undefined && ip !== '' ? { createdIp: ip, lastSeenIp: ip } : {}),
       }
       sessions.set(id, record)
-      // Cap is a soft bound: evict the stalest OTHER session; when the store
-      // only contains the newcomer (impossible under cap but safe anyway),
-      // the eviction is skipped and the cap recovers on the next mutation.
-      while (sessions.size > maxSessions) {
+      // In approval mode admission above is a hard bound and never evicts an
+      // active device. In normal mode retain the historical soft cap.
+      while (!approvalRequired && sessions.size > maxSessions) {
         const before = sessions.size
         evictOldest(id)
         if (sessions.size === before) break

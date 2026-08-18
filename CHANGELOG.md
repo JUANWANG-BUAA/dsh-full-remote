@@ -3,6 +3,26 @@
 All notable changes to dsh-full-remote (formerly dsh-reverse-proxy) are
 documented in this file.
 
+## Unreleased
+
+### Security and reliability
+
+- CI now typechecks against the published Harness client contracts instead of
+  a handwritten compatibility shim.
+- Durable state mutations fail closed and roll back in-memory changes when a
+  state write fails; revoking a device also closes its active HTTP, SSE, and
+  WebSocket streams.
+- Login admission is reserved before body parsing, approval mode never evicts
+  an active device, and dynamic hop-by-hop headers are stripped.
+- CIDR parsing, cookie/config bounds, tunnel download limits, cache digests,
+  and audit paths are validated more strictly.
+- Release smoke installs the packed tarball and CI covers Node 22 and 24.
+
+### Documentation
+
+- Quick Start now leads with the one-click tunnel and documents the separate
+  `trustCloudflareConnectingIp` opt-in.
+
 ## 0.3.2 (2026-08-18)
 
 ### Added

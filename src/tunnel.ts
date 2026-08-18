@@ -15,7 +15,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { constants } from 'node:fs'
-import { access, chmod, mkdir, rename, writeFile } from 'node:fs/promises'
+import { access, chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { delimiter, join } from 'node:path'
 import { gunzipSync } from 'node:zlib'
 
@@ -40,6 +40,9 @@ const CLOUDFLARED_ASSETS: Record<string, CloudflaredAsset> = {
   'linux-arm64': { asset: 'cloudflared-linux-arm64', sha256: '7747d94570fb390cf47dcb4f9555c193c6355cda9793f0d878d9049e5d6a7790', tgz: false },
   'win32-x64': { asset: 'cloudflared-windows-amd64.exe', sha256: 'c29eee2b121f5436a642eed69fd9767da7e7b8c510fa50aaa130337f931357b5', tgz: false },
 }
+
+const MAX_DOWNLOAD_BYTES = 128 * 1024 * 1024
+const DOWNLOAD_TIMEOUT_MS = 60_000
 
 export function assetForPlatform(platform: string, arch: string): CloudflaredAsset | undefined {
   return CLOUDFLARED_ASSETS[`${platform}-${arch}`]
@@ -145,6 +148,7 @@ export function createTunnelManager(options: TunnelManagerOptions): TunnelManage
   const fetchFn = options.fetchFn ?? fetch
   const binName = process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared'
   const cachedBin = join(options.cacheDir, binName)
+  const cachedDigest = `${cachedBin}.sha256`
 
   let state: TunnelState = 'off'
   let publicUrl: string | undefined
@@ -179,24 +183,60 @@ export function createTunnelManager(options: TunnelManagerOptions): TunnelManage
     const url = `https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/${spec.asset}`
     let response
     downloadAbort = new AbortController()
+    const timeout = setTimeout(() => downloadAbort?.abort(), DOWNLOAD_TIMEOUT_MS)
+    timeout.unref?.()
     try {
       response = await fetchFn(url, { redirect: 'follow', signal: downloadAbort.signal })
     } catch (error) {
+      clearTimeout(timeout)
       if (error instanceof Error && error.name === 'AbortError') throw new TunnelError('aborted')
       throw new TunnelError('download-failed')
     }
-    if (!response.ok) throw new TunnelError('download-failed')
-    const payload = Buffer.from(await response.arrayBuffer())
+    if (!response.ok) {
+      clearTimeout(timeout)
+      throw new TunnelError('download-failed')
+    }
+    const declaredLength = Number(response.headers?.get('content-length') ?? 0)
+    if (declaredLength > MAX_DOWNLOAD_BYTES) {
+      clearTimeout(timeout)
+      throw new TunnelError('download-too-large')
+    }
+    let payload: Buffer
+    try {
+      payload = Buffer.from(await response.arrayBuffer())
+    } catch (error) {
+      clearTimeout(timeout)
+      if (error instanceof Error && error.name === 'AbortError') throw new TunnelError('aborted')
+      throw new TunnelError('download-failed')
+    }
+    clearTimeout(timeout)
+    if (payload.byteLength > MAX_DOWNLOAD_BYTES) throw new TunnelError('download-too-large')
     const digest = createHash('sha256').update(payload).digest('hex')
     if (digest !== spec.sha256) throw new TunnelError('integrity-failed')
     const binary = spec.tgz ? extractTgzSingleFile(payload) : payload
+    const binaryDigest = createHash('sha256').update(binary).digest('hex')
     await mkdir(options.cacheDir, { recursive: true })
     const tmp = join(options.cacheDir, `.cloudflared.download-${process.pid}`)
+    const digestTmp = `${tmp}.sha256`
     // Verify-then-write: an integrity failure never leaves a cached binary.
     await writeFile(tmp, binary)
+    await writeFile(digestTmp, `${binaryDigest}\n`)
     await chmod(tmp, 0o755)
     await rename(tmp, cachedBin)
+    await rename(digestTmp, cachedDigest)
     return cachedBin
+  }
+
+  const cachedBinaryIsValid = async () => {
+    if (!(await isExecutable(cachedBin))) return false
+    try {
+      const expected = (await readFile(cachedDigest, 'utf8')).trim()
+      if (!/^[a-f0-9]{64}$/.test(expected)) return false
+      const actual = createHash('sha256').update(await readFile(cachedBin)).digest('hex')
+      return actual === expected
+    } catch {
+      return false
+    }
   }
 
   const resolveBinary = async (setStage: (stage: string) => void): Promise<string> => {
@@ -207,7 +247,7 @@ export function createTunnelManager(options: TunnelManagerOptions): TunnelManage
     }
     const onPath = await findOnPath('cloudflared')
     if (onPath !== undefined) return onPath
-    if (await isExecutable(cachedBin)) return cachedBin
+    if (await cachedBinaryIsValid()) return cachedBin
     const spec = assetForPlatform(process.platform, process.arch)
     if (spec === undefined) throw new TunnelError('unsupported-platform')
     setStage('downloading')

@@ -16,6 +16,20 @@
 
 `dsh-full-remote` 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的一个插件：它在 Harness Web 服务前放置一层带鉴权的反向代理，使 Web 界面可以通过公网隧道或局域网设备访问，同时保持设置、凭据、目录浏览等特权接口可用。
 
+## 60 秒快速开始
+
+```sh
+dsh plugin --profile web add dsh-full-remote
+dsh --profile web
+```
+
+在 **设置 → 反向代理** 中点击「启动代理」，再点击「启动 Cloudflare
+快速隧道」，用手机扫描面板生成的二维码。邀请链接只可使用一次，且不包含长期访问令牌。
+如果使用受控网络，也可以把现有的 SSH、frp、ngrok、Tailscale 或 cloudflared
+隧道指向面板显示的代理地址。
+
+快速隧道是可选的临时通道，不等同于正式运维的公网部署；对外暴露前请先阅读[安全模型](#安全模型)，组合其他插件时请查看[兼容性说明](./docs/compatibility.md)。
+
 | 桌面控制面板 | 手机工作区 |
 |---|---|
 | ![桌面控制面板](./docs/screenshots/preview-desktop.png) | ![手机工作区](./docs/screenshots/preview-mobile.png) |
@@ -49,7 +63,7 @@ DeepSeek Harness 的 Web 服务只绑定回环地址，且仅当请求的 `Host`
 
 改写使 Harness 原本对远程客户端的信任校验失效，因此插件提供自己的访问控制层作为替代，见[安全模型](#安全模型)。
 
-插件不负责隧道本身。cloudflared、ngrok、frp、SSH、Tailscale 等隧道均可指向插件发布的本地地址。
+插件可以一键启动临时 Cloudflare 快速隧道；也支持把受控的 cloudflared、ngrok、frp、SSH、Tailscale 等现有隧道指向插件发布的本地地址。
 
 ## 工作原理
 
@@ -81,7 +95,7 @@ flowchart LR
 - 手机邀请：二维码或一次性链接（单次有效、15 分钟过期）。同 IP 60 秒内的浏览器自动重试会沿用同一台设备会话，避免隧道抖动丢响应时把手机卡进令牌页，也不会在设备列表里多出一条。链接中不含长期令牌
 - 登录失败计入固定延时，并按 IP 累计锁定
 - 可选 CIDR 白名单，限制远程 IP
-- 可选 `trustForwardedFor`：在可信本地隧道后使用真实客户端 IP 进行 CIDR / 限流 / 审计，优先 `CF-Connecting-IP`，否则取 `X-Forwarded-For` 最右值；回环或非法的转发值一律不信任，因此在非 Cloudflare 边缘上客户端自行注入的 `CF-Connecting-IP` 无法冒充回环地址
+- 可选 `trustForwardedFor`：在可信本地隧道后使用真实客户端 IP 进行 CIDR / 限流 / 审计；只有另行开启 `trustCloudflareConnectingIp` 才会读取 Cloudflare 的 `CF-Connecting-IP`，否则取 `X-Forwarded-For` 最右值；回环或非法的转发值一律不信任
 
 ### 一键公网隧道（Cloudflare 快速隧道）
 
@@ -177,7 +191,7 @@ ngrok http 3081
 dsh plugin --profile web update --latest dsh-full-remote
 ```
 
-然后重启 `dsh web`。`--latest` 会忽略现有版本范围，装上最新版并改写 `package.json`。指定某一版用 `dsh plugin --profile web update dsh-full-remote@0.3.2`。
+然后重启 `dsh web`。`--latest` 会忽略现有版本范围，装上最新版并改写 `package.json`。指定某一版用 `dsh plugin --profile web update dsh-full-remote@0.3.3`。
 
 ## 截图
 
@@ -225,7 +239,8 @@ dsh plugin --profile web update --latest dsh-full-remote
     listenPort: 3081
     approvalMode: false          # true：新设备需要本机批准
     allowedCidrs: []             # 例如 ["192.168.1.0/24"]；留空 = 登录后不限 IP
-    trustForwardedFor: false     # true：信任可信本地隧道传来的 CF-Connecting-IP / X-Forwarded-For 最右值
+    trustForwardedFor: false     # true：信任可信本地隧道传来的 X-Forwarded-For 最右值
+    trustCloudflareConnectingIp: false # 仅在 Cloudflare 边缘明确可信时开启
     upgradeMaxAttempts: 10       # WebSocket 升级失败多少次后锁定
     upgradeLockoutSeconds: 300   # WebSocket 升级频繁失败的锁定秒数
     headersTimeoutMs: 15000      # 请求头超时
@@ -238,7 +253,8 @@ dsh plugin --profile web update --latest dsh-full-remote
     tlsKeyFile: ""
 ```
 
-完整选项、默认值与校验规则定义在包内 `Config` schema（`src/index.ts`）。
+完整选项、默认值与校验规则定义在包内 `Config` schema（`src/config.ts`）及
+`src/config-validation.ts`；发布包不包含源码目录。
 
 两点说明：
 
@@ -254,7 +270,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 - 登录失败计入固定延时，并按 IP 返回 `429` 锁定；
 - 控制接口（`/dsh-reverse-proxy/*`）仅限回环地址访问，需要控制头，且永远不会被公网代理转发；
 - 剥离可伪造的转发头与逐跳头，代理自身的 Cookie 不会到达后端；
-- 可选 `trustForwardedFor`：开启后仅信任回环对端传来的转发头，用于 CIDR / 限流 / 审计，使本地隧道能识别真实客户端 IP。优先 `CF-Connecting-IP`，否则取 `X-Forwarded-For` 最右值，避免客户端伪造前缀；回环或非法的转发值一律不信任，因此在非 Cloudflare 边缘上客户端自行注入的 `CF-Connecting-IP` 无法冒充回环地址。局域网直连请保持关闭。
+- 可选 `trustForwardedFor`：开启后仅信任回环对端传来的转发头，用于 CIDR / 限流 / 审计，使本地隧道能识别真实客户端 IP。只有额外开启 `trustCloudflareConnectingIp` 才读取 Cloudflare 的 `CF-Connecting-IP`，否则取 `X-Forwarded-For` 最右值；回环或非法的转发值一律不信任。局域网直连请保持关闭。
 
 访问令牌须按机密保管。公网侧应终止 TLS。局域网直连可配置 `tlsCertFile` / `tlsKeyFile`（例如用 [mkcert](https://github.com/FiloSottile/mkcert) 生成）。
 
@@ -273,7 +289,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.3.2.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.3.tgz
 ```
 
 git 安装会执行 `prepare` 构建，pnpm ≥ 10 需要放行：

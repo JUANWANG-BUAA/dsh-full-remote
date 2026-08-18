@@ -7,10 +7,14 @@ on:
     - cron: '17 4 * * 1'
   workflow_dispatch:
 
+concurrency:
+  group: canary-${{ github.workflow }}
+  cancel-in-progress: true
+
 jobs:
   canary:
     runs-on: ubuntu-latest
-    continue-on-error: true
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -46,3 +50,4 @@ jobs:
         run: node scripts/smoke.mjs
         env:
           HARNESS_DIR: ${{ github.workspace }}/.harness
+          PACK_PLUGIN: '1'

@@ -8,7 +8,12 @@
  * `sessions.binding`, which replays buffered mux frames) and exposes a
  * stable snapshot the overlay can answer from.
  */
-import type { ISessions, PendingWait } from '@deepseek-ai/dsh-client-runtime/client'
+import type {
+  ISessions,
+  PendingInteraction,
+  PendingWait,
+  SessionId,
+} from '@deepseek-ai/dsh-client-runtime/client'
 import { isLoopbackHost } from '../hosts.ts'
 
 /** One option the asker offered. */
@@ -116,13 +121,14 @@ export function parseRecommendedLabel(label: string): { label: string, recommend
 
 function fingerprint(state: RemotePendingState) {
   return state.items.map(item => {
-    const q = item.questions?.map(question => question.id).join(',') ?? ''
-    return `${item.key}:${item.ready}:${item.presentation}:${q}`
+    const q = item.questions?.map(question => JSON.stringify(question)).join(',') ?? ''
+    const approval = item.approval === undefined ? '' : JSON.stringify(item.approval)
+    return `${item.key}:${item.ready}:${item.presentation}:${q}:${approval}`
   }).join('|')
 }
 
 function questionView(wait: PendingWait<'question'>): QuestionItemView[] {
-  const questions = wait.payload.questions as QuestionItemView[]
+  const questions = wait.payload.questions
   return questions.map((question: QuestionItemView) => ({
     id: question.id,
     question: question.question,
@@ -142,7 +148,7 @@ function questionView(wait: PendingWait<'question'>): QuestionItemView[] {
 }
 
 function projectWait(
-  wait: PendingWait,
+  wait: PendingInteraction,
   sessionTitle: string,
   current: boolean,
 ): RemotePendingItem {
@@ -197,8 +203,8 @@ export type PendingSource = {
  */
 export function createPendingSource(sessions: ISessions): PendingSource {
   const listeners = new Set<() => void>()
-  const sessionUnsubs = new Map<string, () => void>()
-  const waits = new Map<string, PendingWait>()
+  const sessionUnsubs = new Map<SessionId, () => void>()
+  const waits = new Map<string, PendingInteraction>()
   let snapshot = EMPTY_STATE
   let disposed = false
 
@@ -210,8 +216,8 @@ export function createPendingSource(sessions: ISessions): PendingSource {
     if (disposed) return
     const list = sessions.list.getSnapshot()
     const items: RemotePendingItem[] = []
-    const nextWaits = new Map<string, PendingWait>()
-    const pendingIds = new Set<string>()
+    const nextWaits = new Map<string, PendingInteraction>()
+    const pendingIds = new Set<SessionId>()
 
     for (const id of list.ids) {
       const row = list.byId[id]

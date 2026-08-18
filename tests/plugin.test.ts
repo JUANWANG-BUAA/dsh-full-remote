@@ -437,6 +437,20 @@ describe('header forwarding', () => {
     assert.equal(headers['x-dsh-reverse-proxy'], '1')
   })
 
+  it('drops hop-by-hop fields nominated by a dynamic Connection token', () => {
+    const headers = forwardHeaders({
+      headers: {
+        host: 'public.example',
+        connection: 'keep-alive, X-Secret-Hop',
+        'x-secret-hop': 'must-not-cross',
+        'x-safe': 'ok',
+      },
+      socket: { remoteAddress: '127.0.0.1' },
+    } as unknown as IncomingMessage, '127.0.0.1:3080')
+    assert.equal(headers['x-secret-hop'], undefined)
+    assert.equal(headers['x-safe'], 'ok')
+  })
+
   it('allows the caller to override the forwarded-for value', () => {
     const headers = forwardHeaders({
       headers: { host: 'public.example' },

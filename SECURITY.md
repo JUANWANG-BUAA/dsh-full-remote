@@ -45,8 +45,18 @@ Web UI. Please take security issues seriously.
 - Phone invites are one-time 15-minute links. A repeat submit of the same
   code is only accepted from the same remote IP within 60 seconds of the
   first use (browser retry after a lost redirect), and reuses the original
-  device session instead of minting a second one. Any other reuse is
-  rejected, so the link still grants nothing once consumed.
+  device session instead of minting a second one. This retry grace is a
+  usability trade-off for shared-NAT networks: shorten or disable it in a
+  deployment where another user can observe the invite URL and share the same
+  source IP. Any other reuse is rejected.
+- `trustForwardedFor` is only for a trusted loopback edge. Cloudflare's
+  `CF-Connecting-IP` is ignored unless `trustCloudflareConnectingIp` is also
+  enabled; enabling either setting on a client-controlled proxy makes IP-based
+  controls spoofable.
+- Revoking a device closes its active proxied HTTP streams and upgraded
+  WebSocket connections. Existing requests may still finish if the upstream
+  has already sent a response; rotate the master token for a full deployment
+  reset.
 - `GET /_dsh_reverse_proxy/healthz` is behind the CIDR allowlist, not the
   login gate: an empty allowlist means the probe is public on the proxy
   port (use CIDR or bind loopback if you do not want that).

@@ -22,6 +22,19 @@ const HOP_BY_HOP = new Set([
   'transfer-encoding',
   'upgrade',
 ])
+
+function connectionTokens(headers: ProxyHeaders | Record<string, string | string[] | undefined> | undefined) {
+  const tokens = new Set<string>(['proxy-connection'])
+  const connection = headers?.connection
+  const values = Array.isArray(connection) ? connection : [connection]
+  for (const value of values) {
+    for (const token of String(value ?? '').split(',')) {
+      const normalized = token.trim().toLowerCase()
+      if (normalized !== '') tokens.add(normalized)
+    }
+  }
+  return tokens
+}
 const SPOOFABLE_FORWARDING = new Set([
   'forwarded',
   'x-forwarded-for',
@@ -85,9 +98,10 @@ export function cookieIsSecure(req: IncomingMessage, spec: { tls: boolean, trust
 
 export function forwardHeaders(req: IncomingMessage, backendHost: string, options: { tls?: boolean, trustForwardedProto?: boolean, forwardedFor?: string } = {}) {
   const headers: Record<string, string | string[] | undefined> = {}
+  const nominated = connectionTokens(req.headers)
   for (const [key, value] of Object.entries(req.headers)) {
     const lower = key.toLowerCase()
-    if (value === undefined || value === null || lower === 'host' || HOP_BY_HOP.has(lower) || SPOOFABLE_FORWARDING.has(lower) || INTERNAL_HEADERS.has(lower)) continue
+    if (value === undefined || value === null || lower === 'host' || nominated.has(lower) || HOP_BY_HOP.has(lower) || SPOOFABLE_FORWARDING.has(lower) || INTERNAL_HEADERS.has(lower)) continue
     headers[lower] = value as string | string[]
   }
   const sourceHost = req.headers.host ?? ''
@@ -105,9 +119,11 @@ export function forwardHeaders(req: IncomingMessage, backendHost: string, option
 
 function sanitizeHeaders(headers: ProxyHeaders | undefined, keep: ReadonlySet<string> = new Set()) {
   const out: Record<string, string | string[] | number | undefined> = {}
+  const nominated = connectionTokens(headers)
   for (const [key, value] of Object.entries(headers ?? {})) {
     const lower = key.toLowerCase()
     if (value === undefined || value === null || lower === 'set-cookie') continue
+    if (nominated.has(lower) && !keep.has(lower)) continue
     if (HOP_BY_HOP.has(lower) && !keep.has(lower)) continue
     out[key] = value as string | string[] | number
   }

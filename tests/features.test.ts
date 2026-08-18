@@ -47,6 +47,12 @@ describe('cidr allowlist', () => {
     assert.equal(ipAllowed('2001:db9::1', rules), false)
     assert.equal(ipAllowed('::1', rules), true) // loopback always allowed
   })
+
+  it('canonicalizes IPv4-embedded IPv6 addresses without broadening the prefix', () => {
+    const rules = compileCidrList(['64:ff9b::192.0.2.0/120'])
+    assert.equal(ipAllowed('64:ff9b::192.0.2.1', rules), true)
+    assert.equal(ipAllowed('64:ff9b::192.0.3.1', rules), false)
+  })
 })
 
 describe('audit log', () => {

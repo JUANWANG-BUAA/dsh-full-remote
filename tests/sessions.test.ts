@@ -75,6 +75,15 @@ describe('session store', () => {
     assert.equal(store.list().some(s => s.id === other.id), false)
   })
 
+  it('does not evict an active device when approval admission is full', () => {
+    const store = createSessionStore({ approvalRequired: true, maxSessions: 1 })
+    const first = store.login({ userAgent: 'Chrome/126' })
+    assert.equal(store.approve(first.id), true)
+    assert.throws(() => store.login({ userAgent: 'Safari/604' }), /session capacity reached/)
+    assert.equal(store.validate(encodeSessionCookie(first.id, first.secret))?.id, first.id)
+    assert.deepEqual(store.list().map(session => session.id), [first.id])
+  })
+
   it('evicts the stalest session past the cap', () => {
     const store = createSessionStore({ maxSessions: 2, maxAgeSeconds: 3600 })
     const first = store.login({ userAgent: 'Mozilla/5.0 (Macintosh) Chrome/126' })

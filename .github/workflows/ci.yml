@@ -5,9 +5,18 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
 
@@ -15,16 +24,17 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # check:ci typechecks against the ambient fallback declarations in
-      # types/ci.d.ts, so no sibling harness checkout is required here.
-      - name: Lint, typecheck (CI declarations), test, build
+      - name: Lint, typecheck, test, build
         run: pnpm run check:ci
+
+      - name: Production dependency audit
+        run: pnpm run audit:prod
 
   smoke:
     # Real-boot seam-drift alarm: installs this bundle through the
@@ -32,6 +42,7 @@ jobs:
     # real DeepSeek Harness web composition, and exercises the control
     # surface, login gate, rate limiter, and index polyfill over HTTP.
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
@@ -72,3 +83,4 @@ jobs:
         run: node scripts/smoke.mjs
         env:
           HARNESS_DIR: ${{ github.workspace }}/.harness
+          PACK_PLUGIN: '1'

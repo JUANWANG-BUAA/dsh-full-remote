@@ -182,8 +182,12 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
     return loadPromise
   }
 
-  const save = async () => {
-    if (state === undefined || statePersistenceBlocked) return
+  const save = async (options: { required?: boolean } = {}): Promise<boolean> => {
+    if (state === undefined) return false
+    if (statePersistenceBlocked) {
+      if (options.required === true) throw new Error('reverse-proxy: durable state is unavailable')
+      return false
+    }
     try {
       await writeState(statePath, {
         enabled: state.enabled,
@@ -192,8 +196,12 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
         ...(state.listenHost !== undefined ? { listenHost: state.listenHost } : {}),
         ...(state.listenPort !== undefined ? { listenPort: state.listenPort } : {}),
       })
+      return true
     } catch (error) {
       warn(error)
+      statePersistenceBlocked = true
+      if (options.required === true) throw new Error('reverse-proxy: durable state write failed', { cause: error })
+      return false
     }
   }
 
@@ -263,7 +271,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
     await teardown()
     state!.enabled = false
     lastFailure = undefined
-    await save()
+    await save({ required: true })
     void audit.record('proxy.stop')
     return snapshot()
   }
@@ -341,7 +349,13 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
     }
     lastFailure = undefined
     state!.enabled = true
-    await save()
+    try {
+      await save({ required: true })
+    } catch (error) {
+      state!.enabled = false
+      await teardown().catch(() => {})
+      throw error
+    }
     void audit.record('proxy.start', { host: bound!.host, port: bound!.port, tls: tls !== undefined })
     ctx.logger.info(`reverse-proxy: listening on ${formatHttpUrl(bound!.host, bound!.port, scheme())}`)
     return snapshot()
@@ -355,13 +369,21 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
     await load()
     const restart = bound !== undefined
     const wasTunnel = tunnelLive()
+    const previousToken = state!.accessToken
+    const previousSessions = sessionStore!.serialize()
     await teardown()
     state!.accessToken = generateAccessToken()
     // Rotation invalidates every device: sessions are independent of the
     // token, so they must be revoked explicitly.
     sessionStore!.clear()
     inviteStore.clear()
-    await save()
+    try {
+      await save({ required: true })
+    } catch (error) {
+      state!.accessToken = previousToken
+      sessionStore!.hydrate(previousSessions)
+      throw error
+    }
     void audit.record('token.rotate')
     ctx.logger.info('reverse-proxy: access token rotated')
     if (restart) await start()
@@ -385,10 +407,18 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
     if (hostname === previous.host && portNumber === previous.port) return snapshot()
     const wasRunning = bound !== undefined
     const wasTunnel = tunnelLive()
+    const previousHost = state!.listenHost
+    const previousPort = state!.listenPort
     state!.listenHost = hostname
     state!.listenPort = portNumber
     lastFailure = undefined
-    await save()
+    try {
+      await save({ required: true })
+    } catch (error) {
+      state!.listenHost = previousHost
+      state!.listenPort = previousPort
+      throw error
+    }
     await teardown()
     if (!wasRunning) {
       ctx.logger.info(`reverse-proxy: publish address set to ${hostname}:${portNumber}`)
@@ -402,7 +432,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
     // Roll back: keep serving on the address that worked.
     state!.listenHost = previous.host
     state!.listenPort = previous.port
-    await save()
+    await save({ required: true })
     const restored = await start()
     await restartTunnelIfLive(wasTunnel && restored.running)
     return snapshot({ reason: restored.running ? 'listen-failed-restored' : 'listen-failed' })
@@ -478,12 +508,22 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
     },
     mutateSession: (action, id, label) => exclusive(async () => {
       await load()
+      const previousSessions = sessionStore!.serialize()
       const ok = action === 'approve'
         ? sessionStore!.approve(id)
         : action === 'revoke'
           ? sessionStore!.revoke(id)
           : sessionStore!.rename(id, label)
-      if (ok) void audit.record(`session.${action}`, { id })
+      if (ok) {
+        try {
+          await save({ required: true })
+        } catch (error) {
+          sessionStore!.hydrate(previousSessions)
+          throw error
+        }
+        if (action === 'revoke') bound?.closeSession(id)
+        void audit.record(`session.${action}`, { id })
+      }
       return ok
     }),
     startTunnel: async () => {

@@ -13,7 +13,7 @@ import { createServer, request as httpRequest, type IncomingMessage, type Server
 import { createServer as createHttpsServer } from 'node:https'
 import type { Duplex } from 'node:stream'
 import { parseCookies, safeEqual } from './security.ts'
-import { createSessionStore, encodeSessionCookie, sessionCookie } from './sessions.ts'
+import { createSessionStore, encodeSessionCookie, sessionCookie, SessionCapacityError } from './sessions.ts'
 import { readBody, sendHtml, pathnameOf, rewriteLoopbackAuthority } from './http-util.ts'
 import {
   cookieIsSecure,
@@ -43,6 +43,7 @@ import {
 /** Per-IP failed-login tracker surface. */
 interface LoginTracker {
   check(ip: string, now?: number): number
+  reserve(ip: string, now?: number): number
   fail(ip: string, now?: number): void
   success(ip: string): void
   prune(now?: number): void
@@ -53,6 +54,7 @@ export interface ProxyServer {
   host: string
   port: number
   close: () => Promise<void>
+  closeSession: (sessionId: string) => void
 }
 
 /** Caller-supplied configuration for listenProxy. */
@@ -109,6 +111,8 @@ type RuntimeSpec = Omit<ProxySpec, 'trustForwardedProto' | 'trustForwardedFor' |
   sessionStore: ReturnType<typeof createSessionStore>
   /** Resolved (never undefined) so the login cookie always gets a numeric Max-Age. */
   sessionMaxAgeSeconds: number
+  trackSession: (sessionId: string, close: () => void) => () => void
+  closeSessionConnections: (sessionId: string) => void
 }
 
 const LOGIN_FAILURE_DELAY_MS = 250
@@ -135,8 +139,8 @@ const GATE_PAGE_HEADERS = {
 function createLoginTracker(spec: { loginMaxAttempts?: number, loginLockoutMs?: number }): LoginTracker {
   const maxAttempts = spec.loginMaxAttempts ?? 5
   const lockoutMs = spec.loginLockoutMs ?? 300_000
-  /** @type {Map<string, { failures: number, firstFailure: number, lockedUntil?: number }>} */
-  const buckets = new Map<string, { failures: number, firstFailure: number, lockedUntil?: number }>()
+  /** @type {Map<string, { failures: number, inFlight: number, firstFailure: number, lockedUntil?: number }>} */
+  const buckets = new Map<string, { failures: number, inFlight: number, firstFailure: number, lockedUntil?: number }>()
   const sweepExpired = (now: number) => {
     for (const [ip, bucket] of buckets) {
       if (bucket.lockedUntil !== undefined && bucket.lockedUntil <= now) buckets.delete(ip)
@@ -153,12 +157,31 @@ function createLoginTracker(spec: { loginMaxAttempts?: number, loginLockoutMs?: 
       }
       return 0
     },
+    /** Reserve one attempt before reading a body or awaiting the delay. */
+    reserve(ip: string, now = Date.now()) {
+      const existing = buckets.get(ip)
+      const bucket = existing === undefined || now - existing.firstFailure > lockoutMs
+        ? { failures: 0, inFlight: 0, firstFailure: now }
+        : existing
+      if (bucket.lockedUntil !== undefined && bucket.lockedUntil > now) {
+        return Math.ceil((bucket.lockedUntil - now) / 1000)
+      }
+      if (bucket.failures + bucket.inFlight >= maxAttempts) {
+        bucket.lockedUntil = now + lockoutMs
+        buckets.set(ip, bucket)
+        return Math.ceil(lockoutMs / 1000)
+      }
+      bucket.inFlight += 1
+      buckets.set(ip, bucket)
+      return 0
+    },
     fail(ip: string, now = Date.now()) {
       const bucket = buckets.get(ip)
       if (bucket === undefined || now - bucket.firstFailure > lockoutMs) {
-        buckets.set(ip, { failures: 1, firstFailure: now })
+        buckets.set(ip, { failures: 1, inFlight: 0, firstFailure: now })
         return
       }
+      bucket.inFlight = Math.max(0, bucket.inFlight - 1)
       bucket.failures += 1
       if (bucket.failures >= maxAttempts) bucket.lockedUntil = now + lockoutMs
     },
@@ -218,7 +241,7 @@ function redirect(res: ServerResponse, location: string, extra: Record<string, s
   res.end()
 }
 
-function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSpec) {
+function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSpec, sessionId: string) {
   const contentLength = Number(req.headers['content-length'] ?? 0)
   if (!Number.isFinite(contentLength) || contentLength < 0 || contentLength > spec.maxRequestBytes) {
     drainRequest(req)
@@ -247,6 +270,12 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
     incoming.pipe(res)
   })
   spec.trackUpstream?.(up)
+  const releaseSession = spec.trackSession(sessionId, () => {
+    up.destroy()
+    if (!res.destroyed) res.destroy()
+  })
+  res.once('close', releaseSession)
+  up.once('close', releaseSession)
   const connectTimer = setTimeout(() => {
     up.destroy(new Error('upstream timeout'))
   }, spec.upstreamTimeoutMs)
@@ -305,6 +334,7 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse, spec: Runt
     res.end()
     return
   }
+  let reserved = false
   try {
     const remote = effectiveRemoteAddress(req, spec)
     if (spec.ipAllowed !== undefined && !spec.ipAllowed(remote)) {
@@ -313,13 +343,14 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse, spec: Runt
       sendText(res, 403, 'forbidden\n')
       return
     }
-    const retryAfter = spec.loginTracker.check(remote)
+    const retryAfter = spec.loginTracker.reserve(remote)
     if (retryAfter > 0) {
       drainRequest(req)
       spec.audit?.('login.locked', { remote, retryAfter })
       sendText(res, 429, 'too many attempts\n', { 'retry-after': String(retryAfter) })
       return
     }
+    reserved = true
     const form = new URLSearchParams((await readBody(req, 4096)).toString('utf8'))
     const delayMs = spec.loginDelayMs ?? LOGIN_FAILURE_DELAY_MS
     // Equal delay on both success and failure so lockout-window guessing
@@ -335,6 +366,7 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse, spec: Runt
       : safeEqual(form.get('token') ?? '', spec.accessToken)
     if (!authed) {
       spec.loginTracker.fail(remote)
+      reserved = false
       spec.loginTracker.prune()
       spec.audit?.('login.fail', { remote, via: usedInvite ? 'invite' : 'token' })
       const failCopy = usedInvite
@@ -344,6 +376,7 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse, spec: Runt
       return
     }
     spec.loginTracker.success(remote)
+    reserved = false
     let session
     if (usedInvite && consumed?.retry === true) {
       session = consumed.sessionId !== undefined
@@ -355,7 +388,14 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse, spec: Runt
         return
       }
     } else {
-      session = spec.sessionStore.login({ userAgent: req.headers['user-agent'], ip: remote })
+      try {
+        session = spec.sessionStore.login({ userAgent: req.headers['user-agent'], ip: remote })
+      } catch (error) {
+        if (!(error instanceof SessionCapacityError)) throw error
+        spec.audit?.('login.fail', { remote, via: 'token', reason: 'session-capacity' })
+        sendText(res, 429, 'too many devices\n', { 'retry-after': '10' })
+        return
+      }
       if (usedInvite) spec.inviteStore?.bindSession?.(inviteCode, session.id)
     }
     spec.audit?.('login.ok', {
@@ -376,6 +416,7 @@ async function handleLogin(req: IncomingMessage, res: ServerResponse, spec: Runt
       'referrer-policy': 'no-referrer',
     })
   } catch {
+    if (reserved) spec.loginTracker.fail(effectiveRemoteAddress(req, spec))
     sendHtml(res, 400, loginPage(locale, LOGIN_COPY[locale].invalidRequest), GATE_PAGE_HEADERS)
   }
 }
@@ -455,6 +496,7 @@ async function handleDevicePages(
     const session = spec.sessionStore.validate(cookie, remote)
     if (session !== undefined) {
       spec.sessionStore.revoke(session.id)
+      spec.closeSessionConnections(session.id)
       spec.audit?.('session.logout', { remote, sessionId: session.id })
     } else {
       drainRequest(req)
@@ -490,6 +532,22 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
   // close() fully tears down WebSocket sessions.
   const upgradedSockets = new Set()
   const upstreamSockets = new Set()
+  const sessionConnections = new Map<string, Set<() => void>>()
+  const trackSession = (sessionId: string, close: () => void) => {
+    const connections = sessionConnections.get(sessionId) ?? new Set<() => void>()
+    connections.add(close)
+    sessionConnections.set(sessionId, connections)
+    return () => {
+      connections.delete(close)
+      if (connections.size === 0) sessionConnections.delete(sessionId)
+    }
+  }
+  const closeSessionConnections = (sessionId: string) => {
+    const connections = sessionConnections.get(sessionId)
+    if (connections === undefined) return
+    sessionConnections.delete(sessionId)
+    for (const close of connections) close()
+  }
   const trackUpstream = (up: ClientRequest | Duplex) => {
     upstreamSockets.add(up)
     up.once('close', () => upstreamSockets.delete(up))
@@ -511,6 +569,8 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     loginTracker: createLoginTracker(spec),
     sessionStore: spec.sessionStore ?? createSessionStore({ maxAgeSeconds: spec.sessionMaxAgeSeconds }),
     sessionMaxAgeSeconds: spec.sessionMaxAgeSeconds ?? DEFAULT_SESSION_MAX_AGE_SECONDS,
+    trackSession,
+    closeSessionConnections,
   }
   const upgradeTracker = createLoginTracker({
     loginMaxAttempts: spec.upgradeMaxAttempts ?? 10,
@@ -519,14 +579,14 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
   const denyCidr = (req: IncomingMessage, res: ServerResponse): boolean => {
     const remote = effectiveRemoteAddress(req, runtimeSpec)
     if (spec.ipAllowed === undefined || spec.ipAllowed(remote)) return false
-    spec.audit?.('access.denied', { reason: 'cidr', remote, path: req.url ?? '/' })
+    spec.audit?.('access.denied', { reason: 'cidr', remote, path: pathnameOf(req.url) })
     drainRequest(req)
     sendText(res, 403, 'forbidden\n')
     return true
   }
   const logRequest = spec.log === undefined ? undefined : (req: IncomingMessage, res: ServerResponse) => {
     res.once('finish', () => {
-      spec.log!({ method: req.method, path: req.url ?? '/', status: res.statusCode, remote: effectiveRemoteAddress(req, runtimeSpec) })
+      spec.log!({ method: req.method, path: pathnameOf(req.url), status: res.statusCode, remote: effectiveRemoteAddress(req, runtimeSpec) })
     })
   }
   const onRequest = async (req: IncomingMessage, res: ServerResponse) => {
@@ -552,7 +612,8 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
       sendText(res, 403, 'forbidden\n')
       return
     }
-    if (runtimeSpec.sessionStore.validate(cookie, effectiveRemoteAddress(req, runtimeSpec)) === undefined) {
+    const session = runtimeSpec.sessionStore.validate(cookie, effectiveRemoteAddress(req, runtimeSpec))
+    if (session === undefined) {
       drainRequest(req)
       if (req.method === 'GET' || req.method === 'HEAD') {
         redirect(res, LOGIN_PATH)
@@ -562,7 +623,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
       }
       return
     }
-    proxyRequest(req, res, runtimeSpec)
+    proxyRequest(req, res, runtimeSpec, session.id)
   }
 
   const serverOptions = {
@@ -584,23 +645,24 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     const upgradeRemote = effectiveRemoteAddress(req, runtimeSpec)
     if (spec.ipAllowed !== undefined && !spec.ipAllowed(upgradeRemote)) {
       denySocket(socket, '403 Forbidden')
-      spec.audit?.('access.denied', { reason: 'cidr', remote: upgradeRemote, path: req.url ?? '/', upgrade: true })
+      spec.audit?.('access.denied', { reason: 'cidr', remote: upgradeRemote, path: pathnameOf(req.url), upgrade: true })
       return
     }
     const upgradeRetryAfter = upgradeTracker.check(upgradeRemote)
     if (upgradeRetryAfter > 0) {
       denySocket(socket, '429 Too Many Requests', 'too many requests\n')
-      spec.audit?.('upgrade.locked', { remote: upgradeRemote, retryAfter: upgradeRetryAfter, path: req.url ?? '/', upgrade: true })
+      spec.audit?.('upgrade.locked', { remote: upgradeRemote, retryAfter: upgradeRetryAfter, path: pathnameOf(req.url), upgrade: true })
       return
     }
     const path = pathnameOf(req.url)
     const cookie = parseCookies(req.headers.cookie)[spec.cookieName]
-    if (path.startsWith(spec.controlPrefix) || runtimeSpec.sessionStore.validate(cookie, upgradeRemote) === undefined) {
+    const session = runtimeSpec.sessionStore.validate(cookie, upgradeRemote)
+    if (path.startsWith(spec.controlPrefix) || session === undefined) {
       upgradeTracker.fail(upgradeRemote)
       upgradeTracker.prune()
       denySocket(socket, '401 Unauthorized')
-      spec.audit?.('access.denied', { reason: 'auth', remote: upgradeRemote, path: req.url ?? '/', upgrade: true })
-      spec.log?.({ method: req.method, path: req.url ?? '/', status: 401, remote: upgradeRemote })
+      spec.audit?.('access.denied', { reason: 'auth', remote: upgradeRemote, path: pathnameOf(req.url), upgrade: true })
+      spec.log?.({ method: req.method, path: pathnameOf(req.url), status: 401, remote: upgradeRemote })
       return
     }
     const headers = forwardHeaders(req, rewriteAuthority, {
@@ -618,14 +680,21 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
       headers,
     })
     trackUpstream(up)
+    const releaseSession = session === undefined
+      ? undefined
+      : runtimeSpec.trackSession(session.id, () => {
+          socket.destroy()
+          up.destroy()
+        })
+    if (releaseSession !== undefined) socket.once('close', releaseSession)
     up.setTimeout(spec.upstreamTimeoutMs, () => { up.destroy() })
     up.on('upgrade', (upRes, upSocket, upHead) => {
       // After a successful upgrade Node detaches the socket from the request,
       // so req.destroy() would leave it open — track the socket itself too.
       trackUpstream(upSocket)
       upgradeTracker.success(upgradeRemote)
-      spec.audit?.('ws.open', { remote: upgradeRemote, path: req.url ?? '/', status: upRes.statusCode ?? 101 })
-      spec.log?.({ method: req.method, path: req.url ?? '/', status: upRes.statusCode ?? 101, remote: upgradeRemote })
+      spec.audit?.('ws.open', { remote: upgradeRemote, path: pathnameOf(req.url), status: upRes.statusCode ?? 101 })
+      spec.log?.({ method: req.method, path: pathnameOf(req.url), status: upRes.statusCode ?? 101, remote: upgradeRemote })
       writeRawHead(
         socket,
         upRes.statusCode ?? 101,
@@ -640,7 +709,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     // Upstream answered without upgrading (non-101): relay the status line
     // and close instead of leaving the client socket hanging.
     up.on('response', (upRes) => {
-      spec.audit?.('ws.reject', { remote: upgradeRemote, path: req.url ?? '/', status: upRes.statusCode ?? 502 })
+      spec.audit?.('ws.reject', { remote: upgradeRemote, path: pathnameOf(req.url), status: upRes.statusCode ?? 502 })
       // Drain the upstream response so its socket is not left hanging.
       upRes.resume()
       writeRawHead(socket, upRes.statusCode ?? 502, upRes.statusMessage ?? 'Bad Gateway', {
@@ -664,6 +733,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
       resolve({
         host: spec.listenHost,
         port,
+        closeSession: closeSessionConnections,
         close: () => new Promise<void>((done, closeReject) => {
           // Idempotent: runtime rollback paths may race a second close.
           if (closed) {
@@ -671,6 +741,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
             return
           }
           closed = true
+          sessionConnections.clear()
           // Tear down live sockets first so server.close() is not waiting on
           // SSE / keep-alive / leftover upgrades. If close still hangs (a
           // half-open peer that ignore FIN), the grace timer unblocks rotate

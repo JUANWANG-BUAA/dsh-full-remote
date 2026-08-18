@@ -21,6 +21,24 @@ so the Web UI can be used through a public tunnel or from a device on the
 local network while privileged APIs such as settings, credentials, and
 directory browsing remain available.
 
+## 60-second quick start
+
+```sh
+dsh plugin --profile web add dsh-full-remote
+dsh --profile web
+```
+
+In **Settings → Reverse proxy**, press **Start proxy**, then **Start
+Cloudflare quick tunnel** and scan the generated QR code. The invite is
+one-time and never contains the standing access token. For a controlled
+network, point an existing SSH, frp, ngrok, Tailscale, or cloudflared tunnel
+at the proxy target shown in the panel instead.
+
+The quick tunnel is optional and temporary, not a managed production
+deployment. Read [Security model](#security-model) before exposing a listener
+to the Internet. For composition details, see
+[Compatibility and composition](./docs/compatibility.md).
+
 | Desktop control panel | Mobile workspace |
 |---|---|
 | ![Desktop control panel](./docs/screenshots/preview-desktop.png) | ![Mobile workspace](./docs/screenshots/preview-mobile.png) |
@@ -65,8 +83,9 @@ Because the rewrite disables Harness's original trust check for remote
 clients, the plugin provides its own access-control layer in its place.
 This layer is described under [Security model](#security-model).
 
-The plugin does not manage tunnels. Any tunnel (cloudflared, ngrok, frp,
-SSH, Tailscale) can be pointed at the local endpoint the plugin publishes.
+The plugin can optionally start a temporary Cloudflare quick tunnel. Any
+managed tunnel (cloudflared, ngrok, frp, SSH, Tailscale) can also point at the
+local endpoint it publishes.
 
 ## How it works
 
@@ -200,7 +219,8 @@ ngrok http 3081
 For devices on the same network, set the listen address to a LAN IP
 instead of using a tunnel.
 
-The package was previously published as `dsh-reverse-proxy`.
+The package was previously published as `dsh-reverse-proxy`; that legacy name
+is deprecated. Install `dsh-full-remote` for new deployments.
 
 ## Usage
 
@@ -257,7 +277,7 @@ dsh plugin --profile web update --latest dsh-full-remote
 
 Then restart `dsh web`. `--latest` ignores the current range, installs the
 newest version, and rewrites `package.json`. For a specific version use
-`dsh plugin --profile web update dsh-full-remote@0.3.2`.
+`dsh plugin --profile web update dsh-full-remote@0.3.3`.
 
 ## Screenshots
 
@@ -326,7 +346,8 @@ Common options:
 ```
 
 The complete option list, with defaults and validation, is defined in the
-package `Config` schema (`src/index.ts`).
+package `Config` schema (`src/config.ts`) and
+`src/config-validation.ts` (source is not included in the published package).
 
 Two points to note:
 
@@ -394,7 +415,7 @@ side of the tunnel. For LAN use without a tunnel, set
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.3.2.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.3.tgz
 ```
 
 Git installs run the `prepare` build. On pnpm ≥ 10 allow it:

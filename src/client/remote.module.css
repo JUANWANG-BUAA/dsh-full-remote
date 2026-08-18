@@ -290,6 +290,13 @@
   min-width: 0;
 }
 
+.tokenActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 .tokenRow > .copyField {
   flex: 1;
   width: auto;

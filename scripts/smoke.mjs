@@ -11,12 +11,13 @@
  *   HARNESS_DIR  path to a deepseek-harness checkout (required, installed)
  *   DSH_HOME     temp home for the smoke profile (required; is mutated)
  *   PORT         main DeepSeek Harness web port (default 3199)
+ *   PACK_PLUGIN  set to 1 to install the npm tarball (default 0)
  *
  * Usage (from the plugin repo root):
  *   DSH_HOME=$(mktemp -d) HARNESS_DIR=../deepseek-harness node scripts/smoke.mjs
  */
 import { spawn } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -88,8 +89,18 @@ async function waitForBoot(exited = () => null) {
 }
 
 async function main() {
-  // 1. Build the plugin so `dsh plugin add` picks up current source.
+  // 1. Build the plugin. PACK_PLUGIN verifies the actual `files` allowlist
+  // and package entrypoint instead of only exercising a source directory.
   await run('pnpm', ['run', 'build'], { cwd: PLUGIN_DIR })
+
+  let pluginSource = PLUGIN_DIR
+  if (process.env.PACK_PLUGIN === '1') {
+    const packDir = join(process.env.DSH_HOME, 'plugin-pack')
+    await run('pnpm', ['pack', '--pack-destination', packDir], { cwd: PLUGIN_DIR })
+    const archives = (await readdir(packDir)).filter(file => file.endsWith('.tgz'))
+    if (archives.length !== 1) throw new Error(`expected one plugin tarball, found ${archives.length}`)
+    pluginSource = join(packDir, archives[0])
+  }
 
   // 2. Community-standard install: web-app first, then this plugin.
   // `dsh plugin add` appends to `dsh.profile.bundles`. Our patch disables
@@ -98,7 +109,7 @@ async function main() {
   // plugin first lets web-app re-insert `-auto` on top → duplicate
   // `directoryPicker` → boot fails the activation gate.
   await dsh(['plugin', '--profile', 'smoke', 'add', join(HARNESS_DIR, 'packages/bundle/web-app')])
-  await dsh(['plugin', '--profile', 'smoke', 'add', PLUGIN_DIR])
+  await dsh(['plugin', '--profile', 'smoke', 'add', pluginSource])
 
   // The production-safe default keeps standing token reads disabled. This
   // black-box flow needs a token to exercise the login/session path, so make
@@ -213,6 +224,32 @@ async function main() {
     assert(index.status === 200, 'authenticated index', `status ${index.status}`)
     assert(html.includes('data-plugin="dsh-reverse-proxy"'), 'randomUUID polyfill', 'marker missing from index')
     assert(html.includes('viewport-fit=cover'), 'viewport injection', 'viewport-fit missing from index')
+
+    phase = 'step8-privileged-api-fence'
+    // 8b. Exercise the real privileged RPC routes through the proxy. A
+    // successful non-403 response proves both auth and Host/Origin rewriting;
+    // method-level business errors are still useful evidence that the fence
+    // was passed and are reported without making the smoke fixture dependent
+    // on local settings/credential contents.
+    const rpc = async (method, args) => fetch(`${restartedProxy}/api/${method}`, {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'client-request',
+        rpcId: `smoke-${method}`,
+        method,
+        payload: { args },
+      }),
+    })
+    for (const [method, args] of [
+      ['settings.describe', {}],
+      ['credentials.describe', { refs: [] }],
+      ['host.listDirectory', {}],
+    ]) {
+      const response = await rpc(method, args)
+      assert(response.status !== 401 && response.status !== 403, `${method} fence`, `status ${response.status}`)
+      await response.arrayBuffer()
+    }
 
     phase = 'step9-stop'
     // 9. Per-device sessions: the login created one device; kicking it must

@@ -8,6 +8,21 @@ export interface RuntimeSecurityConfig {
   trustCloudflareConnectingIp?: unknown
   trustForwardedFor?: unknown
   allowedCidrs?: unknown
+  cookieName?: unknown
+  maxRequestBytes?: unknown
+  upstreamTimeoutMs?: unknown
+  sessionMaxAgeSeconds?: unknown
+  sessionIdleSeconds?: unknown
+  maxHeaderSizeBytes?: unknown
+  headersTimeoutMs?: unknown
+  requestTimeoutMs?: unknown
+  keepAliveTimeoutMs?: unknown
+  loginDelayMs?: unknown
+  loginMaxAttempts?: unknown
+  loginLockoutSeconds?: unknown
+  upgradeMaxAttempts?: unknown
+  upgradeLockoutSeconds?: unknown
+  maxSessions?: unknown
 }
 
 /** Reject security-sensitive partial or malformed configuration at load time. */
@@ -21,6 +36,36 @@ export function validateRuntimeConfig(config: RuntimeSecurityConfig) {
   }
   if (config.trustCloudflareConnectingIp === true && config.trustForwardedFor !== true) {
     throw new Error('reverse-proxy: trustCloudflareConnectingIp requires trustForwardedFor to be enabled.')
+  }
+
+  const integerBounds: Array<[keyof RuntimeSecurityConfig, number, number]> = [
+    ['maxRequestBytes', 1024, 256 * 1024 * 1024],
+    ['upstreamTimeoutMs', 1000, 10 * 60 * 1000],
+    ['sessionMaxAgeSeconds', 60, 365 * 24 * 3600],
+    ['sessionIdleSeconds', 0, 365 * 24 * 3600],
+    ['maxHeaderSizeBytes', 1024, 16 * 1024 * 1024],
+    ['headersTimeoutMs', 1000, 10 * 60 * 1000],
+    ['requestTimeoutMs', 1000, 24 * 60 * 60 * 1000],
+    ['keepAliveTimeoutMs', 1000, 10 * 60 * 1000],
+    ['loginDelayMs', 0, 10_000],
+    ['loginMaxAttempts', 1, 10_000],
+    ['loginLockoutSeconds', 10, 24 * 60 * 60],
+    ['upgradeMaxAttempts', 1, 10_000],
+    ['upgradeLockoutSeconds', 10, 24 * 60 * 60],
+    ['maxSessions', 1, 64],
+  ]
+  for (const [key, min, max] of integerBounds) {
+    const value = config[key]
+    if (value === undefined) continue
+    if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value) || value < min || value > max) {
+      throw new Error(`reverse-proxy: ${String(key)} must be an integer between ${min} and ${max}.`)
+    }
+  }
+  if (config.cookieName !== undefined) {
+    const cookieName = typeof config.cookieName === 'string' ? config.cookieName : ''
+    if (cookieName === '' || !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(cookieName)) {
+      throw new Error('reverse-proxy: cookieName must be a valid RFC cookie token.')
+    }
   }
   const rawCidrs = Array.isArray(config.allowedCidrs) ? config.allowedCidrs : []
   const invalidCidrs = rawCidrs.filter(entry => typeof entry !== 'string' || parseCidr(entry) === undefined)
