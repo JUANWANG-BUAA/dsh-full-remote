@@ -1,6 +1,6 @@
 import { afterEach, describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRuntime } from '../src/index.ts'
@@ -371,6 +371,22 @@ describe('runtime control surface', () => {
     assert.match(token, /^[A-Za-z0-9_-]{32}$/)
     const listed = await call(runtime, { path: '/dsh-reverse-proxy/sessions', method: 'GET', headers: CONTROL })
     assert.deepEqual(listed.body, { sessions: [] })
+  })
+
+  it('does not overwrite a malformed state file or start from it', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-state-corrupt-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const stateFile = join(dir, 'state.json')
+    const original = '{"enabled":true,\n'
+    await writeFile(stateFile, original)
+    const runtime = createRuntime(makeContext(), makeConfig(stateFile))
+    cleanups.push(() => runtime.dispose())
+
+    assert.equal((await runtime.status()).enabled, false)
+    const started = await runtime.start()
+    assert.equal(started.running, false)
+    assert.equal(started.reason, 'state-invalid')
+    assert.equal(await readFile(stateFile, 'utf8'), original)
   })
 
   it('refuses to start when listen is a wildcard covering the backend port', async () => {

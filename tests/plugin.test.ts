@@ -6,11 +6,11 @@ import type { IncomingHttpHeaders, IncomingMessage, Server } from 'node:http'
 import { createConnection } from 'node:net'
 import type { Socket } from 'node:net'
 import type { Duplex } from 'node:stream'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { injectIndexEnhancements, injectViewport } from '../src/index.ts'
-import { readState, writeState } from '../src/persist.ts'
+import { readState, readStateDetailed, writeState } from '../src/persist.ts'
 import { effectiveRemoteAddress, forwardHeaders, listenProxy, sanitizeResponseHeaders, sanitizeUpgradeResponseHeaders } from '../src/proxy.ts'
 import { formatAuthority, formatHttpUrl, isLoopbackHost, isSelfLoop, isWildcardHost, publishHost, rewriteLoopbackAuthority } from '../src/http-util.ts'
 import { generateAccessToken, safeEqual } from '../src/security.ts'
@@ -259,6 +259,17 @@ describe('persistence', () => {
       listenPort: 99999,
     })
     assert.deepEqual(await readState(path), { enabled: true, accessToken: 'x'.repeat(32) })
+  })
+
+  it('distinguishes a missing state file from malformed or unreadable input', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-state-status-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const path = join(dir, 'state.json')
+    assert.equal((await readStateDetailed(path)).status, 'missing')
+    await writeFile(path, '{"enabled":')
+    const malformed = await readStateDetailed(path)
+    assert.equal(malformed.status, 'malformed')
+    assert.deepEqual(malformed.state, { enabled: false })
   })
 })
 

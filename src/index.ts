@@ -16,7 +16,7 @@ import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Config, type RuntimeConfig } from './config.ts'
 import { listenProxy, type ProxyServer } from './proxy.ts'
-import { defaultStateFile, readState, writeState, type PersistedState } from './persist.ts'
+import { defaultStateFile, readStateDetailed, writeState, type PersistedState } from './persist.ts'
 import { generateAccessToken } from './security.ts'
 import { createSessionStore } from './sessions.ts'
 import { createTunnelManager, tunnelTrustsForwarding } from './tunnel.ts'
@@ -92,6 +92,8 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
   let bound: ProxyServer | undefined
   let disposed = false
   let state: RuntimeState | undefined
+  /** Do not overwrite a malformed/unreadable existing state file automatically. */
+  let statePersistenceBlocked = false
   /** Last start refusal, kept in memory so the panel can explain a stopped proxy. */
   let lastFailure: string | undefined
   /** Mutating operations share one exclusive queue so start/stop/listen/rotate never interleave. */
@@ -153,7 +155,12 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
     // Two concurrent first loads must not parse the state file twice, mint
     // two tokens, or race two state writes onto the same temp file name.
     loadPromise ??= (async () => {
-      const loaded = await readState(statePath) as RuntimeState
+      const result = await readStateDetailed(statePath)
+      const loaded = result.state as RuntimeState
+      statePersistenceBlocked = result.status === 'malformed' || result.status === 'unreadable'
+      if (statePersistenceBlocked) {
+        ctx.logger.warn(`reverse-proxy: state file ${statePath} is ${result.status}; keeping a temporary in-memory state and refusing automatic overwrite`)
+      }
       // A missing/short token is regenerated. Old device cookies must not
       // survive that — same semantics as an explicit rotate.
       const regeneratedToken = loaded.accessToken === undefined
@@ -169,14 +176,14 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
         onChange: scheduleSave,
       })
       if (!regeneratedToken) sessionStore.hydrate(loaded.sessions)
-      await save()
+      if (!statePersistenceBlocked) await save()
       return loaded
     })()
     return loadPromise
   }
 
   const save = async () => {
-    if (state === undefined) return
+    if (state === undefined || statePersistenceBlocked) return
     try {
       await writeState(statePath, {
         enabled: state.enabled,
@@ -274,6 +281,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
       return snapshot()
     }
     const { host, port } = effectiveListen()
+    if (statePersistenceBlocked) return failStart('state-invalid')
     const backendPort = config.backendPort || ctx.webServer.port
     // A backend pointing at the proxy's own listen address would loop every
     // request back into itself. Refuse loudly instead of spinning.
