@@ -8,10 +8,10 @@ ready to paste.
 Repository homepage → right sidebar → **About** → **⚙ gear icon**. One dialog
 holds the Description, Topics, and Website fields.
 
-## Description (paste in one line, ~190 chars — well under the 350 limit)
+## Description (current About panel value)
 
 ```
-Remote DeepSeek Harness with full server-side API access: Host/Origin rewrite restores settings.* / credentials.* / host.listDirectory. Token gate, per-device sessions, mobile panel.
+Auditable, token-gated DeepSeek Harness remote gateway: mobile QR access, per-device sessions, Host/Origin rewrite, settings/credentials/directory support.
 ```
 
 ## Topics
@@ -47,7 +47,9 @@ Instead: **Settings → General → Social preview → Edit** → upload
 
 ## About sidebar extras
 
-- Website: leave empty (or point at the npm page after first publish of
-  `dsh-full-remote`).
-- Releases: keep enabled; current tag is the latest release shown on the
-  repository page (the next planned release is `v0.3.3`).
+- Website: `https://www.npmjs.com/package/dsh-full-remote`.
+- Releases: keep enabled; current tag is `v0.3.3`.
+
+The description, homepage, and topics were applied with `gh repo edit` and
+verified through the GitHub API on 2026-08-18. Social preview upload remains a
+manual browser task; it is not required for publishing or installation.

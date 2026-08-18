@@ -1,6 +1,6 @@
 # Publishing strategy
 
-## Registry reality (checked 2026-08-15)
+## Registry reality (checked 2026-08-18)
 
 - `@deepseek-ai/dsh-client-runtime`, `-ui-slots` publish `0.1.0-rc.6` on npm.
 - `@deepseek-ai/dsh-web-app@latest` still points at `0.0.1-rc.1`, whose
@@ -8,7 +8,9 @@
   **`@deepseek-ai/dsh-web-app@0.1.0-rc.6` (dist-tag `next`) installs
   cleanly** — all 59 of its dependencies resolve. Pin the version;
   do not tell users the bundle is unpublished.
-- There is no published `dsh` CLI package.
+- The current published plugin is `dsh-full-remote@0.3.3`.
+- The legacy `dsh-reverse-proxy@0.1.0` package is deprecated and points users
+  to `dsh-full-remote`.
 
 Consequences for this plugin:
 
@@ -16,8 +18,8 @@ Consequences for this plugin:
 2. This plugin does not install or document the official web-app. Default
    `dsh --profile web` already provides `webServer`. Do not add this
    plugin to headless or to a fresh empty profile.
-3. The old npm name `dsh-reverse-proxy@0.1.0` stays on the registry until
-   `npm deprecate dsh-reverse-proxy "Use dsh-full-remote instead"`.
+3. The old npm name remains on the registry for install-time guidance, but its
+   deprecation notice directs users to `dsh-full-remote`.
 
 The web-app dist-tag fact above is recorded so maintainers do not put a
 pin of `@deepseek-ai/dsh-web-app` back into this plugin's README. That
@@ -63,8 +65,8 @@ package is a different product.
 - [x] Tag `v0.3.0` (forwarded-IP spoofing fix, device source IPs, audit rotation).
 - [x] Tag `v0.3.1` (one-click Cloudflare quick tunnel, device home, invite retry reuse).
 - [x] Tag `v0.3.2` (security hardening, production audit command, and real Harness smoke coverage).
-- [ ] Tag `v0.3.3` (durable-state rollback, real client contracts, tarball smoke, and compatibility hardening).
-- [ ] `npm deprecate dsh-reverse-proxy "Package renamed to dsh-full-remote; install dsh-full-remote instead."` (run once with npm publisher credentials).
+- [x] Tag `v0.3.3` (durable-state rollback, real client contracts, tarball smoke, and compatibility hardening); published 2026-08-18.
+- [x] Deprecate `dsh-reverse-proxy@0.1.0`; verified with `npm view dsh-reverse-proxy deprecated` on 2026-08-18.
 - [x] Apply GitHub topics from `docs/github-metadata.md` (applied 2026-08-16).
 - [x] PR the plugin into `awesome-dsh-plugin` as `dsh-full-remote` ([#833](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/833), updated 2026-08-16).
 - [ ] Upload social preview (`docs/rp-demo-panel.png`) — manual browser step, no API.
