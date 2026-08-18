@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createRuntime } from '../src/index.ts'
 import { writeState } from '../src/persist.ts'
-import { request } from 'node:http'
+import { createServer as createHttpServer, request } from 'node:http'
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from 'node:http'
 import { createServer } from 'node:net'
 
@@ -55,6 +55,19 @@ async function makeRuntime(): Promise<{ runtime: Runtime, stateFile: string }> {
   const runtime = createRuntime(makeContext(), makeConfig(stateFile))
   cleanups.push(() => runtime.dispose())
   return { runtime, stateFile }
+}
+
+/** Mount the runtime handle behind a real Node HTTP listener for black-box route tests. */
+async function listenControl(runtime: Runtime) {
+  const server = createHttpServer((req, res) => { void runtime.handle(req, res) })
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
+  })
+  cleanups.push(() => new Promise<void>(resolve => server.close(() => resolve())))
+  const address = server.address()
+  if (address === null || typeof address === 'string') throw new Error('expected a TCP control listener')
+  return address.port
 }
 
 interface FakeResponse {
@@ -477,6 +490,36 @@ describe('runtime control surface', () => {
       headers: { 'x-dsh-reverse-proxy-control': '1', origin: 'http://evil.example' },
     })
     assert.equal(evilOrigin.status, 403)
+  })
+
+  it('enforces control authentication over a real HTTP listener without CORS exposure', async () => {
+    const { runtime } = await makeRuntime()
+    const port = await listenControl(runtime)
+    const path = '/dsh-reverse-proxy/start'
+
+    const crossSite = await http({
+      port,
+      path,
+      method: 'POST',
+      headers: { ...CONTROL, origin: 'https://evil.example' },
+    })
+    assert.equal(crossSite.status, 403)
+    assert.deepEqual(JSON.parse(crossSite.body), { error: 'forbidden' })
+
+    const missingHeader = await http({
+      port,
+      path,
+      method: 'POST',
+      headers: { origin: 'http://127.0.0.1:3080' },
+    })
+    assert.equal(missingHeader.status, 403)
+
+    const allowed = await http({ port, path, method: 'POST', headers: CONTROL })
+    assert.equal(allowed.status, 200)
+    assert.equal((JSON.parse(allowed.body) as { running: boolean }).running, true)
+    assert.equal(allowed.headers['cache-control'], 'no-store')
+    assert.equal(allowed.headers['x-content-type-options'], 'nosniff')
+    assert.equal(allowed.headers['access-control-allow-origin'], undefined)
   })
 
   it('serves status and applies listen changes over the control route', async () => {
