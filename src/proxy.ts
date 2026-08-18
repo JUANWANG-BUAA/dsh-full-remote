@@ -82,19 +82,22 @@ export interface ProxySpec {
   }
   /** Static boolean, or a per-request probe so a tunnel can toggle trust without restarting the proxy. */
   trustForwardedProto?: boolean | (() => boolean)
-  /** When truthy and the direct peer is loopback, derive the remote client IP from CF-Connecting-IP / the rightmost X-Forwarded-For value for CIDR / rate limiting / audit. Only enable behind a trusted local tunnel/edge. Static boolean or per-request probe. */
+  /** When truthy and the direct peer is loopback, derive the remote client IP from the rightmost X-Forwarded-For value for CIDR / rate limiting / audit. Only enable behind a trusted local tunnel/edge. Static boolean or per-request probe. */
   trustForwardedFor?: boolean | (() => boolean)
+  /** Trust Cloudflare's proprietary client-IP header from a trusted loopback Cloudflare connector. Kept separate from generic XFF trust because other tunnel providers can relay a client-supplied CF header unchanged. */
+  trustCloudflareConnectingIp?: boolean | (() => boolean)
   /** Display-only: shown on the device home page as part of the security posture. */
   approvalMode?: boolean
   log?: (entry: { method: string | undefined, path: string, status: number, remote: string }) => void
 }
 
 /** ProxySpec after listenProxy resolves defaults and internal helpers. */
-type RuntimeSpec = Omit<ProxySpec, 'trustForwardedProto' | 'trustForwardedFor'> & {
+type RuntimeSpec = Omit<ProxySpec, 'trustForwardedProto' | 'trustForwardedFor' | 'trustCloudflareConnectingIp'> & {
   tls: boolean
   /** Normalized probes, evaluated per request. */
   trustForwardedProto: () => boolean
   trustForwardedFor: () => boolean
+  trustCloudflareConnectingIp: () => boolean
   rewriteAuthority: string
   trackUpstream: (up: ClientRequest | Duplex) => void
   loginTracker: LoginTracker
@@ -182,17 +185,20 @@ function trustedForwardedIp(value: string | undefined): string | undefined {
  * socket address is not the real remote user. When the operator explicitly
  * enables `trustForwardedFor` AND the immediate peer is loopback, we trust:
  *
- * 1. `CF-Connecting-IP` when present (Cloudflare-style edge);
- * 2. otherwise the rightmost `X-Forwarded-For` value, which is the address
+ * 1. the rightmost `X-Forwarded-For` value, which is the address
  *    appended by the trusted edge rather than a client-controlled prefix.
+ * 2. `CF-Connecting-IP` is only considered when the separate Cloudflare
+ *    trust probe is enabled (the managed quick tunnel sets it while online).
  *
  * Direct non-loopback peers are never trusted with a spoofable header.
  */
 export function effectiveRemoteAddress(req: IncomingMessage, spec: RuntimeSpec): string {
   const direct = req.socket.remoteAddress ?? ''
   if (spec.trustForwardedFor() && isLoopbackHost(direct)) {
-    const cf = trustedForwardedIp(firstHeaderValue(req.headers['cf-connecting-ip']))
-    if (cf !== undefined) return cf
+    if (spec.trustCloudflareConnectingIp?.() === true) {
+      const cf = trustedForwardedIp(firstHeaderValue(req.headers['cf-connecting-ip']))
+      if (cf !== undefined) return cf
+    }
     const forwarded = trustedForwardedIp(lastForwardedIp(req.headers['x-forwarded-for']))
     if (forwarded !== undefined) return forwarded
   }
@@ -347,9 +353,13 @@ function redirect(res: ServerResponse, location: string, extra: Record<string, s
   res.end()
 }
 
-/** Secure cookies / forwarded proto: own TLS, or a trusted edge says https. */
+/** Secure cookies / forwarded proto: own TLS, or a trusted loopback edge says https. */
 function requestIsHttps(req: IncomingMessage, tls: boolean, trustForwardedProto: boolean) {
-  return tls === true || (trustForwardedProto && req.headers['x-forwarded-proto'] === 'https')
+  return tls === true || (
+    trustForwardedProto
+    && isLoopbackHost(req.socket.remoteAddress ?? '')
+    && firstHeaderValue(req.headers['x-forwarded-proto'])?.toLowerCase() === 'https'
+  )
 }
 
 function cookieIsSecure(req: IncomingMessage, spec: RuntimeSpec) {
@@ -641,6 +651,9 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     trustForwardedFor: typeof spec.trustForwardedFor === 'function'
       ? spec.trustForwardedFor
       : () => spec.trustForwardedFor === true,
+    trustCloudflareConnectingIp: typeof spec.trustCloudflareConnectingIp === 'function'
+      ? spec.trustCloudflareConnectingIp
+      : () => spec.trustCloudflareConnectingIp === true,
     rewriteAuthority,
     trackUpstream,
     loginTracker: createLoginTracker(spec),

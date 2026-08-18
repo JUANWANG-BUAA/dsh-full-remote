@@ -76,7 +76,8 @@ export const Config = Schema.object({
   tlsCertFile: Schema.string().default('').description('Optional PEM certificate path for local TLS on the proxy listen port (pair with tlsKeyFile). Empty = plain HTTP.'),
   tlsKeyFile: Schema.string().default('').description('Optional PEM private key path for local TLS (pair with tlsCertFile).'),
   trustForwardedProto: Schema.boolean().default(false).description('When true, trust inbound X-Forwarded-Proto from a reverse-edge for Secure cookies and upstream proto. Leave false unless a trusted TLS terminator sits in front.'),
-  trustForwardedFor: Schema.boolean().default(false).description('When true and the direct peer is loopback, derive the remote client IP for CIDR / rate limiting / audit from CF-Connecting-IP or the rightmost X-Forwarded-For value (loopback and malformed values are never trusted). Only enable behind a trusted local tunnel/edge that sets these headers; do not enable for LAN direct access.'),
+  trustForwardedFor: Schema.boolean().default(false).description('When true and the direct peer is loopback, derive the remote client IP for CIDR / rate limiting / audit from the rightmost X-Forwarded-For value (loopback and malformed values are never trusted). Only enable behind a trusted local tunnel/edge that appends this header; do not enable for LAN direct access.'),
+  trustCloudflareConnectingIp: Schema.boolean().default(false).description('When true and the direct peer is loopback, also trust Cloudflare\'s CF-Connecting-IP header. Enable only for a local Cloudflare connector; other tunnels can relay a client-supplied CF header unchanged.'),
 })
 
 /** Validated plugin config: every field carries its Schema default. */
@@ -245,7 +246,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
     audit: (event, fields) => { void audit.record(event, fields) },
     log: message => { ctx.logger.info(message) },
   })
-  /** Tunnel trust is live only while cloudflared is starting or online — not after error/off. */
+  /** Tunnel trust is live only after cloudflared has reached online state. */
   const tunnelLive = () => tunnelTrustsForwarding(tunnel.status().state)
 
   let sessionStore: ReturnType<typeof createSessionStore> | undefined
@@ -436,6 +437,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
         // probe adds no surface beyond the explicit config.
         trustForwardedProto: () => config.trustForwardedProto === true || tunnelLive(),
         trustForwardedFor: () => config.trustForwardedFor === true || tunnelLive(),
+        trustCloudflareConnectingIp: () => config.trustCloudflareConnectingIp === true || tunnelLive(),
         log: config.logRequests
           ? entry => { ctx.logger.debug(`reverse-proxy: ${entry.remote ?? '-'} ${entry.method} ${entry.path} -> ${entry.status}`) }
           : undefined,

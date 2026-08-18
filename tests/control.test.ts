@@ -636,11 +636,11 @@ describe('audit log viewer', () => {
 })
 
 describe('one-click tunnel control', () => {
-  const fakeTunnel = (calls: string[]) => {
-    let state: 'off' | 'starting' = 'off'
+  const fakeTunnel = (calls: string[], onlineOnStart = false) => {
+    let state: 'off' | 'starting' | 'online' = 'off'
     return {
       status: () => ({ state }),
-      start: async () => { calls.push('start'); state = 'starting'; return { state } },
+      start: async () => { calls.push('start'); state = onlineOnStart ? 'online' : 'starting'; return { state } },
       stop: async () => { calls.push('stop'); state = 'off'; return { state } },
     }
   }
@@ -706,7 +706,7 @@ describe('one-click tunnel control', () => {
     cleanups.push(() => rm(dir, { recursive: true, force: true }))
     const calls: string[] = []
     const runtime = createRuntime(makeContext(), makeConfig(join(dir, 'state.json')), {
-      createTunnel: () => fakeTunnel(calls),
+      createTunnel: () => fakeTunnel(calls, true),
     })
     cleanups.push(() => runtime.dispose())
     await runtime.start()

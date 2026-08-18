@@ -434,12 +434,17 @@ describe('header forwarding', () => {
     assert.equal(headers['x-forwarded-for'], '203.0.113.9')
   })
 
-  it('trusts X-Forwarded-Proto only when opted in', () => {
+  it('trusts X-Forwarded-Proto only from an opted-in loopback edge', () => {
     const trusted = forwardHeaders({
+      headers: { host: 'public.example', 'x-forwarded-proto': 'https' },
+      socket: { remoteAddress: '127.0.0.1' },
+    } as unknown as IncomingMessage, '127.0.0.1:3080', { trustForwardedProto: true })
+    assert.equal(trusted['x-forwarded-proto'], 'https')
+    const untrusted = forwardHeaders({
       headers: { host: 'public.example', 'x-forwarded-proto': 'https' },
       socket: { remoteAddress: '10.0.0.1' },
     } as unknown as IncomingMessage, '127.0.0.1:3080', { trustForwardedProto: true })
-    assert.equal(trusted['x-forwarded-proto'], 'https')
+    assert.equal(untrusted['x-forwarded-proto'], 'http')
   })
 
   it('strips hop-by-hop headers from upstream responses', () => {
@@ -1088,7 +1093,7 @@ describe('trustForwardedFor', () => {
     assert.equal(effectiveRemoteAddress(req, spec), '10.0.0.1')
   })
 
-  it('prefers CF-Connecting-IP when present', () => {
+  it('uses CF-Connecting-IP only with explicit Cloudflare trust', () => {
     const req = {
       headers: {
         'cf-connecting-ip': '198.51.100.7',
@@ -1096,7 +1101,12 @@ describe('trustForwardedFor', () => {
       },
       socket: { remoteAddress: '127.0.0.1' },
     } as unknown as IncomingMessage
-    const spec = { trustForwardedFor: () => true } as Parameters<typeof effectiveRemoteAddress>[1]
+    const genericSpec = { trustForwardedFor: () => true } as Parameters<typeof effectiveRemoteAddress>[1]
+    assert.equal(effectiveRemoteAddress(req, genericSpec), '10.0.0.1')
+    const spec = {
+      trustForwardedFor: () => true,
+      trustCloudflareConnectingIp: () => true,
+    } as Parameters<typeof effectiveRemoteAddress>[1]
     assert.equal(effectiveRemoteAddress(req, spec), '198.51.100.7')
   })
 
@@ -1111,7 +1121,10 @@ describe('trustForwardedFor', () => {
       },
       socket: { remoteAddress: '127.0.0.1' },
     } as unknown as IncomingMessage
-    const spec = { trustForwardedFor: () => true } as Parameters<typeof effectiveRemoteAddress>[1]
+    const spec = {
+      trustForwardedFor: () => true,
+      trustCloudflareConnectingIp: () => true,
+    } as Parameters<typeof effectiveRemoteAddress>[1]
     assert.equal(effectiveRemoteAddress(spoofedLoopback, spec), '10.0.0.1')
 
     const garbage = {

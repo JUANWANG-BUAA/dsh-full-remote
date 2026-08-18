@@ -78,9 +78,9 @@ export function extractTgzSingleFile(payload: Buffer): Buffer {
 
 export type TunnelState = 'off' | 'starting' | 'online' | 'error'
 
-/** Forwarding-header trust is live only while cloudflared is actually proxying. */
+/** Forwarding-header trust is live only after cloudflared is actually proxying. */
 export function tunnelTrustsForwarding(state: TunnelState) {
-  return state === 'starting' || state === 'online'
+  return state === 'online'
 }
 
 export interface TunnelStatus {

@@ -270,10 +270,10 @@ describe('TunnelStatus shape', () => {
     assert.equal('detail' in status, false)
   })
 
-  it('trusts forwarding headers only while the tunnel is starting or online', () => {
+  it('trusts forwarding headers only while the tunnel is online', () => {
     assert.equal(tunnelTrustsForwarding('off'), false)
     assert.equal(tunnelTrustsForwarding('error'), false)
-    assert.equal(tunnelTrustsForwarding('starting'), true)
+    assert.equal(tunnelTrustsForwarding('starting'), false)
     assert.equal(tunnelTrustsForwarding('online'), true)
   })
 })
