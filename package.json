@@ -30,10 +30,7 @@
   "files": [
     "lib/index.d.ts",
     "lib/index.js",
-    "lib/index.js.map",
     "lib/client.js",
-    "lib/client.js.map",
-    "lib/client.ts.map",
     "cordis.patch.yml",
     "CHANGELOG.md",
     "LICENSE",
