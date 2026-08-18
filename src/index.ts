@@ -19,11 +19,8 @@ import { listenProxy, type ProxyServer } from './proxy.ts'
 import { defaultStateFile, readState, writeState, type PersistedState } from './persist.ts'
 import { generateAccessToken } from './security.ts'
 import { createSessionStore } from './sessions.ts'
-import { createTunnelManager, tunnelTrustsForwarding, type TunnelStatus } from './tunnel.ts'
+import { createTunnelManager, tunnelTrustsForwarding } from './tunnel.ts'
 import {
-  pathnameOf,
-  readJson,
-  sendJson,
   formatHttpUrl,
   isSelfLoop,
   isWildcardHost,
@@ -32,15 +29,17 @@ import {
   reachableHosts,
   asError,
 } from './http-util.ts'
-import { createAuditLog, defaultAuditPath, readAuditLog, readAuditLogAll } from './audit.ts'
+import { createAuditLog, defaultAuditPath } from './audit.ts'
 import { compileCidrList, ipAllowed } from './cidr.ts'
 import { createInviteStore } from './invites.ts'
 import { probeFence } from './self-check.ts'
 import { qrToSvg } from './qr-svg.ts'
 import { LOGIN_PATH } from './pages.ts'
-import { CONTROL_HEADER, CONTROL_HEADER_VALUE, CONTROL_PREFIX } from './control.ts'
+import { CONTROL_PREFIX } from './control.ts'
 import { validateBackendHost, validateRuntimeConfig } from './config-validation.ts'
 import { injectIndexEnhancements } from './index-enhancements.ts'
+import { createControlRoutes, type InviteResult } from './control-routes.ts'
+import type { RuntimeStatus } from './runtime-types.ts'
 
 export const name = 'reverse-proxy'
 export const inject = ['webServer']
@@ -74,39 +73,12 @@ interface RuntimeContext {
   effect(effect: () => () => void | Promise<void>, label?: string): unknown
 }
 
-/** The control-surface snapshot returned to the panel. */
-interface RuntimeStatus {
-  enabled: boolean
-  running: boolean
-  target: string
-  backend: string
-  listen: { host: string, port: number }
-  bound: { host: string, port: number }
-  reachables: string[]
-  wildcard: boolean
-  approvalMode: boolean
-  tls: boolean
-  auditLog: boolean
-  trustForwardedFor: boolean
-  reason?: string
-  tunnel: TunnelStatus
-}
-
 /** Injectable runtime dependencies; tests replace the tunnel factory. */
 export interface RuntimeDeps {
   createTunnel?: typeof createTunnelManager
 }
 
 export { injectIndexEnhancements, injectViewport } from './index-enhancements.ts'
-
-function isLoopbackOrigin(origin: string | undefined) {
-  if (origin === undefined) return true
-  try {
-    return isLoopbackHost(new URL(origin).hostname)
-  } catch {
-    return false
-  }
-}
 
 /** Hostnames, IPv4, and bracketed IPv6 all pass; node listen() is the final judge. */
 function isValidListenHost(value: string) {
@@ -428,7 +400,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
     return snapshot({ reason: restored.running ? 'listen-failed-restored' : 'listen-failed' })
   })
 
-  const buildInvite = async (publicBase: string | undefined) => {
+  const buildInvite = async (publicBase: string | undefined): Promise<InviteResult> => {
     await load()
     const base = String(publicBase ?? '').trim().replace(/\/$/, '')
     // Explicit origin wins; then the live quick-tunnel URL so a phone can
@@ -478,167 +450,51 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
     }
   }
 
-  type ControlHandler = (req: IncomingMessage, res: ServerResponse) => void | Promise<void>
-
-  const auditQuery = (req: IncomingMessage) => {
-    const url = new URL(req.url ?? '/', 'http://localhost')
-    const rawLimit = Number(url.searchParams.get('limit') ?? 50)
-    const limit = Number.isInteger(rawLimit) ? Math.min(Math.max(rawLimit, 1), 200) : 50
-    const event = url.searchParams.get('event')?.trim() || undefined
-    return { limit, event }
-  }
-
-  const withJson = (
-    fn: (body: Record<string, unknown>, res: ServerResponse) => Promise<void>,
-  ): ControlHandler => async (req, res) => {
-    let body: Record<string, unknown>
-    try {
-      body = await readJson(req) as Record<string, unknown>
-    } catch {
-      sendJson(res, 400, { error: 'invalid-request' })
-      return
-    }
-    try {
-      await fn(body, res)
-    } catch (error) {
-      warn(error)
-      sendJson(res, 500, { error: 'action-failed' })
-    }
-  }
-
-  const routes = new Map<string, ControlHandler>()
-  const route = (method: string, suffix: string, handler: ControlHandler) => {
-    routes.set(`${method} ${CONTROL_PREFIX}${suffix}`, handler)
-  }
-
-  const runAction = (fn: () => Promise<RuntimeStatus>): ControlHandler => async (_req, res) => {
-    // A rejected action (e.g. close-timeout during stop) must still answer
-    // the panel — an unanswered request hangs the fetch and leaks an
-    // unhandled rejection into the host route.
-    try {
-      sendJson(res, 200, await exclusive(fn))
-    } catch (error) {
-      warn(error)
-      sendJson(res, 500, { error: 'action-failed' })
-    }
-  }
-
-  const mutateSession = (action: 'approve' | 'revoke' | 'rename'): ControlHandler => withJson(async (body, res) => {
-    const id = typeof body.id === 'string' ? body.id : ''
-    const result = await exclusive(async () => {
+  const control = createControlRoutes({
+    allowTokenRead: config.allowTokenRead === true,
+    audit,
+    warn,
+    exclusive,
+    shared,
+    snapshot,
+    runSelfCheck,
+    buildInvite,
+    readToken: () => exclusive(async () => {
+      await load()
+      void audit.record('token.reveal')
+      return state!.accessToken
+    }),
+    listSessions: async () => {
+      await load()
+      return sessionStore!.list()
+    },
+    mutateSession: (action, id, label) => exclusive(async () => {
       await load()
       const ok = action === 'approve'
         ? sessionStore!.approve(id)
         : action === 'revoke'
           ? sessionStore!.revoke(id)
-          : sessionStore!.rename(id, typeof body.label === 'string' ? body.label : undefined)
+          : sessionStore!.rename(id, label)
       if (ok) void audit.record(`session.${action}`, { id })
       return ok
-    })
-    sendJson(res, 200, { ok: result })
-  })
-
-  route('GET', '/status', async (_req, res) => {
-    sendJson(res, 200, await shared(() => snapshot()))
-  })
-  route('POST', '/self-check', async (_req, res) => {
-    sendJson(res, 200, await shared(() => runSelfCheck()))
-  })
-  route('POST', '/invite', withJson(async (body, res) => {
-    const invite = await shared(() => buildInvite(typeof body.publicBase === 'string' ? body.publicBase : undefined))
-    if (invite.error !== undefined) {
-      sendJson(res, invite.error === 'not-running' ? 409 : 400, invite)
-      return
-    }
-    void audit.record('invite.create')
-    sendJson(res, 200, invite)
-  }))
-  route('GET', '/token', async (_req, res) => {
-    if (config.allowTokenRead !== true) {
-      sendJson(res, 403, { error: 'token-read-disabled' })
-      return
-    }
-    sendJson(res, 200, { accessToken: await exclusive(async () => {
-      await load()
-      void audit.record('token.reveal')
-      return state!.accessToken
-    }) })
-  })
-  route('GET', '/sessions', async (_req, res) => {
-    sendJson(res, 200, { sessions: await shared(async () => {
-      await load()
-      return sessionStore!.list()
-    }) })
-  })
-  route('GET', '/audit', async (req, res) => {
-    const { limit, event } = auditQuery(req)
-    sendJson(res, 200, await shared(async () => ({
-      enabled: audit.enabled,
-      events: await readAuditLog(audit.path, limit, event),
-    })))
-  })
-  route('GET', '/audit/export', async (req, res) => {
-    const { event } = auditQuery(req)
-    const events = await shared(() => readAuditLogAll(audit.path, event))
-    res.writeHead(200, {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'no-store',
-      'content-disposition': 'attachment; filename="dsh-reverse-proxy-audit.json"',
-      'x-content-type-options': 'nosniff',
-    })
-    res.end(JSON.stringify(events, null, 2))
-  })
-  route('POST', '/tunnel/start', async (_req, res) => {
-    const outcome = await exclusive(async (): Promise<'ok' | 'not-running' | 'tls-unsupported' | 'disposed'> => {
+    }),
+    startTunnel: async () => {
       await load()
       if (disposed) return 'disposed'
-      // The tunnel forwards to the proxy listener; without a listener there
-      // is nothing to forward to (the panel starts the proxy first).
       if (bound === undefined) return 'not-running'
-      // CF edge already terminates TLS; a local-TLS proxy plus tunnel is a
-      // meaningless combination the panel should not offer silently.
       if (scheme() === 'https') return 'tls-unsupported'
       await tunnel.start()
       return 'ok'
-    })
-    if (outcome !== 'ok') {
-      sendJson(res, outcome === 'not-running' || outcome === 'disposed' ? 409 : 400, { error: outcome })
-      return
-    }
-    sendJson(res, 200, await shared(() => snapshot()))
-  })
-  route('POST', '/tunnel/stop', async (_req, res) => {
-    sendJson(res, 200, await exclusive(async () => {
+    },
+    stopTunnel: async () => {
       await tunnel.stop()
       return snapshot()
-    }))
+    },
+    start,
+    stop,
+    rotateToken,
+    setListen,
   })
-  route('POST', '/sessions/approve', mutateSession('approve'))
-  route('POST', '/sessions/revoke', mutateSession('revoke'))
-  route('POST', '/sessions/rename', mutateSession('rename'))
-  route('POST', '/start', runAction(start))
-  route('POST', '/stop', runAction(stop))
-  route('POST', '/rotate-token', runAction(rotateToken))
-  route('POST', '/listen', withJson(async (body, res) => {
-    sendJson(res, 200, await setListen(body.host, body.port))
-  }))
-
-  const handle = async (req: IncomingMessage, res: ServerResponse) => {
-    if (!isLoopbackHost(req.socket.remoteAddress ?? '')) {
-      sendJson(res, 403, { error: 'loopback-required' })
-      return
-    }
-    const handler = routes.get(`${req.method} ${pathnameOf(req.url)}`)
-    if (handler === undefined) {
-      sendJson(res, 404, { error: 'not-found' })
-      return
-    }
-    if (req.headers[CONTROL_HEADER] !== CONTROL_HEADER_VALUE || !isLoopbackOrigin(req.headers.origin)) {
-      sendJson(res, 403, { error: 'forbidden' })
-      return
-    }
-    await handler(req, res)
-  }
 
   return {
     restore: () => exclusive(async () => {
@@ -668,7 +524,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
     rotateToken: () => exclusive(rotateToken),
     setListen,
     selfCheck: () => shared(() => runSelfCheck()),
-    handle,
+    handle: control.handle,
   }
 }
 
