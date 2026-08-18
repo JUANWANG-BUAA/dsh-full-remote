@@ -1,6 +1,6 @@
 {
   "name": "dsh-full-remote",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "DeepSeek Harness plugin for remote access: a token-gated reverse proxy keeps settings, credentials, and file access working over public tunnels and on other devices instead of returning 403. Per-device sessions.",
   "type": "module",
   "main": "lib/index.js",

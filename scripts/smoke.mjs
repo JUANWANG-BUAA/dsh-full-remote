@@ -16,7 +16,7 @@
  *   DSH_HOME=$(mktemp -d) HARNESS_DIR=../deepseek-harness node scripts/smoke.mjs
  */
 import { spawn } from 'node:child_process'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -99,6 +99,17 @@ async function main() {
   // `directoryPicker` → boot fails the activation gate.
   await dsh(['plugin', '--profile', 'smoke', 'add', join(HARNESS_DIR, 'packages/bundle/web-app')])
   await dsh(['plugin', '--profile', 'smoke', 'add', PLUGIN_DIR])
+
+  // The production-safe default keeps standing token reads disabled. This
+  // black-box flow needs a token to exercise the login/session path, so make
+  // the opt-in explicit in the isolated smoke home rather than weakening the
+  // plugin's shipped patch or silently relying on a default.
+  await writeFile(join(process.env.DSH_HOME, 'cordis.patch.yml'), [
+    '- id: reverse-proxy',
+    '  config:',
+    '    allowTokenRead: true',
+    '',
+  ].join('\n'))
 
   // 3. Boot the real composition.
   const server = spawn('pnpm', ['dsh', '--profile', 'smoke', '--port', PORT], {

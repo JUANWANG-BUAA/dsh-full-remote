@@ -59,6 +59,7 @@ package is a different product.
 - [x] Tag `v0.2.5` (fix trust-bootstrap `ctx.provide` overwrite, GitHub #9).
 - [x] Tag `v0.3.0` (forwarded-IP spoofing fix, device source IPs, audit rotation).
 - [x] Tag `v0.3.1` (one-click Cloudflare quick tunnel, device home, invite retry reuse).
+- [x] Tag `v0.3.2` (security hardening, production audit command, and real Harness smoke coverage).
 - [ ] `npm deprecate dsh-reverse-proxy "Package renamed to dsh-full-remote."` (blocked until `npm login`).
 - [x] Apply GitHub topics from `docs/github-metadata.md` (applied 2026-08-16).
 - [x] PR the plugin into `awesome-dsh-plugin` as `dsh-full-remote` ([#833](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/833), updated 2026-08-16).

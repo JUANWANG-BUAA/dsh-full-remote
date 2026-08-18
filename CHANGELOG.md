@@ -3,7 +3,7 @@
 All notable changes to dsh-full-remote (formerly dsh-reverse-proxy) are
 documented in this file.
 
-## Unreleased
+## 0.3.2 (2026-08-18)
 
 ### Added
 
@@ -13,6 +13,27 @@ documented in this file.
   answered without being stuck on the host conversation composer.
   README gallery includes live phone-drawer and remote-desktop-card
   shots.
+
+### Changed
+
+- Standing token reads now default to disabled (`allowTokenRead: false`);
+  deployments that need local token re-reads must opt in explicitly.
+- Production dependency auditing is available through `pnpm run audit:prod`.
+- The npm package excludes embedded source maps while retaining the built
+  runtime, declarations, documentation, and screenshot gallery.
+
+### Fixed
+
+- Partial TLS and malformed CIDR configuration now fails closed during
+  plugin activation instead of being silently widened or partially applied.
+- Forwarded client identity is trusted only from an eligible loopback edge;
+  Cloudflare headers require explicit opt-in and tunnel forwarding is trusted
+  only after the tunnel is online.
+- Active session requests refresh idle expiry, while clock injection keeps
+  expiry behavior deterministic in tests.
+- Control-route authentication is exercised over a real HTTP listener, and
+  the real Harness smoke flow now explicitly opts in to token reads only in
+  its isolated test home.
 
 ## 0.3.1 (2026-08-18)
 

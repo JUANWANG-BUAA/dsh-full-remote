@@ -257,7 +257,7 @@ dsh plugin --profile web update --latest dsh-full-remote
 
 Then restart `dsh web`. `--latest` ignores the current range, installs the
 newest version, and rewrites `package.json`. For a specific version use
-`dsh plugin --profile web update dsh-full-remote@0.3.1`.
+`dsh plugin --profile web update dsh-full-remote@0.3.2`.
 
 ## Screenshots
 
@@ -394,7 +394,7 @@ side of the tunnel. For LAN use without a tunnel, set
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.3.1.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.2.tgz
 ```
 
 Git installs run the `prepare` build. On pnpm ≥ 10 allow it:
