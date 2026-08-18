@@ -408,3 +408,7 @@ P2 里剩下的卫生项（`actions` Map 提升、读写锁）即使做了也不
 | [Discussion #76](https://github.com/deepseek-ai/deepseek-harness/discussions/76) | Unanswered；22 人；无本仓库引用；rekey 原话卡在 describe |
 | awesome-dsh-plugin README | 无 `dsh-full-remote`；已收 lan-access / passwords |
 | GitHub API 竞品抽样 | 见 §3.4 |
+# 历史快照（非当前状态）
+
+> 本文记录旧版本的推广与进度复盘，不代表当前 star、npm、issue 或源码
+> 状态。请以 GitHub、npm 和根目录文档中的当前版本为准。

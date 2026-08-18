@@ -525,3 +525,8 @@ P0-2（通配地址）与上面三条无依赖，可随时插入。
 **外部数据**（2026-08-15 实测，GitHub API / npm registry API）
 
 生态与竞品数据见 §1.2、§6；npm dist-tag 数据见 §5。
+# 历史快照（非当前计划）
+
+> 本文保留早期 0.x 审计记录，里面的 star、topics、版本号、源码行号和
+> “待修复”清单均可能过时。当前可执行优先级以根目录 README、CHANGELOG
+> 的 `Unreleased`、`SECURITY.md` 和 `docs/compatibility.md` 为准。
