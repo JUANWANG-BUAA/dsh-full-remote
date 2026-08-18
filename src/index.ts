@@ -32,7 +32,6 @@ import {
   reachableHosts,
   asError,
 } from './http-util.ts'
-import { PAGE_BOOTSTRAP_SOURCE } from './page-bootstrap.ts'
 import { createAuditLog, defaultAuditPath, readAuditLog, readAuditLogAll } from './audit.ts'
 import { compileCidrList, ipAllowed } from './cidr.ts'
 import { createInviteStore } from './invites.ts'
@@ -41,6 +40,7 @@ import { qrToSvg } from './qr-svg.ts'
 import { LOGIN_PATH } from './pages.ts'
 import { CONTROL_HEADER, CONTROL_HEADER_VALUE, CONTROL_PREFIX } from './control.ts'
 import { validateBackendHost, validateRuntimeConfig } from './config-validation.ts'
+import { injectIndexEnhancements } from './index-enhancements.ts'
 
 export const name = 'reverse-proxy'
 export const inject = ['webServer']
@@ -97,42 +97,7 @@ export interface RuntimeDeps {
   createTunnel?: typeof createTunnelManager
 }
 
-const VIEWPORT = 'width=device-width, initial-scale=1, viewport-fit=cover'
-
-export function injectViewport(html: string) {
-  return html.replace(
-    /content="width=device-width, initial-scale=1(?:, viewport-fit=cover)?"/,
-    `content="${VIEWPORT}"`,
-  )
-}
-
-/**
- * Remote browsers reach this app over plain HTTP at a non-loopback host,
- * which the browser treats as an insecure context. `crypto.randomUUID` is
- * secure-context-only, and the DeepSeek Harness Web composer calls it when attaching
- * files — on a proxied page that call throws and breaks attachments. This
- * guarded shim restores it from `crypto.getRandomValues`, which remains
- * available in insecure contexts. The same IIFE also wraps
- * `window.__ModuleLoader__` so that after the official connection plugin
- * `apply()` returns, `connection.isLoopback` is true on the handle.
- * Official settings plugins then bind against a trusted loopback handle.
- * A late `settingsScope.bind` wrap cannot rewrite scopes that already
- * chose memory persistence.
- *
- * tapIndex is not authentication: the script is injected into the host
- * index for every visitor of that page, including local `127.0.0.1`.
- * The proxy authenticates separately at its own listen port. Do not
- * assign Cordis mixin methods (`ctx.provide`) from this script.
- */
-const INDEX_BOOTSTRAP = `<script data-plugin="dsh-reverse-proxy">${PAGE_BOOTSTRAP_SOURCE}</script>`
-
-export function injectIndexEnhancements(html: string) {
-  const withViewport = injectViewport(html)
-  if (!withViewport.includes('<head>')) return withViewport
-  // Idempotent: multiple taps (or a retried transform) must not stack copies.
-  if (withViewport.includes('data-plugin="dsh-reverse-proxy"')) return withViewport
-  return withViewport.replace('<head>', `<head>${INDEX_BOOTSTRAP}`)
-}
+export { injectIndexEnhancements, injectViewport } from './index-enhancements.ts'
 
 function isLoopbackOrigin(origin: string | undefined) {
   if (origin === undefined) return true
