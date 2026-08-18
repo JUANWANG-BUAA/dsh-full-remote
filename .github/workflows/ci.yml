@@ -18,7 +18,7 @@ jobs:
       matrix:
         node: [22, 24]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
 
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
 
@@ -58,7 +58,7 @@ jobs:
 
       # The harness has no published CLI: boot from a pinned source checkout.
       - name: Fetch DeepSeek Harness checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: deepseek-ai/deepseek-harness
           ref: 47f943859bef60e4160492346772ded9b24f765a
