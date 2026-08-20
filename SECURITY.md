@@ -63,6 +63,10 @@ Web UI. Please take security issues seriously.
 - Spoofable forwarding and hop-by-hop headers are stripped; the proxy's own
   session cookie never reaches the backend; request bodies are size-limited
   on the stream.
+- Response gzip (when enabled) runs only on authenticated proxied HTTP
+  responses, never on WebSocket upgrades or SSE. Hashed-asset
+  `Cache-Control: immutable` is applied only to Vite content-hashed
+  `/assets/*` 200s; `index.html` and `/api` are never given that header.
 
 Keep the token secret and always terminate TLS on the public side of your
 tunnel. See `README.md` for the full model and configuration notes.

@@ -40,7 +40,10 @@ composition.
 - `tests/*.test.ts` — unit/integration tests via `node:test` (run as plain
   TypeScript through `node --experimental-strip-types`; proxy behavior,
   security primitives, control surface, Cordis lifecycle, WebSocket upgrade,
-  index bootstrap).
+  HTTP gzip / hashed-asset cache, index bootstrap).
+  `tests/compress-matrix.test.ts` walks a real `dsh-web-frontend` dist when
+  present (`DSH_WEB_FRONTEND_DIST` or the Homebrew global path) and skips
+  that suite otherwise.
 - `tests/remote.client.test.tsx` — client UI tests via `vitest` +
   Testing Library (settings section, toasts, i18n, settings persistence).
 

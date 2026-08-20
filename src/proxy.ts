@@ -12,9 +12,15 @@
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse, type ClientRequest } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
 import type { Duplex } from 'node:stream'
+import { createGzip } from 'node:zlib'
 import { parseCookies, safeEqual } from './security.ts'
 import { createSessionStore, encodeSessionCookie, sessionCookie, SessionCapacityError } from './sessions.ts'
 import { readBody, sendHtml, pathnameOf, rewriteLoopbackAuthority } from './http-util.ts'
+import {
+  applyGzipResponseHeaders,
+  gzipDecisionFromUpstream,
+  maybeSetHashedAssetCacheControl,
+} from './proxy-compress.ts'
 import {
   cookieIsSecure,
   effectiveRemoteAddress,
@@ -96,6 +102,10 @@ export interface ProxySpec {
   /** Display-only: shown on the device home page as part of the security posture. */
   approvalMode?: boolean
   log?: (entry: { method: string | undefined, path: string, status: number, remote: string }) => void
+  /** Gzip compressible HTTP responses when the client advertises gzip. Default true. */
+  compressResponses?: boolean
+  /** Add immutable Cache-Control on hashed /assets/* 200s with no upstream cache header. Default true. */
+  cacheHashedAssets?: boolean
 }
 
 /** ProxySpec after listenProxy resolves defaults and internal helpers. */
@@ -113,6 +123,8 @@ type RuntimeSpec = Omit<ProxySpec, 'trustForwardedProto' | 'trustForwardedFor' |
   sessionMaxAgeSeconds: number
   trackSession: (sessionId: string, close: () => void) => () => void
   closeSessionConnections: (sessionId: string) => void
+  compressResponses: boolean
+  cacheHashedAssets: boolean
 }
 
 const LOGIN_FAILURE_DELAY_MS = 250
@@ -260,14 +272,29 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
     }),
   }, (incoming) => {
     clearTimeout(connectTimer)
+    const status = incoming.statusCode ?? 502
     const responseHeaders = sanitizeResponseHeaders(incoming.headers)
-    res.writeHead(incoming.statusCode ?? 502, responseHeaders)
-    // If the upstream response stream fails mid-body, tear down the client
-    // response instead of leaving it hanging.
+    maybeSetHashedAssetCacheControl(
+      responseHeaders,
+      pathnameOf(req.url),
+      status,
+      spec.cacheHashedAssets,
+    )
+    const gzip = gzipDecisionFromUpstream(req, { statusCode: status, headers: responseHeaders }, spec.compressResponses)
+    if (gzip) applyGzipResponseHeaders(responseHeaders)
+    res.writeHead(status, responseHeaders)
     incoming.on('error', () => {
       if (!res.destroyed) res.destroy()
     })
-    incoming.pipe(res)
+    if (!gzip) {
+      incoming.pipe(res)
+      return
+    }
+    const gzipStream = createGzip({ level: 6 })
+    gzipStream.on('error', () => {
+      if (!res.destroyed) res.destroy()
+    })
+    incoming.pipe(gzipStream).pipe(res)
   })
   spec.trackUpstream?.(up)
   const releaseSession = spec.trackSession(sessionId, () => {
@@ -571,6 +598,8 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     sessionMaxAgeSeconds: spec.sessionMaxAgeSeconds ?? DEFAULT_SESSION_MAX_AGE_SECONDS,
     trackSession,
     closeSessionConnections,
+    compressResponses: spec.compressResponses !== false,
+    cacheHashedAssets: spec.cacheHashedAssets !== false,
   }
   const upgradeTracker = createLoginTracker({
     loginMaxAttempts: spec.upgradeMaxAttempts ?? 10,

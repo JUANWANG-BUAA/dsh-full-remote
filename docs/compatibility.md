@@ -34,6 +34,7 @@ composition. Do not add a second row with id `reverse-proxy`,
 | Native/adaptive `directory-picker` | Disabled by default; opt-out is explicit | Keep the in-app browse pair enabled for remote use |
 | Another reverse proxy/auth gateway | A second gateway can rewrite `Host`/`Origin` or cookies twice | Put this plugin directly in front of Harness Web, or disable the duplicate rewrite/auth layer |
 | TLS terminator / tunnel | Forwarded headers are trusted only when explicitly configured | Set `trustForwardedFor` only behind a loopback edge that strips/rebuilds those headers; set `trustCloudflareConnectingIp` only for a real Cloudflare edge |
+| Cloudflare (or other) edge compression | The edge may already gzip/brotli HTML/JS/CSS/JSON | Proxy-side gzip still helps LAN/SSH/frp; do not expect a second large saving on a Cloudflare quick tunnel. See [HTTP gzip](./http-gzip.md) |
 | Plugin that changes Harness trust/bootstrap globals | The browser bootstrap is a compatibility seam | Test `settings.describe`, `credentials.describe`, directory browsing, SSE, and WebSocket after installing both |
 
 ## Runtime acceptance checks
@@ -44,7 +45,9 @@ After composing plugins, verify all of the following through the proxy:
 2. authenticated `settings.describe` returns a non-fence response (not the
    Harness loopback 403);
 3. authenticated credentials and directory operations work;
-4. a long-running SSE response and WebSocket upgrade survive normally;
+4. a long-running SSE response and WebSocket upgrade survive normally
+   (the proxy does not gzip SSE or WebSocket; a delayed second SSE event
+   must still arrive);
 5. revoking the device closes its active streams;
 6. the host UI still opens its own directory picker when accessed locally.
 

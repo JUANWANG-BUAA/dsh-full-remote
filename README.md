@@ -74,7 +74,8 @@ server. The proxy:
   privileged APIs pass Harness's trust check;
 - requires an access token or a valid device session before any request is
   forwarded;
-- forwards HTTP, SSE, and WebSocket traffic;
+- forwards HTTP, SSE, and WebSocket traffic; compressible HTTP responses
+  may be gzipped (not SSE or WebSocket);
 - provides a settings page (**Settings → Reverse proxy**) for starting and
   stopping the proxy, changing the listen address, rotating the token, and
   managing device sessions.
@@ -103,7 +104,10 @@ flowchart LR
    authentication do not reach the backend.
 3. The proxy rewrites `Host`/`Origin` to loopback, removes untrusted
    headers, and forwards the request to the Harness Web server at
-   `127.0.0.1:3080`.
+   `127.0.0.1:3080`. Compressible HTTP responses (HTML/JS/CSS/JSON/SVG,
+   ≥1 KB) may be gzipped; SSE and WebSocket are not. Hashed `/assets/*`
+   files may receive a long-cache header. See
+   [HTTP gzip](./docs/http-gzip.md).
 
 ## Features
 
@@ -151,6 +155,14 @@ flowchart LR
   per remote IP
 - Stream-level request body limit; hop-by-hop and spoofable headers are
   stripped; upstream `set-cookie` is removed
+- Gzip for compressible HTTP responses (JS/CSS/HTML/JSON/SVG) when the
+  client advertises gzip; SSE, WebSocket, fonts, gate pages, and bodies
+  under 1 KB are skipped. Measured first-load of the Harness shell:
+  **−72.7%** (1.29 MB → 351 KB). `vendor-*.js` −75.7%. Tiny JSON grows,
+  so it is not compressed. Issue #11's "95%+" is not a general result.
+  Off: `compressResponses: false`. Details: [HTTP gzip](./docs/http-gzip.md)
+- Long-cache `Cache-Control` on hashed `/assets/*` (not `index.html` or
+  `/api`). Off: `cacheHashedAssets: false`
 
 ### One-click public tunnel (Cloudflare quick tunnel)
 
@@ -346,6 +358,8 @@ Common options:
     cloudflaredPath: ""          # optional path to cloudflared for the one-click tunnel
     tlsCertFile: ""              # optional local HTTPS
     tlsKeyFile: ""
+    compressResponses: true      # gzip JS/CSS/JSON/HTML ≥1KB; skip SSE/WebSocket/fonts/gate pages
+    cacheHashedAssets: true      # immutable Cache-Control on hashed /assets/* only
 ```
 
 The complete option list, with defaults and validation, is defined in the
@@ -413,6 +427,11 @@ side of the tunnel. For LAN use without a tunnel, set
   platform; Windows ARM64 has no official build — install it yourself
   and set `cloudflaredPath`). For a stable daily entry, bring your own
   frp / ngrok / named tunnel.
+- Gzip at the proxy helps LAN and SSH/frp. A Cloudflare quick tunnel
+  already compresses HTML/JS/CSS/JSON at the edge, so that path sees
+  little extra saving. Live model output uses WebSocket and is not gzipped.
+  Plugin login/wait/home pages are not gzipped (about 1 KB of potential
+  saving). Full contract: [HTTP gzip](./docs/http-gzip.md).
 
 ## Development
 

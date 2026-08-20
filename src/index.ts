@@ -339,6 +339,8 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
         trustForwardedProto: () => config.trustForwardedProto === true || tunnelLive(),
         trustForwardedFor: () => config.trustForwardedFor === true || tunnelLive(),
         trustCloudflareConnectingIp: () => config.trustCloudflareConnectingIp === true || tunnelLive(),
+        compressResponses: config.compressResponses !== false,
+        cacheHashedAssets: config.cacheHashedAssets !== false,
         log: config.logRequests
           ? entry => { ctx.logger.debug(`reverse-proxy: ${entry.remote ?? '-'} ${entry.method} ${entry.path} -> ${entry.status}`) }
           : undefined,

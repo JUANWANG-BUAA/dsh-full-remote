@@ -58,7 +58,7 @@ DeepSeek Harness 的 Web 服务只绑定回环地址，且仅当请求的 `Host`
 
 - 转发前将 `Host`、`Origin` 改写为 `127.0.0.1`，使特权接口通过 Harness 的信任校验；
 - 任何请求都须先通过访问令牌或设备会话校验；
-- 转发 HTTP、SSE、WebSocket 流量；
+- 转发 HTTP、SSE、WebSocket 流量；可压缩的 HTTP 响应可能再做 gzip（SSE / WebSocket 不压）；
 - 提供设置页（**设置 → 反向代理**），用于启停代理、修改监听地址、轮换令牌、管理设备会话。
 
 改写使 Harness 原本对远程客户端的信任校验失效，因此插件提供自己的访问控制层作为替代，见[安全模型](#安全模型)。
@@ -76,7 +76,7 @@ flowchart LR
 
 1. 远程浏览器连接公网隧道，流量转发到插件的监听地址（默认 `127.0.0.1:3081`）。
 2. 请求只有携带访问令牌、有效的一次性邀请或已有的设备会话才会被接受；未通过鉴权的请求不会到达后端。
-3. 代理将 `Host`/`Origin` 改写为回环地址，移除不可信头部，再转发到 `127.0.0.1:3080` 上的 Harness Web 服务。
+3. 代理将 `Host`/`Origin` 改写为回环地址，移除不可信头部，再转发到 `127.0.0.1:3080` 上的 Harness Web 服务。可压缩的 HTTP 响应（HTML/JS/CSS/JSON/SVG，≥1 KB）可能做 gzip；SSE 与 WebSocket 不压。带内容 hash 的 `/assets/*` 可能加上长期缓存头。详见 [HTTP gzip](./docs/http-gzip.zh.md)。
 
 ## 功能
 
@@ -120,6 +120,14 @@ flowchart LR
 - 健康检查接口 `/_dsh_reverse_proxy/healthz`
 - WebSocket 升级限流：同一远程 IP 反复升级失败后会进入锁定
 - 请求体大小在流层面受限；剥离逐跳与可伪造头部；清除上游 `set-cookie`
+- 对可压缩的 HTTP 响应做 gzip（JS/CSS/HTML/JSON/SVG），客户端需声明
+  `Accept-Encoding: gzip`；SSE、WebSocket、字体、登录栅栏页、不足 1 KB
+  的响应不压。实测 Harness 首屏（`index.html` + 带 hash 的 index/vendor
+  JS/CSS）**−72.7%**（1.29 MB → 351 KB）；`vendor-*.js` −75.7%。过小 JSON
+  会变大所以跳过。issue #11 的「95%+」不是通用结果。关闭：
+  `compressResponses: false`。详见 [HTTP gzip](./docs/http-gzip.zh.md)
+- 带内容 hash 的 `/assets/*` 加上长期 `Cache-Control`（不含 `index.html` 与
+  `/api`）。关闭：`cacheHashedAssets: false`
 
 ### 移动端
 
@@ -254,6 +262,8 @@ dsh plugin --profile web update --latest dsh-full-remote
     cloudflaredPath: ""          # 可选：一键隧道用的 cloudflared 路径
     tlsCertFile: ""              # 可选本地 HTTPS
     tlsKeyFile: ""
+    compressResponses: true      # ≥1KB 的 JS/CSS/JSON/HTML 做 gzip；跳过 SSE/WebSocket/字体/栅栏页
+    cacheHashedAssets: true      # 仅给带 hash 的 /assets/* 加长期 Cache-Control
 ```
 
 完整选项、默认值与校验规则定义在包内 `Config` schema（`src/config.ts`）及
@@ -285,6 +295,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 - 默认情况下，运行在本机的隧道会让所有远程客户端在代理看来都是 `127.0.0.1`。因此 `allowedCidrs` 与按 IP 登录锁定只对“隧道整体”生效；如需按真实客户端 IP 生效，请在可信本地边缘后设置 `trustForwardedFor: true`。
 - 插件以自身的访问控制层替代 Harness 的远程信任校验，该层若存在缺陷，影响严重。若 Harness 未来提供官方远程访问能力，应重新评估本插件的定位。
 - 一键快速隧道：URL 每次启动随机变化（旧邀请与登录失效）、官方定位是临时/测试用途，非 HTML 大流量内容受 Cloudflare 条款限制；首次使用需按需下载 cloudflared（18–52 MB，取决于平台），Windows ARM64 没有官方构建（可自行安装后填 `cloudflaredPath`）。日常稳定入口仍建议自备 frp / ngrok / 命名隧道。
+- 代理侧 gzip 主要惠及局域网与 SSH/frp。Cloudflare 快速隧道边缘通常已经压缩 HTML/JS/CSS/JSON，这条路径增量很小。对话流式输出走 WebSocket，不会被 HTTP gzip 覆盖。插件自己的登录/等待/主页也不压（潜在节省约 1 KB）。完整约定：[HTTP gzip](./docs/http-gzip.zh.md)。
 
 ## 开发
 

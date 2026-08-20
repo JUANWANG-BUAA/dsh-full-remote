@@ -3,6 +3,35 @@
 All notable changes to dsh-full-remote (formerly dsh-reverse-proxy) are
 documented in this file.
 
+## Unreleased
+
+### Added
+
+- HTTP gzip for compressible proxied responses when the client sends
+  `Accept-Encoding: gzip`. SSE, WebSocket upgrades, fonts, already-encoded
+  bodies, plugin gate pages, and responses under 1 KB are skipped. Measured
+  through the proxy (gzip level 6, `@deepseek-ai/dsh-web-frontend@0.1.0-rc.6`
+  dist, `tests/compress-matrix.test.ts`): first-load shell
+  (`index.html` + hashed index/vendor JS/CSS) **1 285 699 → 350 802 bytes
+  (−72.7%)**; `vendor-*.js` 744 872 → 180 729 (−75.7%); all 89 dist files
+  −63.1% because fonts are left uncompressed. A repeated-padding JSON
+  fixture can gzip −96%+; that is not a product number, and issue #11's
+  "95%+" is not a general result. WebSocket event streams are unchanged.
+  Disable with `compressResponses: false`. Full contract:
+  [`docs/http-gzip.md`](./docs/http-gzip.md)
+  ([中文](./docs/http-gzip.zh.md)).
+- `Cache-Control: public, max-age=31536000, immutable` on successful hashed
+  `/assets/*` responses that have no upstream cache header. `index.html` and
+  `/api` are never cached. Node tests assert the header contract; they cannot
+  measure a browser cache hit. Disable with `cacheHashedAssets: false`.
+
+### Documentation
+
+- HTTP gzip / hashed-asset cache contract, measured first-load sizes, and
+  the cases that are intentionally not compressed:
+  [`docs/http-gzip.md`](./docs/http-gzip.md)
+  ([中文](./docs/http-gzip.zh.md)).
+
 ## 0.3.4 (2026-08-18)
 
 ### Security and reliability
