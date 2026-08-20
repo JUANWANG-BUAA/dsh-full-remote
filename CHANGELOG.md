@@ -32,6 +32,13 @@ documented in this file.
   [`docs/http-gzip.md`](./docs/http-gzip.md)
   ([中文](./docs/http-gzip.zh.md)).
 
+### Fixed
+
+- Installing alongside `deepseek-harness-auth` no longer fails boot with
+  `duplicate loader entry id: directory-picker-browse`. This bundle still
+  disables the adaptive picker, but it no longer inserts the official browse
+  rows; it creates them at runtime only when those ids are absent (#12).
+
 ## 0.3.4 (2026-08-18)
 
 ### Security and reliability

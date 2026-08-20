@@ -6,6 +6,9 @@
  * collisions (use PATH_DELIMITER=';' on Windows). This catches the common
  * failure mode where two UI bundles insert a second directory picker or
  * reverse proxy provider under a different layer.
+ *
+ * By default the check also applies tests/fixtures/deepseek-harness-auth.cordis.patch.yml
+ * so a same-id insert against deepseek-harness-auth fails in CI.
  */
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
@@ -13,7 +16,11 @@ import { join, resolve } from 'node:path'
 const root = resolve(new URL('..', import.meta.url).pathname)
 const harnessDir = process.env.HARNESS_DIR
 const delimiter = process.env.PATH_DELIMITER ?? (process.platform === 'win32' ? ';' : ':')
-const extra = (process.env.EXTRA_PATCHES ?? '').split(delimiter).filter(Boolean)
+const authFixture = join(root, 'tests/fixtures/deepseek-harness-auth.cordis.patch.yml')
+const extra = [
+  authFixture,
+  ...(process.env.EXTRA_PATCHES ?? '').split(delimiter).filter(Boolean),
+]
 const pluginPatch = await readFile(join(root, 'cordis.patch.yml'), 'utf8')
 
 function rows(text) {
@@ -48,12 +55,12 @@ if (!/^- id: directory-picker\n\s{2}disabled: !!js .*DSH_FULL_REMOTE_USE_NATIVE_
   throw new Error('directory-picker must be conditionally disabled by DSH_FULL_REMOTE_USE_NATIVE_PICKER')
 }
 for (const id of ['directory-picker-browse', 'ui-directory-picker-browse']) {
-  const row = pluginRows.find(item => item.id === id)
-  if (row === undefined) throw new Error(`missing ${id} row`)
-  const suffix = pluginPatch.slice(pluginPatch.indexOf(`- id: ${id}`), pluginPatch.indexOf(`- id: ${id}`) + 240)
-  if (!suffix.includes('disabled: !!js process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER')) {
-    throw new Error(`${id} is not conditionalized with the native-picker opt-out`)
+  if (pluginRows.some(item => item.id === id)) {
+    throw new Error(`${id} must not be inserted by this bundle; pin browse at runtime instead`)
   }
+}
+if (!pluginRows.some(item => item.id === 'reverse-proxy' && item.indent > 0)) {
+  throw new Error('missing reverse-proxy insert')
 }
 
 let baseIds
@@ -70,4 +77,4 @@ for (const path of extra) {
   finalIds = applyPatchIds(finalIds, await readFile(resolve(path), 'utf8'), path)
 }
 
-console.log(`composition check passed: ${finalIds.length} unique rows; browse/native picker is conditional`)
+console.log(`composition check passed: ${finalIds.length} unique rows; browse/native picker is conditional; auth fixture coexists`)

@@ -40,6 +40,14 @@ import { validateBackendHost, validateRuntimeConfig } from './config-validation.
 import { injectIndexEnhancements } from './index-enhancements.ts'
 import { createControlRoutes, type InviteResult } from './control-routes.ts'
 import type { RuntimeStatus } from './runtime-types.ts'
+import {
+  DIRECTORY_PICKER_NATIVE_OPT_OUT,
+  getOptionalLoader,
+  loaderEntryIds,
+  pinBrowseDirectoryPicker,
+  shouldPinBrowseDirectoryPicker,
+  unpinBrowseDirectoryPicker,
+} from './directory-picker.ts'
 
 export const name = 'reverse-proxy'
 export const inject = ['webServer']
@@ -61,6 +69,7 @@ interface RuntimeContext {
     info(message: string): void
     debug(message: string): void
   }
+  get?(name: string): unknown
   webServer: {
     readonly port: number
     register(route: {
@@ -593,9 +602,23 @@ export function apply(ctx: RuntimeContext, config: RuntimeConfig) {
     const untap = ctx.webServer.tapIndex(injectIndexEnhancements)
     ctx.logger.info(`reverse-proxy: control surface mounted at ${CONTROL_PREFIX} (loopback only)`)
     void runtime.restore()
+    const loader = getOptionalLoader(ctx)
+    const created: string[] = []
+    let pinning: Promise<void> = Promise.resolve()
+    if (loader !== undefined && shouldPinBrowseDirectoryPicker({
+      nativeOptOut: process.env[DIRECTORY_PICKER_NATIVE_OPT_OUT] === '1',
+      existingIds: loaderEntryIds(loader),
+    })) {
+      pinning = pinBrowseDirectoryPicker(loader).then(
+        ids => { created.push(...ids) },
+        error => { ctx.logger.warn(asError(error)) },
+      )
+    }
     return async () => {
       unroute()
       untap()
+      await pinning
+      if (loader !== undefined) await unpinBrowseDirectoryPicker(loader, created)
       await runtime.dispose()
     }
   }, 'reverse-proxy')

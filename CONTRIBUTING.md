@@ -49,6 +49,11 @@ composition.
 
 Add or update tests for every behavior change.
 
+`pnpm run test:composition` applies this bundle's patch over a web-app
+id list (or `HARNESS_DIR`) and then
+`tests/fixtures/deepseek-harness-auth.cordis.patch.yml`. Duplicate insert
+ids fail the check.
+
 ## Commit messages
 
 Follow the repo's existing style: short imperative summary lines in Chinese

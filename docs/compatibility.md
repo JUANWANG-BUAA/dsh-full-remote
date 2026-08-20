@@ -12,19 +12,20 @@ Install the normal Harness web bundle first, then this plugin. The shipped
 
 - inserts the `reverse-proxy` host row;
 - conditionally disables the adaptive `directory-picker` row;
-- enables the in-app directory browser pair so remote “Add workspace” does
-  not open a desktop dialog;
-- keeps the rows uniquely identified so later profile patches can override
-  them without mounting two `ctx.directoryPicker` providers.
+- pins Harness's in-app directory browser at runtime when the official
+  `directory-picker-browse` / `ui-directory-picker-browse` rows are not
+  already present, so remote “Add workspace” does not open a desktop dialog.
 
 The default is remote-safe browse mode. Set
-`DSH_FULL_REMOTE_USE_NATIVE_PICKER=1` before boot to disable the browse pair
-and keep the Harness adaptive/native picker for a host-only deployment. Do not
+`DSH_FULL_REMOTE_USE_NATIVE_PICKER=1` before boot to skip that pin and keep
+the Harness adaptive/native picker for a host-only deployment. Do not
 combine that opt-out with a remote directory-browsing requirement.
 
-If another plugin also patches any of those rows, inspect the final profile
-composition. Do not add a second row with id `reverse-proxy`,
-`directory-picker-browse`, or `ui-directory-picker-browse`.
+If another plugin also inserts `reverse-proxy`, inspect the final profile
+composition. Do not add a second row with that id. Bundles that already
+insert `directory-picker-browse` (for example `deepseek-harness-auth`) can
+be installed together with this plugin; this layer will not insert those
+ids again.
 
 ## Known composition constraints
 
@@ -32,6 +33,7 @@ composition. Do not add a second row with id `reverse-proxy`,
 |---|---|---|
 | `dsh-web-mobile` or another mobile layout | CSS/layout ownership may overlap; the remote interaction overlay is independent | Install both, keep one owner for global layout, and verify the directory drawer and settings section |
 | Native/adaptive `directory-picker` | Disabled by default; opt-out is explicit | Keep the in-app browse pair enabled for remote use |
+| `deepseek-harness-auth` (or another bundle that inserts `directory-picker-browse`) | Both need the in-app picker; a second insert of the same row id fails boot | This plugin does not insert those ids; it pins browse at runtime only when they are absent |
 | Another reverse proxy/auth gateway | A second gateway can rewrite `Host`/`Origin` or cookies twice | Put this plugin directly in front of Harness Web, or disable the duplicate rewrite/auth layer |
 | TLS terminator / tunnel | Forwarded headers are trusted only when explicitly configured | Set `trustForwardedFor` only behind a loopback edge that strips/rebuilds those headers; set `trustCloudflareConnectingIp` only for a real Cloudflare edge |
 | Cloudflare (or other) edge compression | The edge may already gzip/brotli HTML/JS/CSS/JSON | Proxy-side gzip still helps LAN/SSH/frp; do not expect a second large saving on a Cloudflare quick tunnel. See [HTTP gzip](./http-gzip.md) |

@@ -1,10 +1,12 @@
 # Pin the in-app directory picker so a phone can add a workspace.
 # directory-picker-auto chooses the native picker for an attended loopback
 # host, but that dialog opens on the host display and is unusable remotely.
-# Default to the browse backend; an operator who only wants the local native
-# chooser can set DSH_FULL_REMOTE_USE_NATIVE_PICKER=1 before boot. Both paths
-# are conditional and every row has one stable id, so another patch layer can
-# override or disable the choice without creating duplicate providers.
+# Disable the adaptive row here; the host plugin creates the browse pair at
+# runtime when the official ids are not already in the tree. Inserting
+# `directory-picker-browse` from this layer collides with other remote-access
+# bundles (deepseek-harness-auth) that insert the same ids.
+# Default is remote-safe browse; set DSH_FULL_REMOTE_USE_NATIVE_PICKER=1
+# before boot to keep the Harness adaptive/native picker instead.
 # This layer must apply AFTER web-app (`dsh plugin --profile web add` appends).
 - id: directory-picker
   disabled: !!js process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER !== '1'
@@ -16,9 +18,3 @@
       config:
         listenHost: 127.0.0.1
         listenPort: 3081
-    - id: directory-picker-browse
-      name: '@deepseek-ai/dsh-host-directory-picker-browse'
-      disabled: !!js process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER === '1'
-    - id: ui-directory-picker-browse
-      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'
-      disabled: !!js process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER === '1'

@@ -35,6 +35,41 @@ class TestWebServer extends Service {
   }
 }
 
+class TestLoader extends Service {
+  store: Record<string, unknown> = { 'directory-picker': {} }
+  created: string[] = []
+
+  constructor(ctx: Context) {
+    super(ctx, 'loader')
+  }
+
+  async create({ name }: { name: string }) {
+    const id = name.includes('ui-directory-picker-browse') ? 'ui-pin' : 'host-pin'
+    this.store[id] = { name }
+    this.created.push(id)
+    return id
+  }
+
+  async remove(id: string) {
+    delete this.store[id]
+    this.created = this.created.filter(entry => entry !== id)
+  }
+}
+
+function pluginConfig(dir: string) {
+  return {
+    listenHost: '127.0.0.1',
+    listenPort: 0,
+    backendHost: '127.0.0.1',
+    backendPort: 3080,
+    stateFile: join(dir, 'state.json'),
+    autoRestore: false,
+    maxRequestBytes: 1024,
+    upstreamTimeoutMs: 1000,
+    cookieName: 'test_session',
+  }
+}
+
 describe('Cordis lifecycle', () => {
   it('withdraws routes and index taps when the plugin fiber is disposed', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-lifecycle-'))
@@ -76,6 +111,51 @@ describe('Cordis lifecycle', () => {
       assert.equal(web.routes, 0)
       assert.equal(web.taps, 0)
     } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('pins the browse pair when the official ids are absent, and removes them on dispose', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-picker-'))
+    const previous = process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER
+    delete process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER
+    try {
+      const ctx = new Context()
+      await ctx.plugin(TestWebServer)
+      await ctx.plugin(TestLoader)
+      const loader = ctx.get('loader') as TestLoader
+      const fiber = await ctx.plugin(plugin, pluginConfig(dir))
+      for (let i = 0; i < 20 && loader.created.length < 2; i++) {
+        await new Promise<void>(resolve => { setImmediate(resolve) })
+      }
+      assert.deepEqual(loader.created, ['host-pin', 'ui-pin'])
+      await fiber.dispose()
+      assert.deepEqual(loader.created, [])
+    } finally {
+      if (previous === undefined) delete process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER
+      else process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER = previous
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not pin browse when another plugin already inserted the official ids', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-picker-skip-'))
+    const previous = process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER
+    delete process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER
+    try {
+      const ctx = new Context()
+      await ctx.plugin(TestWebServer)
+      await ctx.plugin(TestLoader)
+      const loader = ctx.get('loader') as TestLoader
+      loader.store['directory-picker-browse'] = {}
+      loader.store['ui-directory-picker-browse'] = {}
+      const fiber = await ctx.plugin(plugin, pluginConfig(dir))
+      await new Promise<void>(resolve => { setImmediate(resolve) })
+      assert.deepEqual(loader.created, [])
+      await fiber.dispose()
+    } finally {
+      if (previous === undefined) delete process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER
+      else process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER = previous
       await rm(dir, { recursive: true, force: true })
     }
   })

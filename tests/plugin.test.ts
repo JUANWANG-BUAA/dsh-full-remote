@@ -340,14 +340,16 @@ describe('real index fixture', () => {
 })
 
 describe('bundle patch', () => {
-  it('conditionally selects one directory-picker implementation and pins the browse pair', async () => {
+  it('disables the adaptive picker and only inserts reverse-proxy', async () => {
     const yaml = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
     assert.match(yaml, /id: directory-picker\n {2}disabled: !!js process\.env\.DSH_FULL_REMOTE_USE_NATIVE_PICKER !== '1'/)
-    assert.match(yaml, /id: directory-picker-browse\n {6}name: '@deepseek-ai\/dsh-host-directory-picker-browse'[\s\S]*disabled: !!js process\.env\.DSH_FULL_REMOTE_USE_NATIVE_PICKER === '1'/)
-    assert.match(yaml, /id: ui-directory-picker-browse\n {6}name: '@deepseek-ai\/dsh-client-ui-directory-picker-browse'[\s\S]*disabled: !!js process\.env\.DSH_FULL_REMOTE_USE_NATIVE_PICKER === '1'/)
     assert.match(yaml, /id: reverse-proxy\n {6}name: dsh-full-remote/)
     const ids = [...yaml.matchAll(/^\s*- id: ([^\s#]+)/gm)].map(match => match[1])
     assert.equal(new Set(ids).size, ids.length)
+    assert.equal(ids.includes('directory-picker-browse'), false)
+    assert.equal(ids.includes('ui-directory-picker-browse'), false)
+    const inserted = [...yaml.matchAll(/^ {4}- id: ([^\s#]+)/gm)].map(match => match[1])
+    assert.deepEqual(inserted, ['reverse-proxy'])
   })
 })
 

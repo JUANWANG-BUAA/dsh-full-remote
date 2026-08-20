@@ -370,9 +370,10 @@ Two points to note:
 
 - Installing the plugin pins the in-app directory picker so that a phone
   can add workspaces. By default the stock adaptive picker is disabled and
-  the browse pair is enabled; set `DSH_FULL_REMOTE_USE_NATIVE_PICKER=1`
-  before boot only when you deliberately want the host's native chooser and
-  do not need remote directory browsing.
+  the browse pair is created at runtime unless another plugin already
+  inserted it. Set `DSH_FULL_REMOTE_USE_NATIVE_PICKER=1` before boot only
+  when you deliberately want the host's native chooser and do not need
+  remote directory browsing.
 - `backendHost` must remain a loopback address. A wildcard or non-loopback
   value is rejected at load time.
 

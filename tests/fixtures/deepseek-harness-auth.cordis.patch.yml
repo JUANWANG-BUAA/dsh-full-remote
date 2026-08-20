@@ -1,0 +1,10 @@
+# Minimal copy of taichuy/deepseek-harness-auth's bundle patch, for
+# composition collision checks. Keep the directory-picker ids in sync with
+# that package; other auth rows are omitted.
+- id: directory-picker
+  disabled: true
+- insert:
+    - id: directory-picker-browse
+      name: '@deepseek-ai/dsh-host-directory-picker-browse'
+    - id: ui-directory-picker-browse
+      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'

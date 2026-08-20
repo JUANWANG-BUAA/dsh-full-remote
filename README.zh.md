@@ -271,7 +271,7 @@ dsh plugin --profile web update --latest dsh-full-remote
 
 两点说明：
 
-- 安装插件会钉住应用内目录选择器，使手机可以添加工作区。默认禁用官方自适应选择器并启用 browse 双面；只有明确需要宿主原生选择器、且不需要远程目录浏览时，才在启动前设置 `DSH_FULL_REMOTE_USE_NATIVE_PICKER=1`。
+- 安装插件会钉住应用内目录选择器，使手机可以添加工作区。默认禁用官方自适应选择器，并在组合里还没有官方 browse 行时于运行时创建它；只有明确需要宿主原生选择器、且不需要远程目录浏览时，才在启动前设置 `DSH_FULL_REMOTE_USE_NATIVE_PICKER=1`。
 - `backendHost` 必须是回环地址，通配地址或非回环地址在加载时会被拒绝。
 
 ## 安全模型
