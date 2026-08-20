@@ -5,6 +5,12 @@ documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- Keep the connection trust bootstrap installed when Harness switches its
+  module loader from the queued registration sink to the live sink, restoring
+  remote model settings on `@deepseek-ai/dsh@0.1.0-rc.7` (#13).
+
 ## 0.3.5 (2026-08-20)
 
 ### Added

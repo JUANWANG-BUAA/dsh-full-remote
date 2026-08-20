@@ -133,6 +133,30 @@ describe('page bootstrap', () => {
     assert.equal(env.seen, innerFactory)
   })
 
+  it('keeps wrapping after the module system replaces the loader sink', () => {
+    const env = bootPage()
+    env.provided = []
+    const handle = { isLoopback: false, api: {} }
+    env.factoryModule = {
+      apply(ctx: { provide(name: string, value: unknown): void }) {
+        ctx.provide('connection', handle)
+      },
+    }
+    vm.runInContext(`
+      var captured;
+      globalThis.__ModuleLoader__ = { load: function() {} };
+      globalThis.__ModuleLoader__.load = function(h) { captured = h };
+      globalThis.__ModuleLoader__.load({
+        id: ${JSON.stringify(CONNECTION_CLIENT_ID)},
+        factory: function() { return globalThis.factoryModule }
+      });
+      globalThis.wrappedMod = captured.factory(function() {});
+    `, env)
+    mockCtx(env, handle)
+    vm.runInContext('globalThis.wrappedMod.apply(globalThis.ctx)', env)
+    assert.equal(handle.isLoopback, true)
+  })
+
   it('leaves isLoopback alone when the trust flag is cleared', () => {
     const env = bootPage()
     vm.runInContext('delete globalThis.__DSH_FULL_REMOTE_TRUSTED__', env)

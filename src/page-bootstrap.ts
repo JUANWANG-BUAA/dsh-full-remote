@@ -13,6 +13,8 @@
  * It must not assign `ctx.provide` or other Cordis mixin accessors:
  * Context is a Proxy and those writes replace the shared ReflectService
  * method table (GitHub issue #9).
+ * The loader changes its registration sink when it becomes live, so the
+ * `load` accessor must wrap both the initial function and later assignments.
  *
  * Kept as an ES5 string so tests can eval it and the HTML injector can
  * splice it verbatim. Do not put `</script>` in this source.
@@ -58,13 +60,17 @@ export const PAGE_BOOTSTRAP_SOURCE = '(function(){'
   + 'return mod}'
   + 'function wrapLoader(loader){'
   + 'if(!loader||typeof loader.load!=="function"||loader.__dshFullRemoteTrusted)return loader;'
-  + 'var origLoad=loader.load;'
-  + 'loader.load=function(h){'
+  + 'function wrapLoad(fn){return function(h){'
   + 'if(h&&h.id===CONN&&typeof h.factory==="function"){'
   + 'var inner=h.factory;'
   + 'h=Object.assign({},h,{factory:function(req){return wrapExports(inner(req))}})'
   + '}'
-  + 'return origLoad.call(this,h)};'
+  + 'return fn.call(this,h)}}'
+  + 'var currentLoad=wrapLoad(loader.load);'
+  + 'try{Object.defineProperty(loader,"load",{configurable:true,enumerable:true,'
+  + 'get:function(){return currentLoad},'
+  + 'set:function(v){currentLoad=wrapLoad(v)}})}'
+  + 'catch(e7){loader.load=currentLoad}'
   + 'try{Object.defineProperty(loader,"__dshFullRemoteTrusted",{value:true})}catch(e9){loader.__dshFullRemoteTrusted=true}'
   + 'return loader}'
   + 'var current;'
