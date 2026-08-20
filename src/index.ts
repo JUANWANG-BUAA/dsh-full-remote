@@ -42,11 +42,7 @@ import { createControlRoutes, type InviteResult } from './control-routes.ts'
 import type { RuntimeStatus } from './runtime-types.ts'
 import {
   DIRECTORY_PICKER_NATIVE_OPT_OUT,
-  getOptionalLoader,
-  loaderEntryIds,
-  pinBrowseDirectoryPicker,
-  shouldPinBrowseDirectoryPicker,
-  unpinBrowseDirectoryPicker,
+  startBrowsePin,
 } from './directory-picker.ts'
 
 export const name = 'reverse-proxy'
@@ -602,23 +598,15 @@ export function apply(ctx: RuntimeContext, config: RuntimeConfig) {
     const untap = ctx.webServer.tapIndex(injectIndexEnhancements)
     ctx.logger.info(`reverse-proxy: control surface mounted at ${CONTROL_PREFIX} (loopback only)`)
     void runtime.restore()
-    const loader = getOptionalLoader(ctx)
-    const created: string[] = []
-    let pinning: Promise<void> = Promise.resolve()
-    if (loader !== undefined && shouldPinBrowseDirectoryPicker({
-      nativeOptOut: process.env[DIRECTORY_PICKER_NATIVE_OPT_OUT] === '1',
-      existingIds: loaderEntryIds(loader),
-    })) {
-      pinning = pinBrowseDirectoryPicker(loader).then(
-        ids => { created.push(...ids) },
-        error => { ctx.logger.warn(asError(error)) },
-      )
-    }
+    const browsePin = startBrowsePin(
+      ctx,
+      process.env[DIRECTORY_PICKER_NATIVE_OPT_OUT] === '1',
+      error => { ctx.logger.warn(asError(error)) },
+    )
     return async () => {
       unroute()
       untap()
-      await pinning
-      if (loader !== undefined) await unpinBrowseDirectoryPicker(loader, created)
+      await browsePin.dispose()
       await runtime.dispose()
     }
   }, 'reverse-proxy')

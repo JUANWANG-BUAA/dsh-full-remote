@@ -25,7 +25,8 @@ If another plugin also inserts `reverse-proxy`, inspect the final profile
 composition. Do not add a second row with that id. Bundles that already
 insert `directory-picker-browse` (for example `deepseek-harness-auth`) can
 be installed together with this plugin; this layer will not insert those
-ids again.
+ids again. The runtime pin looks at `loader.entries()` across nested
+Include trees, not only the loader root store.
 
 ## Known composition constraints
 
@@ -33,7 +34,7 @@ ids again.
 |---|---|---|
 | `dsh-web-mobile` or another mobile layout | CSS/layout ownership may overlap; the remote interaction overlay is independent | Install both, keep one owner for global layout, and verify the directory drawer and settings section |
 | Native/adaptive `directory-picker` | Disabled by default; opt-out is explicit | Keep the in-app browse pair enabled for remote use |
-| `deepseek-harness-auth` (or another bundle that inserts `directory-picker-browse`) | Both need the in-app picker; a second insert of the same row id fails boot | This plugin does not insert those ids; it pins browse at runtime only when they are absent |
+| `deepseek-harness-auth` (or another bundle that inserts `directory-picker-browse`) | Both need the in-app picker; a second insert of the same row id fails boot | This plugin does not insert those ids; it pins browse at runtime only when they are absent from the whole loader tree |
 | Another reverse proxy/auth gateway | A second gateway can rewrite `Host`/`Origin` or cookies twice | Put this plugin directly in front of Harness Web, or disable the duplicate rewrite/auth layer |
 | TLS terminator / tunnel | Forwarded headers are trusted only when explicitly configured | Set `trustForwardedFor` only behind a loopback edge that strips/rebuilds those headers; set `trustCloudflareConnectingIp` only for a real Cloudflare edge |
 | Cloudflare (or other) edge compression | The edge may already gzip/brotli HTML/JS/CSS/JSON | Proxy-side gzip still helps LAN/SSH/frp; do not expect a second large saving on a Cloudflare quick tunnel. See [HTTP gzip](./http-gzip.md) |

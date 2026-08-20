@@ -50,6 +50,10 @@ class TestLoader extends Service {
     return id
   }
 
+  *entries() {
+    for (const id of Object.keys(this.store)) yield { options: { id } }
+  }
+
   async remove(id: string) {
     delete this.store[id]
     this.created = this.created.filter(entry => entry !== id)
@@ -149,6 +153,45 @@ describe('Cordis lifecycle', () => {
       const loader = ctx.get('loader') as TestLoader
       loader.store['directory-picker-browse'] = {}
       loader.store['ui-directory-picker-browse'] = {}
+      const fiber = await ctx.plugin(plugin, pluginConfig(dir))
+      await new Promise<void>(resolve => { setImmediate(resolve) })
+      assert.deepEqual(loader.created, [])
+      await fiber.dispose()
+    } finally {
+      if (previous === undefined) delete process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER
+      else process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER = previous
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('does not pin when official browse ids live under a nested Include tree', async () => {
+    class NestedIncludeLoader extends Service {
+      created: string[] = []
+
+      constructor(ctx: Context) {
+        super(ctx, 'loader')
+      }
+
+      *entries() {
+        yield { options: { id: 'include' } }
+        yield { id: 'include:directory-picker-browse', options: { id: 'directory-picker-browse' } }
+        yield { id: 'include:ui-directory-picker-browse', options: { id: 'ui-directory-picker-browse' } }
+      }
+
+      async create() {
+        this.created.push('unexpected')
+        return 'unexpected'
+      }
+    }
+
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-picker-nested-'))
+    const previous = process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER
+    delete process.env.DSH_FULL_REMOTE_USE_NATIVE_PICKER
+    try {
+      const ctx = new Context()
+      await ctx.plugin(TestWebServer)
+      await ctx.plugin(NestedIncludeLoader)
+      const loader = ctx.get('loader') as NestedIncludeLoader
       const fiber = await ctx.plugin(plugin, pluginConfig(dir))
       await new Promise<void>(resolve => { setImmediate(resolve) })
       assert.deepEqual(loader.created, [])

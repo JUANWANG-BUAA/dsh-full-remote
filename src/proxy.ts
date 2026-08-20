@@ -45,7 +45,6 @@ import {
   waitPagePath,
 } from './pages.ts'
 
-/** Response header bag the proxy relays between client and upstream. */
 /** Per-IP failed-login tracker surface. */
 interface LoginTracker {
   check(ip: string, now?: number): number
@@ -253,6 +252,26 @@ function redirect(res: ServerResponse, location: string, extra: Record<string, s
   res.end()
 }
 
+function pipeUpstreamBody(incoming: IncomingMessage, res: ServerResponse, gzip: boolean) {
+  if (!gzip) {
+    incoming.on('error', () => {
+      if (!res.destroyed) res.destroy()
+    })
+    incoming.pipe(res)
+    return
+  }
+  const gzipStream = createGzip({ level: 6 })
+  incoming.on('error', () => {
+    gzipStream.destroy()
+    if (!res.destroyed) res.destroy()
+  })
+  gzipStream.on('error', () => {
+    incoming.destroy()
+    if (!res.destroyed) res.destroy()
+  })
+  incoming.pipe(gzipStream).pipe(res)
+}
+
 function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSpec, sessionId: string) {
   const contentLength = Number(req.headers['content-length'] ?? 0)
   if (!Number.isFinite(contentLength) || contentLength < 0 || contentLength > spec.maxRequestBytes) {
@@ -283,18 +302,7 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
     const gzip = gzipDecisionFromUpstream(req, { statusCode: status, headers: responseHeaders }, spec.compressResponses)
     if (gzip) applyGzipResponseHeaders(responseHeaders)
     res.writeHead(status, responseHeaders)
-    incoming.on('error', () => {
-      if (!res.destroyed) res.destroy()
-    })
-    if (!gzip) {
-      incoming.pipe(res)
-      return
-    }
-    const gzipStream = createGzip({ level: 6 })
-    gzipStream.on('error', () => {
-      if (!res.destroyed) res.destroy()
-    })
-    incoming.pipe(gzipStream).pipe(res)
+    pipeUpstreamBody(incoming, res, gzip)
   })
   spec.trackUpstream?.(up)
   const releaseSession = spec.trackSession(sessionId, () => {
