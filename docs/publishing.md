@@ -8,7 +8,7 @@
   **`@deepseek-ai/dsh-web-app@0.1.0-rc.6` (dist-tag `next`) installs
   cleanly** — all 59 of its dependencies resolve. Pin the version;
   do not tell users the bundle is unpublished.
-- The current published plugin is `dsh-full-remote@0.3.3`.
+- The current published plugin is `dsh-full-remote@0.3.5`.
 - The legacy `dsh-reverse-proxy@0.1.0` package is deprecated and points users
   to `dsh-full-remote`.
 
@@ -66,6 +66,8 @@ package is a different product.
 - [x] Tag `v0.3.1` (one-click Cloudflare quick tunnel, device home, invite retry reuse).
 - [x] Tag `v0.3.2` (security hardening, production audit command, and real Harness smoke coverage).
 - [x] Tag `v0.3.3` (durable-state rollback, real client contracts, tarball smoke, and compatibility hardening); published 2026-08-18.
+- [x] Tag `v0.3.4` (CI/security hardening follow-up); published 2026-08-18.
+- [x] Tag `v0.3.5` (HTTP gzip + hashed-asset cache, coexist with `deepseek-harness-auth` browse rows).
 - [x] Deprecate `dsh-reverse-proxy@0.1.0`; verified with `npm view dsh-reverse-proxy deprecated` on 2026-08-18.
 - [x] Apply GitHub topics from `docs/github-metadata.md` (applied 2026-08-16).
 - [x] PR the plugin into `awesome-dsh-plugin` as `dsh-full-remote` ([#833](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/833), updated 2026-08-16).

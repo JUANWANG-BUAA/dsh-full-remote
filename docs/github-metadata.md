@@ -48,7 +48,7 @@ Instead: **Settings → General → Social preview → Edit** → upload
 ## About sidebar extras
 
 - Website: `https://www.npmjs.com/package/dsh-full-remote`.
-- Releases: keep enabled; current tag is `v0.3.3`.
+- Releases: keep enabled; current tag is `v0.3.5`.
 
 The description, homepage, and topics were applied with `gh repo edit` and
 verified through the GitHub API on 2026-08-18. Social preview upload remains a

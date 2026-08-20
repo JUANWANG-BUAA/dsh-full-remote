@@ -106,6 +106,5 @@ compress. Live model output uses WebSocket and is unchanged.
 
 ## Shipping
 
-Implemented under CHANGELOG **Unreleased**. Not in published
-`dsh-full-remote@0.3.4`. Close issue #11 when the next version that
-includes this change is on npm.
+Shipped in `dsh-full-remote@0.3.5`. Close issue #11 after this version is
+on npm.

@@ -103,5 +103,4 @@ Cloudflare 边缘通常已经压缩 HTML/JS/CSS/JSON。代理侧 gzip 主要惠�
 
 ## 发布状态
 
-实现记在 CHANGELOG **Unreleased**。尚未进入已发布的
-`dsh-full-remote@0.3.4`。包含本改动的下一版本上 npm 后再关闭 issue #11。
+随 `dsh-full-remote@0.3.5` 发布。该版本上 npm 后再关闭 issue #11。

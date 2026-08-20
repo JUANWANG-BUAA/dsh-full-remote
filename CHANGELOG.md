@@ -5,6 +5,8 @@ documented in this file.
 
 ## Unreleased
 
+## 0.3.5 (2026-08-20)
+
 ### Added
 
 - HTTP gzip for compressible proxied responses when the client sends
@@ -37,7 +39,8 @@ documented in this file.
 - Installing alongside `deepseek-harness-auth` no longer fails boot with
   `duplicate loader entry id: directory-picker-browse`. This bundle still
   disables the adaptive picker, but it no longer inserts the official browse
-  rows; it creates them at runtime only when those ids are absent (#12).
+  rows; it creates them at runtime only when those ids are absent from the
+  whole loader tree, including nested Include subtrees (#12).
 
 ## 0.3.4 (2026-08-18)
 
