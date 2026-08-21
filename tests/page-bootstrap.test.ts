@@ -133,6 +133,163 @@ describe('page bootstrap', () => {
     assert.equal(env.seen, innerFactory)
   })
 
+  function installRc8QueueFacade(env: BootEnv): void {
+    vm.runInContext(`
+      var pendingQueue = [];
+      globalThis.__ModuleLoader__ = {
+        mode: "queue",
+        pendingQueue: pendingQueue,
+        load: function(registration) { pendingQueue.push(registration); },
+        create: function() {
+          if (this.mode !== "queue") throw new Error("create after boot");
+          var pending = this.pendingQueue.splice(0);
+          this.mode = "live";
+          this.load = function(registration) { globalThis.liveSeen = registration; };
+          for (var i = 0; i < pending.length; i++) this.load(pending[i]);
+          return this;
+        }
+      };
+    `, env)
+  }
+
+  it('keeps wrapping connection factories after rc.8 queue create() replaces load', () => {
+    const env = bootPage()
+    env.provided = []
+    env.getCalls = 0
+    const handle = { isLoopback: false, api: {} }
+    env.factoryModule = {
+      apply(ctx: { provide(name: string, value: unknown): void }) {
+        ctx.provide('connection', handle)
+      },
+    }
+    installRc8QueueFacade(env)
+    vm.runInContext(`
+      globalThis.__ModuleLoader__.create();
+      globalThis.__ModuleLoader__.load({
+        id: ${JSON.stringify(CONNECTION_CLIENT_ID)},
+        factory: function() { return globalThis.factoryModule }
+      });
+      globalThis.wrappedMod = globalThis.liveSeen.factory(function() {});
+    `, env)
+    mockCtx(env, handle)
+    vm.runInContext('globalThis.wrappedMod.apply(globalThis.ctx)', env)
+    assert.equal(handle.isLoopback, true)
+    assert.equal(
+      (env.__ModuleLoader__ as { load?: { __dshFullRemoteLoad?: boolean } }).load?.__dshFullRemoteLoad,
+      true,
+    )
+  })
+
+  it('wraps a connection registration replayed from the rc.8 pending queue', () => {
+    const env = bootPage()
+    env.provided = []
+    const handle = { isLoopback: false, api: {} }
+    env.factoryModule = {
+      apply(ctx: { provide(name: string, value: unknown): void }) {
+        ctx.provide('connection', handle)
+      },
+    }
+    installRc8QueueFacade(env)
+    vm.runInContext(`
+      globalThis.__ModuleLoader__.load({
+        id: ${JSON.stringify(CONNECTION_CLIENT_ID)},
+        factory: function() { return globalThis.factoryModule }
+      });
+      globalThis.__ModuleLoader__.create();
+      globalThis.wrappedMod = globalThis.liveSeen.factory(function() {});
+    `, env)
+    mockCtx(env, handle)
+    vm.runInContext('globalThis.wrappedMod.apply(globalThis.ctx)', env)
+    assert.equal(handle.isLoopback, true)
+  })
+
+  it('pins isLoopback even when the bootstrap eval runs in strict mode', () => {
+    const env = bootPage()
+    env.provided = []
+    const handle = { isLoopback: false, api: {} }
+    env.factoryModule = {
+      apply(ctx: { provide(name: string, value: unknown): void }) {
+        ctx.provide('connection', handle)
+      },
+    }
+    vm.runInContext(`
+      "use strict";
+      var captured;
+      globalThis.__ModuleLoader__ = { load: function(h) { captured = h } };
+      globalThis.__ModuleLoader__.load({
+        id: ${JSON.stringify(CONNECTION_CLIENT_ID)},
+        factory: function() { return globalThis.factoryModule }
+      });
+      globalThis.wrappedMod = captured.factory(function() {});
+    `, env)
+    mockCtx(env, handle)
+    vm.runInContext('globalThis.wrappedMod.apply(globalThis.ctx)', env)
+    assert.equal(handle.isLoopback, true)
+  })
+
+  it('re-wraps load when the live facade assigns a new load function', () => {
+    const env = bootPage()
+    env.provided = []
+    const handle = { isLoopback: false, api: {} }
+    env.factoryModule = {
+      apply(ctx: { provide(name: string, value: unknown): void }) {
+        ctx.provide('connection', handle)
+      },
+    }
+    vm.runInContext(`
+      globalThis.__ModuleLoader__ = { load: function() {} };
+      globalThis.__ModuleLoader__.load = function(h) { globalThis.liveSeen = h; };
+      globalThis.__ModuleLoader__.load({
+        id: ${JSON.stringify(CONNECTION_CLIENT_ID)},
+        factory: function() { return globalThis.factoryModule }
+      });
+      globalThis.wrappedMod = globalThis.liveSeen.factory(function() {});
+    `, env)
+    mockCtx(env, handle)
+    vm.runInContext('globalThis.wrappedMod.apply(globalThis.ctx)', env)
+    assert.equal(handle.isLoopback, true)
+  })
+
+  it('re-traps load when create() replaces the load descriptor', () => {
+    const env = bootPage()
+    env.provided = []
+    const handle = { isLoopback: false, api: {} }
+    env.factoryModule = {
+      apply(ctx: { provide(name: string, value: unknown): void }) {
+        ctx.provide('connection', handle)
+      },
+    }
+    vm.runInContext(`
+      var pendingQueue = [];
+      globalThis.__ModuleLoader__ = {
+        mode: "queue",
+        pendingQueue: pendingQueue,
+        load: function(registration) { pendingQueue.push(registration); },
+        create: function() {
+          var pending = this.pendingQueue.splice(0);
+          this.mode = "live";
+          Object.defineProperty(this, "load", {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: function(registration) { globalThis.liveSeen = registration; }
+          });
+          for (var i = 0; i < pending.length; i++) this.load(pending[i]);
+          return this;
+        }
+      };
+      globalThis.__ModuleLoader__.create();
+      globalThis.__ModuleLoader__.load({
+        id: ${JSON.stringify(CONNECTION_CLIENT_ID)},
+        factory: function() { return globalThis.factoryModule }
+      });
+      globalThis.wrappedMod = globalThis.liveSeen.factory(function() {});
+    `, env)
+    mockCtx(env, handle)
+    vm.runInContext('globalThis.wrappedMod.apply(globalThis.ctx)', env)
+    assert.equal(handle.isLoopback, true)
+  })
+
   it('leaves isLoopback alone when the trust flag is cleared', () => {
     const env = bootPage()
     vm.runInContext('delete globalThis.__DSH_FULL_REMOTE_TRUSTED__', env)

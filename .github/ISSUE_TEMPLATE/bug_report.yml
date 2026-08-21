@@ -14,7 +14,7 @@ body:
     attributes:
       label: Versions
       description: Plugin version and DeepSeek Harness version / checkout commit
-      placeholder: "dsh-full-remote 0.2.2, deepseek-harness 0.1.0-rc.6"
+      placeholder: "dsh-full-remote 0.3.6, deepseek-harness 0.1.0-rc.8"
     validations:
       required: true
   - type: dropdown

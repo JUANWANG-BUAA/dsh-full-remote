@@ -2,8 +2,9 @@
 
 `dsh-full-remote` is a bundle, not a replacement web application. It expects
 the Harness `webServer` service and the published client runtime/UI-slots
-packages in the supported peer range (`0.1.0-rc.5` through `<0.2`). It is not
-intended for a headless profile.
+packages in the supported peer range (`0.1.0-rc.5` through `<0.2`). It is
+verified against DeepSeek Harness **0.1.0-rc.8** (npm dist-tag `next`;
+`latest` may still lag). It is not intended for a headless profile.
 
 ## Installation order
 
@@ -52,7 +53,10 @@ After composing plugins, verify all of the following through the proxy:
    (the proxy does not gzip SSE or WebSocket; a delayed second SSE event
    must still arrive);
 5. revoking the device closes its active streams;
-6. the host UI still opens its own directory picker when accessed locally.
+6. the host UI still opens its own directory picker when accessed locally;
+7. on a non-loopback hostname, Settings → Models shows the provider catalog
+   rather than `settings are unavailable in this browser` (Harness 0.1.0-rc.8
+   describe-mirror).
 
 The CI real-Harness smoke installs the packed tarball and exercises the first,
 second, and session-control paths. `test:composition` checks the effective

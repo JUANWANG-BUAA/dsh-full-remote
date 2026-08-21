@@ -1,14 +1,17 @@
 # Publishing strategy
 
-## Registry reality (checked 2026-08-18)
+## Registry reality (checked 2026-08-21)
 
-- `@deepseek-ai/dsh-client-runtime`, `-ui-slots` publish `0.1.0-rc.6` on npm.
-- `@deepseek-ai/dsh-web-app@latest` still points at `0.0.1-rc.1`, whose
-  dependency `@deepseek-ai/dsh-client-ui-model` was never published.
-  **`@deepseek-ai/dsh-web-app@0.1.0-rc.6` (dist-tag `next`) installs
-  cleanly** — all 59 of its dependencies resolve. Pin the version;
-  do not tell users the bundle is unpublished.
-- The current published plugin is `dsh-full-remote@0.3.5`.
+- `@deepseek-ai/dsh` publishes `0.1.0-rc.8` on dist-tag `next`. npm
+  `latest` may still point at `0.1.0-rc.7`; pin `@next` or `@0.1.0-rc.8`
+  when adapting this plugin.
+- `@deepseek-ai/dsh-client-runtime` and `-ui-slots` publish matching
+  `0.1.0-rc.8` builds. This plugin's peer range (`>=0.1.0-rc.5 <0.2`)
+  accepts them.
+- `@deepseek-ai/dsh-web-app@latest` historically lagged; do not tell
+  users to install that package. Default `dsh --profile web` already
+  provides `webServer`.
+- The current published plugin is `dsh-full-remote@0.3.6`.
 - The legacy `dsh-reverse-proxy@0.1.0` package is deprecated and points users
   to `dsh-full-remote`.
 
@@ -68,6 +71,7 @@ package is a different product.
 - [x] Tag `v0.3.3` (durable-state rollback, real client contracts, tarball smoke, and compatibility hardening); published 2026-08-18.
 - [x] Tag `v0.3.4` (CI/security hardening follow-up); published 2026-08-18.
 - [x] Tag `v0.3.5` (HTTP gzip + hashed-asset cache, coexist with `deepseek-harness-auth` browse rows).
+- [ ] Tag `v0.3.6` (Harness 0.1.0-rc.8 ModuleLoader wrap + remote Models settings #13).
 - [x] Deprecate `dsh-reverse-proxy@0.1.0`; verified with `npm view dsh-reverse-proxy deprecated` on 2026-08-18.
 - [x] Apply GitHub topics from `docs/github-metadata.md` (applied 2026-08-16).
 - [x] PR the plugin into `awesome-dsh-plugin` as `dsh-full-remote` ([#833](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/833), updated 2026-08-16).

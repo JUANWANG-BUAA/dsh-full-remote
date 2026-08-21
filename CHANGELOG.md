@@ -5,6 +5,24 @@ documented in this file.
 
 ## Unreleased
 
+## 0.3.6 (2026-08-21)
+
+### Fixed
+
+- Remote Settings → Models no longer fails with
+  `加载提供方目录失败: settings are unavailable in this browser` on
+  DeepSeek Harness 0.1.0-rc.8. That release's HTML queue facade
+  `create()` replaces `__ModuleLoader__.load`; the page bootstrap now
+  traps that assignment (and re-traps after `create()`) so
+  `connection.isLoopback` is still pinned before official settings bind
+  (#13).
+
+### Changed
+
+- CI real-boot smoke and contributor bootstrap pin DeepSeek Harness
+  `0.1.0-rc.8` (`141eb6fef83422698aef7a981029e843e8161534`). Client peer
+  range remains `>=0.1.0-rc.5 <0.2`.
+
 ## 0.3.5 (2026-08-20)
 
 ### Added

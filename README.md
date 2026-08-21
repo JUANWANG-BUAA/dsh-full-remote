@@ -208,7 +208,8 @@ flowchart LR
 
 - Node.js `^22.19.0 || >=24`
 - A DeepSeek Harness **web** profile. The plugin depends on `webServer`
-  and is not intended for headless profiles.
+  and is not intended for headless profiles. Verified against
+  **0.1.0-rc.8** (npm dist-tag `next`).
 
 ## Installation
 
@@ -289,7 +290,7 @@ dsh plugin --profile web update --latest dsh-full-remote
 
 Then restart `dsh web`. `--latest` ignores the current range, installs the
 newest version, and rewrites `package.json`. For a specific version use
-`dsh plugin --profile web update dsh-full-remote@0.3.5`.
+`dsh plugin --profile web update dsh-full-remote@0.3.6`.
 
 ## Screenshots
 
@@ -408,8 +409,11 @@ side of the tunnel. For LAN use without a tunnel, set
   only be performed from the local Harness window, not from the tunnel
   URL.
 - Settings persistence on a remote page relies on a temporary trust pin
-  until Harness provides a proper deployment trust field. "Open on host"
-  from a phone acts on the machine running Harness.
+  until Harness provides a proper deployment trust field. On Harness
+  `0.1.0-rc.8`, that pin must survive the official ModuleLoader `create()`
+  replacing `load`; otherwise Settings → Models shows
+  `settings are unavailable in this browser`. "Open on host" from a phone
+  acts on the machine running Harness.
 - `allowTokenRead` defaults to `false`. When explicitly enabled, `GET /token`
   is served over loopback HTTP, so any local process that sends the control
   header can read the token; rotation always returns the replacement token.
@@ -440,7 +444,7 @@ side of the tunnel. For LAN use without a tunnel, set
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.3.5.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.6.tgz
 ```
 
 Git installs run the `prepare` build. On pnpm ≥ 10 allow it:

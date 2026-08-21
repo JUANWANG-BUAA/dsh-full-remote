@@ -10,7 +10,11 @@
  * `persistence: 'memory'`. This IIFE wraps `__ModuleLoader__` so the
  * official connection plugin's `apply()` is followed by a pin of
  * `connection.isLoopback` on the handle (`ctx.get('connection', false)`).
- * It must not assign `ctx.provide` or other Cordis mixin accessors:
+ * Harness 0.1.0-rc.8 installs a queue facade whose `create()` then
+ * assigns `target.load = register` on the same object; wrapping `load`
+ * once as a data property is overwritten. Trap `load` with an accessor
+ * and re-trap after `create()` so later connection registrations still
+ * wrap. It must not assign `ctx.provide` or other Cordis mixin accessors:
  * Context is a Proxy and those writes replace the shared ReflectService
  * method table (GitHub issue #9).
  *
@@ -56,15 +60,42 @@ export const PAGE_BOOTSTRAP_SOURCE = '(function(){'
   + 'try{console.warn("[dsh-full-remote] ModuleLoader export wrap failed",e8);'
   + 'globalThis.__DSH_FULL_REMOTE_BOOTSTRAP_FAILED__=1}catch(e8b){}}'
   + 'return mod}'
-  + 'function wrapLoader(loader){'
-  + 'if(!loader||typeof loader.load!=="function"||loader.__dshFullRemoteTrusted)return loader;'
-  + 'var origLoad=loader.load;'
-  + 'loader.load=function(h){'
+  + 'function wrapLoadFn(fn){'
+  + 'if(typeof fn!=="function")return fn;'
+  + 'if(fn.__dshFullRemoteLoad)return fn;'
+  + 'function wrappedLoad(h){'
   + 'if(h&&h.id===CONN&&typeof h.factory==="function"){'
   + 'var inner=h.factory;'
   + 'h=Object.assign({},h,{factory:function(req){return wrapExports(inner(req))}})'
   + '}'
-  + 'return origLoad.call(this,h)};'
+  + 'return fn.call(this,h)};'
+  + 'try{Object.defineProperty(wrappedLoad,"__dshFullRemoteLoad",{value:true})}catch(eL){wrappedLoad.__dshFullRemoteLoad=true}'
+  + 'return wrappedLoad}'
+  + 'function installLoadTrap(loader){'
+  + 'if(!loader)return;'
+  + 'var desc;try{desc=Object.getOwnPropertyDescriptor(loader,"load")}catch(eD){desc=undefined}'
+  + 'if(desc&&typeof desc.set==="function"&&desc.set.__dshFullRemoteLoadTrap)return;'
+  + 'var current=wrapLoadFn(typeof loader.load==="function"?loader.load:undefined);'
+  + 'function setLoad(v){current=wrapLoadFn(v)}'
+  + 'setLoad.__dshFullRemoteLoadTrap=true;'
+  + 'try{Object.defineProperty(loader,"load",{configurable:true,enumerable:true,get:function(){return current},set:setLoad})}'
+  + 'catch(eT){if(typeof loader.load==="function")loader.load=wrapLoadFn(loader.load)}}'
+  + 'function wrapCreate(loader){'
+  + 'if(!loader||typeof loader.create!=="function"||loader.create.__dshFullRemoteCreate)return;'
+  + 'var origCreate=loader.create;'
+  + 'function wrappedCreate(){'
+  + 'var result=origCreate.apply(this,arguments);'
+  + 'installLoadTrap(this);'
+  + 'installLoadTrap(loader);'
+  + 'if(result&&result!==loader&&result!==this)installLoadTrap(result);'
+  + 'return result}'
+  + 'try{Object.defineProperty(wrappedCreate,"__dshFullRemoteCreate",{value:true})}catch(eC){wrappedCreate.__dshFullRemoteCreate=true}'
+  + 'try{loader.create=wrappedCreate}catch(eC2){'
+  + 'try{console.warn("[dsh-full-remote] ModuleLoader create wrap failed",eC2)}catch(eC3){}}}'
+  + 'function wrapLoader(loader){'
+  + 'if(!loader)return loader;'
+  + 'installLoadTrap(loader);'
+  + 'wrapCreate(loader);'
   + 'try{Object.defineProperty(loader,"__dshFullRemoteTrusted",{value:true})}catch(e9){loader.__dshFullRemoteTrusted=true}'
   + 'return loader}'
   + 'var current;'
