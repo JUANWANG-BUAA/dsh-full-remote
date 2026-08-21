@@ -1,0 +1,8 @@
+# pnpm 11 keeps project settings here. There is no `packages` list, so this
+# is the root package only — not a multi-package workspace.
+#
+# Same-day @deepseek-ai/dsh-* builds are younger than the default
+# minimumReleaseAge. Exclude that scope so CI can typecheck against the
+# Harness release this plugin is verified on.
+minimumReleaseAgeExclude:
+  - '@deepseek-ai/dsh-*'

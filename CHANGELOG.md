@@ -25,6 +25,8 @@ documented in this file.
 - Remote `ask_user_question` custom answers use a wrapping textarea;
   `Shift+Enter` inserts a newline and Enter still continues, matching
   Harness 0.1.1-rc.1.
+- CI/dev installs exclude `@deepseek-ai/dsh-*` from pnpm
+  `minimumReleaseAge` so same-day `0.1.1-rc.1` pins resolve.
 
 ## 0.3.6 (2026-08-21)
 
