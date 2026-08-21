@@ -4,6 +4,7 @@ import { compileCidrList, ipAllowed, normalizeRemoteIp, parseCidr } from '../src
 import { createAuditLog, readAuditLog } from '../src/audit.ts'
 import { qrToSvg } from '../src/qr-svg.ts'
 import { probeFence } from '../src/self-check.ts'
+import { Config, DEFAULT_MAX_REQUEST_BYTES, DEFAULT_REQUEST_TIMEOUT_MS } from '../src/config.ts'
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -287,5 +288,16 @@ describe('fence self-check', () => {
     } finally {
       await new Promise<void>(resolve => server.close(() => resolve()))
     }
+  })
+})
+
+describe('transport defaults', () => {
+  it('matches the Harness /api image envelope and a 5-minute request window', () => {
+    const parsed = Config({})
+    assert.equal(parsed.maxRequestBytes, DEFAULT_MAX_REQUEST_BYTES)
+    assert.equal(parsed.maxRequestBytes, 160 * 1024 * 1024)
+    assert.equal(parsed.requestTimeoutMs, DEFAULT_REQUEST_TIMEOUT_MS)
+    assert.equal(parsed.requestTimeoutMs, 300_000)
+    assert.equal(parsed.upstreamTimeoutMs, 15_000)
   })
 })

@@ -29,6 +29,10 @@ import {
   sanitizeUpgradeResponseHeaders,
   type ProxyHeaders,
 } from './proxy-headers.ts'
+import {
+  DEFAULT_HEADERS_TIMEOUT_MS,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+} from './limits.ts'
 export { effectiveRemoteAddress, forwardHeaders, sanitizeResponseHeaders, sanitizeUpgradeResponseHeaders } from './proxy-headers.ts'
 import {
   HOME_PATH,
@@ -252,6 +256,55 @@ function redirect(res: ServerResponse, location: string, extra: Record<string, s
   res.end()
 }
 
+/**
+ * Deadline for establishing TCP to the loopback Harness backend.
+ * Cleared as soon as the socket is connected (including keep-alive reuse).
+ * Must not cover body transfer: Harness buffers `/api` JSON (vision images)
+ * before it writes response headers, and a phone tunnel can take longer than
+ * `upstreamTimeoutMs` to push those bytes.
+ */
+function armUpstreamConnectTimeout(up: ClientRequest, timeoutMs: number): () => void {
+  const timer = setTimeout(() => {
+    up.destroy(new Error('upstream timeout'))
+  }, timeoutMs)
+  timer.unref()
+  const clear = () => { clearTimeout(timer) }
+  up.once('socket', (socket) => {
+    if (!socket.connecting) {
+      clear()
+      return
+    }
+    socket.once('connect', clear)
+    socket.once('error', clear)
+  })
+  up.once('error', clear)
+  up.once('response', clear)
+  return clear
+}
+
+function inboundMethodHasBody(method: string | undefined): boolean {
+  const verb = (method ?? 'GET').toUpperCase()
+  return verb !== 'GET' && verb !== 'HEAD'
+}
+
+/** After the client finishes a POST body, wait this long for upstream headers. */
+function armUpstreamFirstByteTimeout(
+  up: ClientRequest,
+  timeoutMs: number,
+  alreadyResponded: () => boolean,
+): () => void {
+  if (alreadyResponded()) return () => {}
+  const timer = setTimeout(() => {
+    up.destroy(new Error('upstream timeout'))
+  }, timeoutMs)
+  timer.unref()
+  const clear = () => { clearTimeout(timer) }
+  up.once('response', clear)
+  up.once('error', clear)
+  up.once('close', clear)
+  return clear
+}
+
 function pipeUpstreamBody(incoming: IncomingMessage, res: ServerResponse, gzip: boolean) {
   if (!gzip) {
     incoming.on('error', () => {
@@ -290,7 +343,7 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
       forwardedFor: effectiveRemoteAddress(req, spec),
     }),
   }, (incoming) => {
-    clearTimeout(connectTimer)
+    clearConnectTimeout()
     const status = incoming.statusCode ?? 502
     const responseHeaders = sanitizeResponseHeaders(incoming.headers)
     maybeSetHashedAssetCacheControl(
@@ -311,12 +364,9 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
   })
   res.once('close', releaseSession)
   up.once('close', releaseSession)
-  const connectTimer = setTimeout(() => {
-    up.destroy(new Error('upstream timeout'))
-  }, spec.upstreamTimeoutMs)
-  connectTimer.unref()
+  const clearConnectTimeout = armUpstreamConnectTimeout(up, spec.upstreamTimeoutMs)
   up.on('error', () => {
-    clearTimeout(connectTimer)
+    clearConnectTimeout()
     if (!res.headersSent) {
       sendText(res, 502, 'bad gateway\n')
     } else {
@@ -333,7 +383,7 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
       overflow = true
       // The upstream request is dead from here on; disarm its connect timer
       // so it cannot fire a second destroy up to upstreamTimeoutMs later.
-      clearTimeout(connectTimer)
+      clearConnectTimeout()
       req.unpipe(up)
       up.destroy()
       if (!res.headersSent) {
@@ -352,6 +402,12 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
   res.once('close', () => {
     if (!res.writableEnded) abortUpstream()
   })
+  if (inboundMethodHasBody(req.method)) {
+    req.once('end', () => {
+      if (overflow || res.headersSent) return
+      armUpstreamFirstByteTimeout(up, spec.upstreamTimeoutMs, () => res.headersSent)
+    })
+  }
   req.pipe(up)
 }
 
@@ -668,8 +724,8 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     // Bound hung clients; 0 previously left keep-alive sockets forever.
     // Node requires requestTimeout >= headersTimeout, so never let a user
     // configured headersTimeout exceed the effective request timeout.
-    requestTimeout: Math.max(spec.requestTimeoutMs ?? 120_000, spec.headersTimeoutMs ?? 15_000),
-    headersTimeout: spec.headersTimeoutMs ?? 15_000,
+    requestTimeout: Math.max(spec.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS, spec.headersTimeoutMs ?? DEFAULT_HEADERS_TIMEOUT_MS),
+    headersTimeout: spec.headersTimeoutMs ?? DEFAULT_HEADERS_TIMEOUT_MS,
     keepAliveTimeout: spec.keepAliveTimeoutMs ?? 5_000,
   }
   const server = tlsOption !== undefined

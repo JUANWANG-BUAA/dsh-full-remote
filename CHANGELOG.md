@@ -5,6 +5,27 @@ documented in this file.
 
 ## Unreleased
 
+## 0.3.7 (2026-08-21)
+
+### Changed
+
+- Verified against DeepSeek Harness **0.1.1-rc.1** (`528c682e061696f5a160f363f236ecbf53cbd006`).
+  npm dist-tags `latest` and `next` both publish that version. Client
+  typecheck pins `@deepseek-ai/dsh-client-runtime` / `-ui-slots`
+  `0.1.1-rc.1`; the peer range remains `>=0.1.0-rc.5 <0.2`.
+- Default `maxRequestBytes` is **160 MiB**, matching the Harness `/api`
+  bridge sized for a 100 MiB aggregate image payload after base64. The
+  previous 16 MiB default 413'd remote `session.prompt` bodies used by
+  `deepseek-v4-flash-vision-exp` paste/drop before Harness saw them.
+- Default `requestTimeoutMs` is **5 minutes** so a phone tunnel can finish
+  sending that body. `upstreamTimeoutMs` is a TCP-connect deadline and, for
+  POST/PUT/etc., a first-response-byte deadline after the client finishes
+  sending. Slow uploads after connect are not killed; hung backends still
+  502. GET/HEAD (SSE) do not use the post-body wait.
+- Remote `ask_user_question` custom answers use a wrapping textarea;
+  `Shift+Enter` inserts a newline and Enter still continues, matching
+  Harness 0.1.1-rc.1.
+
 ## 0.3.6 (2026-08-21)
 
 ### Fixed

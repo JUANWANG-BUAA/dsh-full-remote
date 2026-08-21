@@ -20,6 +20,8 @@ It does **not** compress:
 - `text/event-stream` (SSE must stay a live event stream)
 - fonts (Harness serves `.ttf` / `.woff` / `.woff2` as
   `application/octet-stream`)
+- raster images (`image/png`, `image/jpeg`, `image/webp`, `image/gif`;
+  vision attachment downloads)
 - bodies that already have a non-identity `Content-Encoding`
 - `HEAD` / `CONNECT`, and status `204` / `206` / `304`
 - bodies whose `Content-Length` is present and below 1024 bytes

@@ -16,3 +16,7 @@ test-results/
 !.env.example
 .dsh-vision-toolkit/
 .learnings/
+# pnpm 11 may emit this when minimumReleaseAge excludes same-day
+# @deepseek-ai/dsh-* builds. This repo is not a workspace; committing it
+# would nest a workspace inside git installs of the plugin.
+pnpm-workspace.yaml

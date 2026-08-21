@@ -1,4 +1,17 @@
 import Schema from '@deepseek-ai/schemastery'
+import {
+  DEFAULT_HEADERS_TIMEOUT_MS,
+  DEFAULT_MAX_REQUEST_BYTES,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  DEFAULT_UPSTREAM_TIMEOUT_MS,
+} from './limits.ts'
+
+export {
+  DEFAULT_HEADERS_TIMEOUT_MS,
+  DEFAULT_MAX_REQUEST_BYTES,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  DEFAULT_UPSTREAM_TIMEOUT_MS,
+} from './limits.ts'
 
 /** Public Schemastery schema for the reverse-proxy plugin. */
 export const Config = Schema.object({
@@ -9,14 +22,14 @@ export const Config = Schema.object({
   cloudflaredPath: Schema.string().default('').description('Optional explicit path to a cloudflared binary for the one-click quick tunnel. When empty the tunnel resolves the binary via PATH, then a pinned, SHA256-verified download cache under the state file directory.'),
   stateFile: Schema.string().default('').description('Durable state file; empty uses $DSH_HOME/reverse-proxy.json.'),
   autoRestore: Schema.boolean().default(true).description('Restore the last enabled state after DeepSeek Harness restarts.'),
-  maxRequestBytes: Schema.number().min(1024).default(16 * 1024 * 1024).description('Maximum declared request body size.'),
-  upstreamTimeoutMs: Schema.number().min(1000).default(15_000).description('Timeout while connecting to the DeepSeek Harness backend.'),
+  maxRequestBytes: Schema.number().min(1024).default(DEFAULT_MAX_REQUEST_BYTES).description('Maximum request body size. Default 160 MiB matches the Harness /api bridge so remote vision image RPCs (DeepSeek-V4-Flash-Vision-Exp) are not 413d before the backend.'),
+  upstreamTimeoutMs: Schema.number().min(1000).default(DEFAULT_UPSTREAM_TIMEOUT_MS).description('Timeout while connecting TCP to the DeepSeek Harness backend, and (for POST/PUT/etc.) waiting for the first response byte after the client finishes sending the body. Does not cover body transfer itself, and is not applied to GET/HEAD (SSE).'),
   sessionMaxAgeSeconds: Schema.number().min(60).default(30 * 24 * 3600).description('Absolute lifetime of a device session from creation (and legacy idle window when sessionIdleSeconds is 0).'),
   sessionIdleSeconds: Schema.number().min(0).default(0).description('Inactivity timeout in seconds (0 = disabled; uses lastSeenAt). When set, sessions expire after this idle window independently of sessionMaxAgeSeconds.'),
   cookieName: Schema.string().default('dsh_reverse_proxy_session').description('Authentication session cookie name.'),
   maxHeaderSizeBytes: Schema.number().min(1024).default(16 * 1024).description('Maximum HTTP header size accepted by the proxy.'),
-  headersTimeoutMs: Schema.number().min(1000).default(15_000).description('Timeout for a client to send a complete request head. Must not exceed requestTimeoutMs.'),
-  requestTimeoutMs: Schema.number().min(1000).default(120_000).description('Timeout for a complete request (headers plus body) accepted by the proxy. The effective request timeout is at least headersTimeoutMs.'),
+  headersTimeoutMs: Schema.number().min(1000).default(DEFAULT_HEADERS_TIMEOUT_MS).description('Timeout for a client to send a complete request head. Must not exceed requestTimeoutMs.'),
+  requestTimeoutMs: Schema.number().min(1000).default(DEFAULT_REQUEST_TIMEOUT_MS).description('Timeout for a complete request (headers plus body) accepted by the proxy. The effective request timeout is at least headersTimeoutMs. Default 5 minutes covers large remote vision uploads.'),
   keepAliveTimeoutMs: Schema.number().min(1000).default(5_000).description('Keep-alive timeout for idle proxy connections.'),
   loginDelayMs: Schema.number().min(0).max(10_000).default(250).description('Fixed delay after a failed login, slowing token guessing.'),
   loginMaxAttempts: Schema.number().min(1).default(5).description('Failed login attempts per remote IP before that IP is locked out.'),

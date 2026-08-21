@@ -107,6 +107,16 @@ function chunked(options: {
   chunks: string[]
 }): Promise<{ status: number | undefined, body: string }> {
   const { port, path = '/', headers = {}, chunks } = options
+  return delayedChunked({ port, path, headers, chunks: chunks.map(data => ({ data, delayMs: 0 })) })
+}
+
+function delayedChunked(options: {
+  port: number
+  path?: string
+  headers?: Record<string, string>
+  chunks: Array<{ data: string, delayMs: number }>
+}): Promise<{ status: number | undefined, body: string }> {
+  const { port, path = '/', headers = {}, chunks } = options
   return new Promise((resolve, reject) => {
     const req = request({
       hostname: '127.0.0.1',
@@ -120,8 +130,24 @@ function chunked(options: {
       res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(parts).toString('utf8') }))
     })
     req.on('error', reject)
-    for (const chunk of chunks) req.write(chunk)
-    req.end()
+    const writeNext = (index: number) => {
+      if (index >= chunks.length) {
+        req.end()
+        return
+      }
+      const chunk = chunks[index]
+      if (chunk === undefined) {
+        req.end()
+        return
+      }
+      const send = () => {
+        req.write(chunk.data)
+        writeNext(index + 1)
+      }
+      if (chunk.delayMs > 0) setTimeout(send, chunk.delayMs)
+      else send()
+    }
+    writeNext(0)
   })
 }
 
@@ -726,6 +752,101 @@ describe('authenticated reverse proxy', () => {
       chunks: ['a'.repeat(200), 'b'.repeat(200)],
     })
     assert.equal(under.status, 200)
+  })
+
+  it('does not treat a slow vision-sized body as an upstream connect timeout', { timeout: 5_000 }, async () => {
+    const backend = createServer((req, res) => {
+      req.resume()
+      req.on('end', () => {
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end('{"ok":true}')
+      })
+    })
+    await new Promise<void>((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
+    const token = generateAccessToken()
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: portOf(backend),
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 16 * 1024,
+      upstreamTimeoutMs: 150,
+      loginDelayMs: 0,
+    })
+    cleanups.push(proxy.close)
+
+    const login = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    const cookie = login.headers['set-cookie']![0].split(';', 1)[0]
+
+    const proxied = await delayedChunked({
+      port: proxy.port,
+      path: '/api/session.prompt',
+      headers: { cookie, 'content-type': 'application/json' },
+      chunks: [
+        { data: '{"pad":"', delayMs: 0 },
+        { data: 'n'.repeat(400), delayMs: 200 },
+        { data: '"}', delayMs: 200 },
+      ],
+    })
+    assert.equal(proxied.status, 200)
+    assert.equal(proxied.body, '{"ok":true}')
+  })
+
+  it('times out a POST after the body ends if upstream never responds', { timeout: 5_000 }, async () => {
+    const backend = createServer((req) => {
+      req.resume()
+    })
+    await new Promise<void>((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
+    const token = generateAccessToken()
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: portOf(backend),
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 16 * 1024,
+      upstreamTimeoutMs: 150,
+      loginDelayMs: 0,
+    })
+    cleanups.push(proxy.close)
+
+    const login = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    const cookie = login.headers['set-cookie']![0].split(';', 1)[0]
+
+    const proxied = await http({
+      port: proxy.port,
+      path: '/api/session.prompt',
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: '{"hi":true}',
+    })
+    assert.equal(proxied.status, 502)
+    assert.match(proxied.body, /bad gateway/)
   })
 
   it('allows headersTimeoutMs larger than the default request timeout', async () => {

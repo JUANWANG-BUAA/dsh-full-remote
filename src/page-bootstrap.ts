@@ -10,7 +10,7 @@
  * `persistence: 'memory'`. This IIFE wraps `__ModuleLoader__` so the
  * official connection plugin's `apply()` is followed by a pin of
  * `connection.isLoopback` on the handle (`ctx.get('connection', false)`).
- * Harness 0.1.0-rc.8 installs a queue facade whose `create()` then
+ * Harness 0.1.0-rc.8 and later install a queue facade whose `create()` then
  * assigns `target.load = register` on the same object; wrapping `load`
  * once as a data property is overwritten. Trap `load` with an accessor
  * and re-trap after `create()` so later connection registrations still

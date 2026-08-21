@@ -198,8 +198,13 @@ flowchart LR
 - Tool approvals, `ask_user_question` option lists, and plan reviews
   appear as a confirmation sheet on the remote page: a bottom drawer
   on a phone, a centered card on a wider remote window. You can choose
-  and submit there; you do not have to go back to the host. The
-  official composer still only sits on the current session
+  and submit there; you do not have to go back to the host. Custom
+  answers wrap; `Shift+Enter` inserts a newline. The official composer
+  still only sits on the current session
+- Image paste/drop for `deepseek-v4-flash-vision-exp` (and other
+  image-capable routes) goes through the same authenticated `/api`
+  path. The default body cap is 160 MiB, matching Harness. Raster
+  image responses are not gzipped
 - For a phone-friendly layout (full-width session area, directory drawer,
   adapted dialogs), pair it with a mobile-layout plugin such as
   [dsh-web-mobile](https://github.com/mexiaosqwq/dsh-web-mobile)
@@ -209,7 +214,7 @@ flowchart LR
 - Node.js `^22.19.0 || >=24`
 - A DeepSeek Harness **web** profile. The plugin depends on `webServer`
   and is not intended for headless profiles. Verified against
-  **0.1.0-rc.8** (npm dist-tag `next`).
+  **0.1.1-rc.1** (npm dist-tags `latest` and `next`).
 
 ## Installation
 
@@ -290,7 +295,7 @@ dsh plugin --profile web update --latest dsh-full-remote
 
 Then restart `dsh web`. `--latest` ignores the current range, installs the
 newest version, and rewrites `package.json`. For a specific version use
-`dsh plugin --profile web update dsh-full-remote@0.3.6`.
+`dsh plugin --profile web update dsh-full-remote@0.3.7`.
 
 ## Screenshots
 
@@ -352,7 +357,9 @@ Common options:
     upgradeMaxAttempts: 10       # failed WebSocket upgrades before lockout
     upgradeLockoutSeconds: 300   # lockout for repeated failed WebSocket upgrades
     headersTimeoutMs: 15000      # timeout for request headers
-    requestTimeoutMs: 120000     # timeout for the complete request; effective value is >= headersTimeoutMs
+    requestTimeoutMs: 300000     # timeout for the complete request (headers + body); covers remote vision uploads
+    upstreamTimeoutMs: 15000     # TCP connect + first POST byte after the body; not applied to SSE GET
+    maxRequestBytes: 167772160   # 160 MiB; matches the Harness /api image envelope
     sessionIdleSeconds: 0        # 0: off; otherwise idle timeout in seconds
     auditLog: true
     allowTokenRead: false        # safer default; enable only for local token re-read
@@ -410,8 +417,8 @@ side of the tunnel. For LAN use without a tunnel, set
   URL.
 - Settings persistence on a remote page relies on a temporary trust pin
   until Harness provides a proper deployment trust field. On Harness
-  `0.1.0-rc.8`, that pin must survive the official ModuleLoader `create()`
-  replacing `load`; otherwise Settings → Models shows
+  `0.1.0-rc.8` and later, that pin must survive the official ModuleLoader
+  `create()` replacing `load`; otherwise Settings → Models shows
   `settings are unavailable in this browser`. "Open on host" from a phone
   acts on the machine running Harness.
 - `allowTokenRead` defaults to `false`. When explicitly enabled, `GET /token`
@@ -444,7 +451,7 @@ side of the tunnel. For LAN use without a tunnel, set
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.3.6.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.7.tgz
 ```
 
 Git installs run the `prepare` build. On pnpm ≥ 10 allow it:

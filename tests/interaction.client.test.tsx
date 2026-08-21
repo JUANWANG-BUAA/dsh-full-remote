@@ -143,6 +143,24 @@ describe('InteractionOverlay', () => {
     })
   })
 
+  it('lets a custom ask_user_question answer wrap, with Shift+Enter as newline', async () => {
+    const answerQuestion = vi.fn<(key: string, answer: QuestionAnswer) => Promise<void>>()
+      .mockResolvedValue(undefined)
+    render(<InteractionOverlay {...overlayProps({ items: [questionItem] }, { answerQuestion })} />)
+    const field = screen.getByPlaceholderText('其他（自行输入）')
+    expect(field.tagName).toBe('TEXTAREA')
+    fireEvent.change(field, { target: { value: 'line1' } })
+    fireEvent.keyDown(field, { key: 'Enter', shiftKey: true })
+    expect(answerQuestion).not.toHaveBeenCalled()
+    fireEvent.change(field, { target: { value: 'line1\nline2' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+    await waitFor(() => {
+      expect(answerQuestion).toHaveBeenCalledWith('q:1', {
+        answers: [{ id: 'q', selected: [], custom: 'line1\nline2' }],
+      })
+    })
+  })
+
   it('opens a session when the wait is not ready yet', () => {
     const openSession = vi.fn()
     render(<InteractionOverlay {...overlayProps({

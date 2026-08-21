@@ -5,7 +5,8 @@
  * stays in proxy.ts so this module can be unit-tested without sockets.
  *
  * Gzip is only for compressible HTTP bodies. SSE, WebSocket upgrades, already
- * encoded bodies, fonts, and tiny payloads are out of scope; those decisions
+ * encoded bodies, fonts, raster images (PNG/JPEG/WebP/GIF used by vision
+ * attachments), and tiny payloads are out of scope; those decisions
  * are asserted by tests against measured sizes, not claimed ratios.
  */
 import type { ProxyHeaders } from './proxy-headers.ts'

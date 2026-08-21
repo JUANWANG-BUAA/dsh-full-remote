@@ -140,6 +140,9 @@ describe('gzip / cache decision predicates', () => {
     assert.equal(isCompressibleMediaType('application/octet-stream'), false)
     assert.equal(isCompressibleMediaType('image/svg+xml'), true)
     assert.equal(isCompressibleMediaType('image/png'), false)
+    assert.equal(isCompressibleMediaType('image/jpeg'), false)
+    assert.equal(isCompressibleMediaType('image/webp'), false)
+    assert.equal(isCompressibleMediaType('image/gif'), false)
   })
 
   it('skips tiny, encoded, HEAD, and SSE bodies', () => {

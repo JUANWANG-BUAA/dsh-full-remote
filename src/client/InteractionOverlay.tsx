@@ -478,11 +478,11 @@ function QuestionFlow(props: {
           {hasOptions ? (
             <label className={draft.custom !== '' ? `${css.customRow} ${css.customOn}` : css.customRow}>
               <span className={css.optionMark} aria-hidden="true">{hasOptions ? '+' : ''}</span>
-              <input
+              <textarea
                 className={css.customInput}
-                type="text"
                 value={draft.custom}
                 disabled={busy !== undefined}
+                rows={2}
                 placeholder={props.t('interact.question.custom')}
                 onChange={draftCustom}
                 onKeyDown={continueFromCustom}

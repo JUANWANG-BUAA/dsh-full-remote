@@ -2,16 +2,15 @@
 
 ## Registry reality (checked 2026-08-21)
 
-- `@deepseek-ai/dsh` publishes `0.1.0-rc.8` on dist-tag `next`. npm
-  `latest` may still point at `0.1.0-rc.7`; pin `@next` or `@0.1.0-rc.8`
-  when adapting this plugin.
+- `@deepseek-ai/dsh` publishes `0.1.1-rc.1` on dist-tags `latest` and
+  `next`.
 - `@deepseek-ai/dsh-client-runtime` and `-ui-slots` publish matching
-  `0.1.0-rc.8` builds. This plugin's peer range (`>=0.1.0-rc.5 <0.2`)
-  accepts them.
+  `0.1.1-rc.1` builds (`next`; npm `latest` on those packages may still
+  lag). This plugin's peer range (`>=0.1.0-rc.5 <0.2`) accepts them.
 - `@deepseek-ai/dsh-web-app@latest` historically lagged; do not tell
   users to install that package. Default `dsh --profile web` already
   provides `webServer`.
-- The current published plugin is `dsh-full-remote@0.3.6`.
+- The current published plugin is `dsh-full-remote@0.3.7`.
 - The legacy `dsh-reverse-proxy@0.1.0` package is deprecated and points users
   to `dsh-full-remote`.
 
@@ -72,6 +71,7 @@ package is a different product.
 - [x] Tag `v0.3.4` (CI/security hardening follow-up); published 2026-08-18.
 - [x] Tag `v0.3.5` (HTTP gzip + hashed-asset cache, coexist with `deepseek-harness-auth` browse rows).
 - [x] Tag `v0.3.6` (Harness 0.1.0-rc.8 ModuleLoader wrap + remote Models settings #13); published 2026-08-21.
+- [ ] Tag `v0.3.7` (Harness 0.1.1-rc.1 vision body cap, timeouts, multiline overlay).
 - [x] Deprecate `dsh-reverse-proxy@0.1.0`; verified with `npm view dsh-reverse-proxy deprecated` on 2026-08-18.
 - [x] Apply GitHub topics from `docs/github-metadata.md` (applied 2026-08-16).
 - [x] PR the plugin into `awesome-dsh-plugin` as `dsh-full-remote` ([#833](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/833), updated 2026-08-16).

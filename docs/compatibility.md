@@ -3,8 +3,8 @@
 `dsh-full-remote` is a bundle, not a replacement web application. It expects
 the Harness `webServer` service and the published client runtime/UI-slots
 packages in the supported peer range (`0.1.0-rc.5` through `<0.2`). It is
-verified against DeepSeek Harness **0.1.0-rc.8** (npm dist-tag `next`;
-`latest` may still lag). It is not intended for a headless profile.
+verified against DeepSeek Harness **0.1.1-rc.1** (npm dist-tags `latest`
+and `next`). It is not intended for a headless profile.
 
 ## Installation order
 
@@ -56,7 +56,33 @@ After composing plugins, verify all of the following through the proxy:
 6. the host UI still opens its own directory picker when accessed locally;
 7. on a non-loopback hostname, Settings → Models shows the provider catalog
    rather than `settings are unavailable in this browser` (Harness 0.1.0-rc.8
-   describe-mirror).
+   describe-mirror, still required on 0.1.1-rc.1);
+8. on a non-loopback hostname, Settings → Models lists
+   `DeepSeek-V4-Flash-Vision-Exp`, and a paste/drop of a JPEG/PNG/WebP/GIF
+   under the Harness image limits is not 413'd by this proxy.
+
+## Multimodal / vision
+
+Harness 0.1.1-rc.1 adds `deepseek-v4-flash-vision-exp` to the official
+DeepSeek catalog. This plugin does not implement that adapter. It only
+forwards the Web `/api` the composer already uses:
+
+| Layer | Limit | Notes |
+|---|---|---|
+| DeepSeek API | 48 MiB request body; 32 MiB per inline image | Enforced by `api.deepseek.com`, not this proxy |
+| DeepSeek adapter | 20 MiB accumulated image bytes per model request | `maxRequestImageBytes` on `llm-deepseek` |
+| Harness attachments | 3.5 MiB per image; 100 MiB aggregate per message | Composer pre-check; oversize is an attachment error, not a proxy 413 |
+| Harness `/api` bridge | 160 MiB buffered JSON | 100 MiB images after base64 + envelope |
+| This proxy | `maxRequestBytes` default **160 MiB** | Must not be tighter than the bridge or remote paste 413s |
+
+`upstreamTimeoutMs` is a TCP-connect timeout to loopback, and for POST (vision
+`session.prompt`) also the wait for the first upstream byte after the client
+finishes sending. A slow tunnel upload after connect is bounded by
+`requestTimeoutMs` (default 5 minutes), not by 15 seconds. GET/HEAD including
+SSE never use that post-body wait.
+
+Raster image responses (`image/png`, `image/jpeg`, `image/webp`,
+`image/gif`) are never gzipped. JSON RPC envelopes still may be.
 
 The CI real-Harness smoke installs the packed tarball and exercises the first,
 second, and session-control paths. `test:composition` checks the effective

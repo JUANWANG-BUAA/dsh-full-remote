@@ -18,6 +18,7 @@
 - `text/event-stream`（SSE 必须保持实时事件流）
 - 字体（Harness 把 `.ttf` / `.woff` / `.woff2` 标成
   `application/octet-stream`）
+- 点阵图（`image/png` / `image/jpeg` / `image/webp` / `image/gif`，视觉附件下载）
 - 已经带非 identity `Content-Encoding` 的响应
 - `HEAD` / `CONNECT`，以及状态 `204` / `206` / `304`
 - `Content-Length` 存在且小于 1024 字节的响应

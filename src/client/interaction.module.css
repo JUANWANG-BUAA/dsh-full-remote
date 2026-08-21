@@ -229,7 +229,16 @@
   color: inherit;
   font: inherit;
   font-size: 15px;
+  line-height: 1.45;
   outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.customInput {
+  min-height: 40px;
+  padding: 6px 0;
+  resize: vertical;
 }
 
 .customTextarea {

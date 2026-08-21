@@ -131,15 +131,16 @@ flowchart LR
 
 ### 移动端
 
-- 通过隧道域名打开设置页时，改动正常持久化；**设置 → 模型** 能加载提供方目录（Harness `0.1.0-rc.8` 起依赖页面引导在官方 `create()` 之后仍钉住 `isLoopback`）
+- 通过隧道域名打开设置页时，改动正常持久化；**设置 → 模型** 能加载提供方目录（Harness `0.1.0-rc.8` 起依赖页面引导在官方 `create()` 之后仍钉住 `isLoopback`），其中包含 `DeepSeek-V4-Flash-Vision-Exp`
 - 「添加工作区」使用应用内目录浏览，不会在宿主机显示器上弹出系统对话框
-- 工具审批、`ask_user_question` 选项确认、计划评审会在远程页面弹出确认浮层：手机为底部抽屉，较宽屏为居中卡片。可直接点选提交，不必回到宿主机。官方输入框接管仍只出现在当前会话底部
+- 工具审批、`ask_user_question` 选项确认、计划评审会在远程页面弹出确认浮层：手机为底部抽屉，较宽屏为居中卡片。可直接点选提交，不必回到宿主机。自定义答案可换行，`Shift+Enter` 插入换行。官方输入框接管仍只出现在当前会话底部
+- 远程粘贴/拖入图片走同一条已认证的 `/api`（`deepseek-v4-flash-vision-exp` 等图像路由）。默认请求体上限 160 MiB，与 Harness `/api` 桥一致；点阵图响应不做 gzip
 - 想要手机友好的布局（会话区全宽、目录改抽屉、弹窗适配），建议搭配移动端布局插件使用，例如 [dsh-web-mobile](https://github.com/mexiaosqwq/dsh-web-mobile)
 
 ## 环境要求
 
 - Node.js `^22.19.0 || >=24`
-- DeepSeek Harness 的 **web** profile。插件依赖 `webServer`，不适用于 headless profile。已在 **0.1.0-rc.8** 验证（npm dist-tag `next`）。
+- DeepSeek Harness 的 **web** profile。插件依赖 `webServer`，不适用于 headless profile。已在 **0.1.1-rc.1** 验证（npm dist-tag `latest` / `next`）。
 
 ## 安装
 
@@ -199,7 +200,7 @@ ngrok http 3081
 dsh plugin --profile web update --latest dsh-full-remote
 ```
 
-然后重启 `dsh web`。`--latest` 会忽略现有版本范围，装上最新版并改写 `package.json`。指定某一版用 `dsh plugin --profile web update dsh-full-remote@0.3.6`。
+然后重启 `dsh web`。`--latest` 会忽略现有版本范围，装上最新版并改写 `package.json`。指定某一版用 `dsh plugin --profile web update dsh-full-remote@0.3.7`。
 
 ## 截图
 
@@ -255,7 +256,9 @@ dsh plugin --profile web update --latest dsh-full-remote
     upgradeMaxAttempts: 10       # WebSocket 升级失败多少次后锁定
     upgradeLockoutSeconds: 300   # WebSocket 升级频繁失败的锁定秒数
     headersTimeoutMs: 15000      # 请求头超时
-    requestTimeoutMs: 120000     # 完整请求超时；实际值不会小于 headersTimeoutMs
+    requestTimeoutMs: 300000     # 完整请求超时（含 body）；覆盖远程视觉上传
+    upstreamTimeoutMs: 15000     # TCP 连接 + POST body 结束后等首字节；SSE GET 不用这项
+    maxRequestBytes: 167772160   # 160 MiB，与 Harness /api 图像信封一致
     sessionIdleSeconds: 0        # 0 = 关闭；否则按空闲秒数过期
     auditLog: true
     allowTokenRead: false        # 更安全的默认值；仅本机工具需要重读时开启
@@ -290,7 +293,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 ## 局限
 
 - 控制操作（启动、停止、查看令牌、修改监听地址）仅可在本机 Harness 窗口执行，隧道地址下无效。
-- 远程页面上的设置持久化依赖临时的信任注入，待 Harness 提供正式的部署信任字段后可以移除。Harness `0.1.0-rc.8` 的模块加载器会在 `create()` 时覆盖 `load`，本插件的页面引导必须在那之后继续包装，否则远程 **设置 → 模型** 会报 `settings are unavailable in this browser`。手机上的「在宿主机打开」作用于运行 Harness 的机器。
+- 远程页面上的设置持久化依赖临时的信任注入，待 Harness 提供正式的部署信任字段后可以移除。Harness `0.1.0-rc.8` 起的模块加载器会在 `create()` 时覆盖 `load`，本插件的页面引导必须在那之后继续包装，否则远程 **设置 → 模型** 会报 `settings are unavailable in this browser`。手机上的「在宿主机打开」作用于运行 Harness 的机器。
 - `allowTokenRead` 默认 `false`。显式开启时，`GET /token` 会通过回环 HTTP 提供，任何能发送控制头的本机进程均可读取；轮换令牌始终会返回新令牌。
 - 默认情况下，运行在本机的隧道会让所有远程客户端在代理看来都是 `127.0.0.1`。因此 `allowedCidrs` 与按 IP 登录锁定只对“隧道整体”生效；如需按真实客户端 IP 生效，请在可信本地边缘后设置 `trustForwardedFor: true`。
 - 插件以自身的访问控制层替代 Harness 的远程信任校验，该层若存在缺陷，影响严重。若 Harness 未来提供官方远程访问能力，应重新评估本插件的定位。
@@ -303,7 +306,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.3.6.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.7.tgz
 ```
 
 git 安装会执行 `prepare` 构建，pnpm ≥ 10 需要放行：
