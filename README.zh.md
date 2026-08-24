@@ -258,6 +258,7 @@ dsh plugin --profile web update --latest dsh-full-remote
     headersTimeoutMs: 15000      # 请求头超时
     requestTimeoutMs: 300000     # 完整请求超时（含 body）；覆盖远程视觉上传
     upstreamTimeoutMs: 15000     # TCP 连接 + POST body 结束后等首字节；SSE GET 不用这项
+    commandTimeoutMs: 300000     # /api/commands/execute 的首字节等待；/compact 可能长时间不响应
     maxRequestBytes: 167772160   # 160 MiB，与 Harness /api 图像信封一致
     sessionIdleSeconds: 0        # 0 = 关闭；否则按空闲秒数过期
     auditLog: true

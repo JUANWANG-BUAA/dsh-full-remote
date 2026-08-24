@@ -320,6 +320,7 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
         controlPrefix: CONTROL_PREFIX,
         maxRequestBytes: config.maxRequestBytes,
         upstreamTimeoutMs: config.upstreamTimeoutMs,
+        commandTimeoutMs: config.commandTimeoutMs,
         sessionMaxAgeSeconds: config.sessionMaxAgeSeconds,
         maxHeaderSizeBytes: config.maxHeaderSizeBytes,
         headersTimeoutMs: config.headersTimeoutMs,

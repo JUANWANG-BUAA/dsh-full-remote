@@ -5,6 +5,19 @@ documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- Manual `/compact` and other long-running host commands are no longer
+  interrupted by the default 15s upstream first-byte timeout. `command.execute`
+  POSTs use the new `commandTimeoutMs` (default 5 minutes) before the proxy
+  reports a 502, matching Harness's documented command transport semantics.
+
+### Changed
+
+- Verified against DeepSeek Harness **0.1.1-rc.2**
+  (`b150a551b8d465e31e418e1b2eaf5e79bbb7d28e`) in addition to 0.1.1-rc.1.
+  npm dist-tags `latest` and `next` both publish that version.
+
 ## 0.3.7 (2026-08-21)
 
 ### Changed

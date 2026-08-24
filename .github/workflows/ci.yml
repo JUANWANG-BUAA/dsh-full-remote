@@ -57,12 +57,12 @@ jobs:
       - name: Install plugin dependencies
         run: pnpm install --frozen-lockfile
 
-      # Pin DeepSeek Harness 0.1.1-rc.1 for the real-boot composition smoke.
+      # Pin DeepSeek Harness 0.1.1-rc.2 for the real-boot composition smoke.
       - name: Fetch DeepSeek Harness checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: deepseek-ai/deepseek-harness
-          ref: 528c682e061696f5a160f363f236ecbf53cbd006
+          ref: b150a551b8d465e31e418e1b2eaf5e79bbb7d28e
           path: .harness
           filter: blob:none
 

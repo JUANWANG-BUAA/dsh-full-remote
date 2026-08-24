@@ -849,6 +849,58 @@ describe('authenticated reverse proxy', () => {
     assert.match(proxied.body, /bad gateway/)
   })
 
+  it('allows /api/commands/execute to outlast the upstream first-byte timeout', { timeout: 5_000 }, async () => {
+    const backend = createServer((req, res) => {
+      req.resume()
+      req.on('end', () => {
+        setTimeout(() => {
+          res.writeHead(200, { 'content-type': 'application/json' })
+          res.end('{"ok":true}')
+        }, 350)
+      })
+    })
+    await new Promise<void>((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
+    const token = generateAccessToken()
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: portOf(backend),
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 16 * 1024,
+      upstreamTimeoutMs: 150,
+      commandTimeoutMs: 1_000,
+      loginDelayMs: 0,
+    })
+    cleanups.push(proxy.close)
+
+    const login = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    const cookie = login.headers['set-cookie']![0].split(';', 1)[0]
+
+    const proxied = await http({
+      port: proxy.port,
+      path: '/api/commands/execute',
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: '{"line":"/compact"}',
+    })
+    assert.equal(proxied.status, 200)
+    assert.equal(proxied.body, '{"ok":true}')
+  })
+
+
   it('allows headersTimeoutMs larger than the default request timeout', async () => {
     const backend = createServer((_req, res) => {
       res.writeHead(200, { 'content-type': 'text/plain' })

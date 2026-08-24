@@ -11,6 +11,7 @@ export interface RuntimeSecurityConfig {
   cookieName?: unknown
   maxRequestBytes?: unknown
   upstreamTimeoutMs?: unknown
+  commandTimeoutMs?: unknown
   sessionMaxAgeSeconds?: unknown
   sessionIdleSeconds?: unknown
   maxHeaderSizeBytes?: unknown
@@ -41,6 +42,7 @@ export function validateRuntimeConfig(config: RuntimeSecurityConfig) {
   const integerBounds: Array<[keyof RuntimeSecurityConfig, number, number]> = [
     ['maxRequestBytes', 1024, 256 * 1024 * 1024],
     ['upstreamTimeoutMs', 1000, 10 * 60 * 1000],
+    ['commandTimeoutMs', 1000, 24 * 60 * 60 * 1000],
     ['sessionMaxAgeSeconds', 60, 365 * 24 * 3600],
     ['sessionIdleSeconds', 0, 365 * 24 * 3600],
     ['maxHeaderSizeBytes', 1024, 16 * 1024 * 1024],

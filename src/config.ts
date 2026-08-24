@@ -1,5 +1,6 @@
 import Schema from '@deepseek-ai/schemastery'
 import {
+  DEFAULT_COMMAND_TIMEOUT_MS,
   DEFAULT_HEADERS_TIMEOUT_MS,
   DEFAULT_MAX_REQUEST_BYTES,
   DEFAULT_REQUEST_TIMEOUT_MS,
@@ -7,6 +8,7 @@ import {
 } from './limits.ts'
 
 export {
+  DEFAULT_COMMAND_TIMEOUT_MS,
   DEFAULT_HEADERS_TIMEOUT_MS,
   DEFAULT_MAX_REQUEST_BYTES,
   DEFAULT_REQUEST_TIMEOUT_MS,
@@ -24,6 +26,7 @@ export const Config = Schema.object({
   autoRestore: Schema.boolean().default(true).description('Restore the last enabled state after DeepSeek Harness restarts.'),
   maxRequestBytes: Schema.number().min(1024).default(DEFAULT_MAX_REQUEST_BYTES).description('Maximum request body size. Default 160 MiB matches the Harness /api bridge so remote vision image RPCs (DeepSeek-V4-Flash-Vision-Exp) are not 413d before the backend.'),
   upstreamTimeoutMs: Schema.number().min(1000).default(DEFAULT_UPSTREAM_TIMEOUT_MS).description('Timeout while connecting TCP to the DeepSeek Harness backend, and (for POST/PUT/etc.) waiting for the first response byte after the client finishes sending the body. Does not cover body transfer itself, and is not applied to GET/HEAD (SSE).'),
+  commandTimeoutMs: Schema.number().min(1000).default(DEFAULT_COMMAND_TIMEOUT_MS).description('Timeout waiting for the first response byte after a host command POST such as /api/commands/execute finishes sending its body. Harness command handlers may legitimately run for a long time before responding; the default is 5 minutes and does not affect normal RPC/SSE paths.'),
   sessionMaxAgeSeconds: Schema.number().min(60).default(30 * 24 * 3600).description('Absolute lifetime of a device session from creation (and legacy idle window when sessionIdleSeconds is 0).'),
   sessionIdleSeconds: Schema.number().min(0).default(0).description('Inactivity timeout in seconds (0 = disabled; uses lastSeenAt). When set, sessions expire after this idle window independently of sessionMaxAgeSeconds.'),
   cookieName: Schema.string().default('dsh_reverse_proxy_session').description('Authentication session cookie name.'),

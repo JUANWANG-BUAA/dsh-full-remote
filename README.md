@@ -359,6 +359,7 @@ Common options:
     headersTimeoutMs: 15000      # timeout for request headers
     requestTimeoutMs: 300000     # timeout for the complete request (headers + body); covers remote vision uploads
     upstreamTimeoutMs: 15000     # TCP connect + first POST byte after the body; not applied to SSE GET
+    commandTimeoutMs: 300000     # first POST byte for /api/commands/execute; /compact may run long before responding
     maxRequestBytes: 167772160   # 160 MiB; matches the Harness /api image envelope
     sessionIdleSeconds: 0        # 0: off; otherwise idle timeout in seconds
     auditLog: true

@@ -30,6 +30,7 @@ import {
   type ProxyHeaders,
 } from './proxy-headers.ts'
 import {
+  DEFAULT_COMMAND_TIMEOUT_MS,
   DEFAULT_HEADERS_TIMEOUT_MS,
   DEFAULT_REQUEST_TIMEOUT_MS,
 } from './limits.ts'
@@ -77,6 +78,8 @@ export interface ProxySpec {
   controlPrefix: string
   maxRequestBytes: number
   upstreamTimeoutMs: number
+  /** First-byte wait for host command POSTs such as `/api/commands/execute`. Defaults to the same 5-minute window as `requestTimeoutMs`. */
+  commandTimeoutMs?: number
   /** Session TTL; optional when a `sessionStore` is supplied (defaults to the store's own default). */
   sessionMaxAgeSeconds?: number
   maxHeaderSizeBytes?: number
@@ -282,6 +285,16 @@ function armUpstreamConnectTimeout(up: ClientRequest, timeoutMs: number): () => 
   return clear
 }
 
+/**
+ * Host command POSTs are long-running by design in Harness: `/compact` and
+ * similar handlers can take much longer than the default 15s first-byte
+ * transport deadline before the backend writes a response header. Those
+ * requests get the longer `commandTimeoutMs` first-byte window.
+ */
+function isCommandExecutePath(url: string | undefined): boolean {
+  return pathnameOf(url) === '/api/commands/execute'
+}
+
 function inboundMethodHasBody(method: string | undefined): boolean {
   const verb = (method ?? 'GET').toUpperCase()
   return verb !== 'GET' && verb !== 'HEAD'
@@ -405,7 +418,10 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
   if (inboundMethodHasBody(req.method)) {
     req.once('end', () => {
       if (overflow || res.headersSent) return
-      armUpstreamFirstByteTimeout(up, spec.upstreamTimeoutMs, () => res.headersSent)
+      const firstByteTimeoutMs = isCommandExecutePath(req.url)
+        ? (spec.commandTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS)
+        : spec.upstreamTimeoutMs
+      armUpstreamFirstByteTimeout(up, firstByteTimeoutMs, () => res.headersSent)
     })
   }
   req.pipe(up)

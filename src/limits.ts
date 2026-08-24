@@ -23,5 +23,13 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 300_000
 /** TCP connect, and first POST byte after the client finishes sending. */
 export const DEFAULT_UPSTREAM_TIMEOUT_MS = 15_000
 
+/**
+ * First-byte wait for host command POSTs such as `/api/commands/execute`.
+ * Harness command handlers (for example `/compact`) may legitimately run
+ * longer than the transport health deadline before the first response byte;
+ * this is intentionally longer than `upstreamTimeoutMs`.
+ */
+export const DEFAULT_COMMAND_TIMEOUT_MS = 300_000
+
 /** Time for a client to finish sending the request head. */
 export const DEFAULT_HEADERS_TIMEOUT_MS = 15_000
