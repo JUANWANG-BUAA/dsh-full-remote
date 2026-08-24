@@ -3,7 +3,7 @@
 All notable changes to dsh-full-remote (formerly dsh-reverse-proxy) are
 documented in this file.
 
-## Unreleased
+## 0.3.8 (2026-08-24)
 
 ### Fixed
 
