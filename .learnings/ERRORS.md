@@ -146,6 +146,37 @@ Retry the audit from CI or a network path that can reach the npm advisory API.
 
 ---
 
+## [ERR-20260904-005] ci-windows-cache-name
+
+**Logged**: 2026-09-04T00:00:00+08:00
+**Priority**: medium
+**Status**: resolved
+**Area**: tests
+
+### Summary
+
+The Windows Node 24 CI job failed because the tunnel download test expected
+the POSIX cache filename `cloudflared`, while the implementation correctly
+uses `cloudflared.exe` on Windows.
+
+### Error
+
+```text
+ENOENT: no such file or directory, open ...\\bin\\cloudflared
+```
+
+### Suggested Fix
+
+Derive the expected cache filename from `process.platform` in the test and
+reuse it for failure and successful-install assertions.
+
+### Metadata
+
+- Reproducible: yes
+- Related Files: tests/tunnel.test.ts
+
+---
+
 ## [ERR-20260818-001] github-discussion-rest-comment
 
 **Logged**: 2026-08-18T18:50:00+08:00

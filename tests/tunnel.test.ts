@@ -151,6 +151,8 @@ function fakeSpawn(emitter: { stdout: EventEmitter, stderr: EventEmitter }) {
 }
 
 describe('tunnel manager state machine', () => {
+  const cachedBinaryName = process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared'
+
   async function makeManager(options: {
     spawn: ReturnType<typeof fakeSpawn>
     fetch?: (url: string, init?: { signal?: AbortSignal }) => Promise<{ ok: boolean, arrayBuffer: () => Promise<ArrayBuffer> }>
@@ -358,7 +360,7 @@ describe('tunnel manager state machine', () => {
         assert.equal(audit.some(e => e.event === 'tunnel.error'), true)
         // A failed download never leaves a cached binary behind.
         const { stat } = await import('node:fs/promises')
-        await assert.rejects(stat(join(dir, 'bin', 'cloudflared')))
+        await assert.rejects(stat(join(dir, 'bin', cachedBinaryName)))
       })
     }
 
@@ -414,8 +416,9 @@ describe('tunnel manager state machine', () => {
           await until(() => manager.status().state === 'online')
           assert.equal(manager.status().publicUrl, 'https://cached-install.trycloudflare.com')
           const { readFile } = await import('node:fs/promises')
-          assert.match(await readFile(join(dir, 'bin', 'cloudflared'), 'utf8'), /cached-binary/)
-          assert.equal((await readFile(`${join(dir, 'bin', 'cloudflared')}.sha256`, 'utf8')).trim(), installedDigest)
+          const cachedBinary = join(dir, 'bin', cachedBinaryName)
+          assert.match(await readFile(cachedBinary, 'utf8'), /cached-binary/)
+          assert.equal((await readFile(`${cachedBinary}.sha256`, 'utf8')).trim(), installedDigest)
         } finally {
           await manager.stop()
         }
