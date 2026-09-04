@@ -32,7 +32,7 @@ try {
     throw new Error('browser smoke: running proxy status did not render')
   }
   await page.getByRole('button', { name: '运行自检' }).click()
-  await page.getByText('特权栅栏已打通').waitFor()
+  await page.getByText('本机特权通道已打开').waitFor()
   await page.getByRole('button', { name: '生成邀请' }).click()
   await page.getByText(/login\?invite=/).waitFor()
   if (errors.length > 0) throw new Error(`browser page errors:\n${errors.join('\n')}`)

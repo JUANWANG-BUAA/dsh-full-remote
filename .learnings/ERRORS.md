@@ -177,6 +177,37 @@ reuse it for failure and successful-install assertions.
 
 ---
 
+## [ERR-20260904-006] ci-browser-copy-drift
+
+**Logged**: 2026-09-04T00:00:00+08:00
+**Priority**: medium
+**Status**: resolved
+**Area**: tests
+
+### Summary
+
+The browser smoke scripts asserted an older Chinese self-check message after
+the client copy was clarified.
+
+### Error
+
+```text
+locator.waitFor: Timeout 30000ms exceeded
+waiting for getByText('特权栅栏已打通') to be visible
+```
+
+### Suggested Fix
+
+Keep browser and screenshot smoke assertions aligned with the localized UI
+copy (`本机特权通道已打开`).
+
+### Metadata
+
+- Reproducible: yes
+- Related Files: scripts/browser-smoke.mjs, scripts/capture-screenshots.ts
+
+---
+
 ## [ERR-20260818-001] github-discussion-rest-comment
 
 **Logged**: 2026-08-18T18:50:00+08:00

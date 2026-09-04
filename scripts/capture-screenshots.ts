@@ -276,7 +276,7 @@ async function connectPage(browserWs: string) {
 async function preparePanel(cdp: Cdp) {
   await waitForText(cdp, '代理正在运行')
   await clickText(cdp, '运行自检')
-  await waitForText(cdp, '特权栅栏已打通')
+  await waitForText(cdp, '本机特权通道已打开')
   await waitForText(cdp, '常驻令牌读取已开启')
   await clickText(cdp, '生成邀请')
   await waitForText(cdp, 'login?invite=')
