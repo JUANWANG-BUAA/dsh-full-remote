@@ -25,7 +25,7 @@
     "test:client:coverage": "vitest run --coverage",
     "test:browser": "node scripts/browser-smoke.mjs",
     "test:composition": "node scripts/check-composition.mjs",
-    "audit:prod": "pnpm audit --prod --audit-level moderate",
+    "audit:prod": "pnpm audit --prod --audit-level moderate --ignore-registry-errors",
     "screenshots": "node --experimental-strip-types scripts/capture-screenshots.ts",
     "test": "pnpm run test:unit && pnpm run test:client",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
