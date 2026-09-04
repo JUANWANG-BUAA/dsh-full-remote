@@ -8,7 +8,7 @@ Command failures and integration errors.
 
 **Logged**: 2026-09-04T00:00:00+08:00
 **Priority**: high
-**Status**: pending
+**Status**: resolved
 **Area**: infra
 
 ### Summary
@@ -137,12 +137,14 @@ timed out during `pnpm audit --prod --audit-level moderate`.
 
 ### Suggested Fix
 
-Retry the audit from CI or a network path that can reach the npm advisory API.
+Run the audit through `scripts/audit-prod.mjs`, which preserves vulnerability
+failures but bounds registry retries and continues with an explicit warning
+when npm's advisory service is unavailable.
 
 ### Metadata
 
-- Reproducible: unknown
-- Related Files: package.json, pnpm-lock.yaml
+- Reproducible: yes (local and GitHub Actions)
+- Related Files: package.json, scripts/audit-prod.mjs, pnpm-lock.yaml
 
 ---
 
