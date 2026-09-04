@@ -140,7 +140,7 @@ flowchart LR
 ## 环境要求
 
 - Node.js `^22.19.0 || >=24`
-- DeepSeek Harness 的 **web** profile。插件依赖 `webServer`，不适用于 headless profile。已在 **0.1.1-rc.1** 验证（npm dist-tag `latest` / `next`）。
+- DeepSeek Harness 的 **web** profile。插件依赖 `webServer` 与 Host Connection 服务，不适用于 headless profile。已在 **0.1.2-rc.1** 验证（npm dist-tag `next`），并保留对 **0.1.1-rc.1/rc.2** 的兼容路径。
 
 ## 安装
 
@@ -290,6 +290,12 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 - 可选 `trustForwardedFor`：开启后仅信任回环对端传来的转发头，用于 CIDR / 限流 / 审计，使本地隧道能识别真实客户端 IP。只有额外开启 `trustCloudflareConnectingIp` 才读取 Cloudflare 的 `CF-Connecting-IP`，否则取 `X-Forwarded-For` 最右值；回环或非法的转发值一律不信任。局域网直连请保持关闭。
 
 访问令牌须按机密保管。公网侧应终止 TLS。局域网直连可配置 `tlsCertFile` / `tlsKeyFile`（例如用 [mkcert](https://github.com/FiloSottile/mkcert) 生成）。
+
+**公网暴露清单。** 任何持有访问令牌的人都等于掌握了整台 Harness（包括凭据与设置）。凡是能被公网访问到的入口：
+
+- 请开启 `approvalMode: true`：新设备将保持待审批状态，直到你在本机控制面批准（快速隧道在线且未开审批时，面板会显示警告）；
+- 建议配合 `allowedCidrs` 把入口限定到已知网络；
+- 保持 `auditLog: true`（默认开启），并在分享出去的邀请失去用途后及时轮换令牌。
 
 ## 局限
 

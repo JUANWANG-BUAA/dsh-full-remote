@@ -608,6 +608,9 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
         {tunnelHint !== undefined && (
           <p className={tunnelState === 'error' || tlsBlocksTunnel ? css.warn : css.hint}>{tunnelHint}</p>
         )}
+        {tunnelOn && status?.approvalMode === false && (
+          <p className={css.warn}>{t('tunnel.hint.publicNoApproval')}</p>
+        )}
       </section>
 
       <section className={css.group} data-shot="invite">

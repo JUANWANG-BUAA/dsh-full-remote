@@ -74,6 +74,26 @@ describe('audit log', () => {
     }
   })
 
+  it('flush resolves once every queued write has reached the disk', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-audit-flush-'))
+    const path = join(dir, 'events.jsonl')
+    try {
+      const audit = createAuditLog({ enabled: true, path })
+      // Fire-and-forget, like production call sites (`void audit.record`).
+      for (const event of ['f1', 'f2', 'f3']) audit.record(event)
+      await audit.flush()
+      const text = await readFile(path, 'utf8')
+      assert.match(text, /"f1"/)
+      assert.match(text, /"f2"/)
+      assert.match(text, /"f3"/)
+      // Disabled logs flush trivially without touching any file.
+      const off = createAuditLog({ enabled: false, path: join(dir, 'off.jsonl') })
+      await off.flush()
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   it('rotates the log past the size cap, keeping one generation', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-audit-rotate-'))
     const path = join(dir, 'events.jsonl')
@@ -173,6 +193,11 @@ describe('qr invite', () => {
     // qrToSvg returns null only for empty/oversized input; the assertion above
     // already guarantees a non-null string for this valid short URL.
     assert.match(svg as string, /^<svg[\s\S]*<\/svg>$/)
+  })
+
+  it('returns null for empty and oversized payloads so the panel renders no SVG', () => {
+    assert.equal(qrToSvg(''), null)
+    assert.equal(qrToSvg(`https://tunnel.example/${'x'.repeat(512)}`), null)
   })
 })
 

@@ -38,6 +38,8 @@ export function toastFromReason(
       return { kind: 'error', text: t('error.invalidListenServer') }
     case 'listen-failed-restored':
       return { kind: 'warn', text: t('error.listenRestored', { bind }) }
+    case 'rotate-save-failed':
+      return { kind: 'error', text: t('error.rotateSaveFailed') }
     case 'tls-failed':
       return { kind: 'error', text: t('error.tlsFailed') }
     default:

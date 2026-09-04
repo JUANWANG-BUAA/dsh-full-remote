@@ -96,7 +96,13 @@ export function cookieIsSecure(req: IncomingMessage, spec: { tls: boolean, trust
   return requestIsHttps(req, spec.tls === true, spec.trustForwardedProto())
 }
 
-export function forwardHeaders(req: IncomingMessage, backendHost: string, options: { tls?: boolean, trustForwardedProto?: boolean, forwardedFor?: string } = {}) {
+export function forwardHeaders(req: IncomingMessage, backendHost: string, options: {
+  tls?: boolean
+  trustForwardedProto?: boolean
+  forwardedFor?: string
+  /** Harness browser-session cookie obtained by the host-side auth bridge. */
+  upstreamCookie?: string
+} = {}) {
   const headers: Record<string, string | string[] | undefined> = {}
   const nominated = connectionTokens(req.headers)
   for (const [key, value] of Object.entries(req.headers)) {
@@ -114,6 +120,7 @@ export function forwardHeaders(req: IncomingMessage, backendHost: string, option
   headers['x-forwarded-host'] = sourceHost
   headers['x-forwarded-proto'] = proto
   headers['x-dsh-reverse-proxy'] = '1'
+  if (options.upstreamCookie !== undefined) headers.cookie = options.upstreamCookie
   return headers
 }
 

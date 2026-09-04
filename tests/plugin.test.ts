@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { injectIndexEnhancements, injectViewport } from '../src/index.ts'
 import { readState, readStateDetailed, writeState } from '../src/persist.ts'
-import { effectiveRemoteAddress, forwardHeaders, listenProxy, sanitizeResponseHeaders, sanitizeUpgradeResponseHeaders } from '../src/proxy.ts'
+import { bootstrapUpstreamCookie, effectiveRemoteAddress, forwardHeaders, listenProxy, sanitizeResponseHeaders, sanitizeUpgradeResponseHeaders } from '../src/proxy.ts'
 import { formatAuthority, formatHttpUrl, isLoopbackHost, isSelfLoop, isWildcardHost, publishHost, rewriteLoopbackAuthority } from '../src/http-util.ts'
 import { generateAccessToken, safeEqual } from '../src/security.ts'
 import { createInviteStore } from '../src/invites.ts'
@@ -481,6 +481,41 @@ describe('header forwarding', () => {
     assert.equal(headers['x-safe'], 'ok')
   })
 
+  it('replaces the public session cookie with the internal Harness browser cookie', () => {
+    const headers = forwardHeaders({
+      headers: { host: 'public.example', cookie: 'dsh_reverse_proxy_session=public' },
+      socket: { remoteAddress: '127.0.0.1' },
+    } as unknown as IncomingMessage, '127.0.0.1:3080', { upstreamCookie: 'dsh-auth-test=internal' })
+    assert.equal(headers.cookie, 'dsh-auth-test=internal')
+  })
+
+  it('exchanges the Harness process token for an upstream browser cookie', async () => {
+    let malformed = false
+    const backend = createServer((req, res) => {
+      if (req.headers.host !== `127.0.0.1:${String(portOf(backend))}`
+        || !/[?&]token=launch-token(?:&|$)/.test(req.url ?? '')) {
+        malformed = true
+      }
+      res.writeHead(303, {
+        location: '/',
+        'set-cookie': ['dsh-auth-test=internal; Path=/; HttpOnly'],
+      })
+      res.end()
+    })
+    await new Promise<void>((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
+    const cookie = await bootstrapUpstreamCookie({
+      backendHost: '127.0.0.1',
+      backendPort: portOf(backend),
+      auth: { authenticatedUrl: base => `${base}/?token=launch-token` },
+    })
+    assert.equal(cookie, 'dsh-auth-test=internal')
+    assert.equal(malformed, false)
+  })
+
   it('allows the caller to override the forwarded-for value', () => {
     const headers = forwardHeaders({
       headers: { host: 'public.example' },
@@ -752,6 +787,53 @@ describe('authenticated reverse proxy', () => {
       chunks: ['a'.repeat(200), 'b'.repeat(200)],
     })
     assert.equal(under.status, 200)
+  })
+
+  it('delivers a readable 413 even while an oversized chunk is still streaming', { timeout: 5_000 }, async () => {
+    const backend = createServer((req, res) => {
+      req.resume()
+      res.writeHead(200, { 'content-type': 'text/plain' })
+      res.end('ok')
+    })
+    await new Promise<void>((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
+    const token = generateAccessToken()
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: portOf(backend),
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 1024,
+      upstreamTimeoutMs: 2000,
+    })
+    cleanups.push(proxy.close)
+
+    const login = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    const cookie = login.headers['set-cookie']![0].split(';', 1)[0]
+
+    // One oversized chunk far past the cap: before draining the remainder,
+    // TCP backpressure stalled this exchange until the socket reset, so a
+    // real client saw ECONNRESET instead of the 413.
+    const over = await chunked({
+      port: proxy.port,
+      path: '/api/upload',
+      headers: { cookie },
+      chunks: ['x'.repeat(64 * 1024)],
+    })
+    assert.equal(over.status, 413)
+    assert.equal(over.body, 'request too large\n')
   })
 
   it('does not treat a slow vision-sized body as an upstream connect timeout', { timeout: 5_000 }, async () => {

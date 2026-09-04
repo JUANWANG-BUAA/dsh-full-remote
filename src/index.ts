@@ -15,7 +15,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { Config, type RuntimeConfig } from './config.ts'
-import { listenProxy, type ProxyServer } from './proxy.ts'
+import { bootstrapUpstreamCookie, listenProxy, type BackendBrowserAuth, type ProxyServer } from './proxy.ts'
 import { defaultStateFile, readStateDetailed, writeState, type PersistedState } from './persist.ts'
 import { generateAccessToken } from './security.ts'
 import { createSessionStore } from './sessions.ts'
@@ -46,7 +46,7 @@ import {
 } from './directory-picker.ts'
 
 export const name = 'reverse-proxy'
-export const inject = ['webServer']
+export const inject = ['webServer', 'connection']
 
 export { Config }
 export type { RuntimeConfig }
@@ -65,7 +65,7 @@ interface RuntimeContext {
     info(message: string): void
     debug(message: string): void
   }
-  get?(name: string): unknown
+  get?(name: string, strict?: boolean): unknown
   webServer: {
     readonly port: number
     register(route: {
@@ -76,6 +76,13 @@ interface RuntimeContext {
     tapIndex(transform: (html: string) => string): () => void
   }
   effect(effect: () => () => void | Promise<void>, label?: string): unknown
+}
+
+function connectionAuth(ctx: RuntimeContext): BackendBrowserAuth | undefined {
+  const connection = ctx.get?.('connection', false) as Partial<BackendBrowserAuth> | undefined
+  return typeof connection?.authenticatedUrl === 'function'
+    ? connection as BackendBrowserAuth
+    : undefined
 }
 
 /** Injectable runtime dependencies; tests replace the tunnel factory. */
@@ -310,6 +317,17 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
       return failStart('tls-failed')
     }
     try {
+      // Harness 0.1.2 protects the Web index and /api with a separate browser
+      // session. Exchange its process launch token once on the loopback side;
+      // the public proxy session remains the user's authentication boundary.
+      const auth = connectionAuth(ctx)
+      const upstreamCookie = auth === undefined
+        ? undefined
+        : await bootstrapUpstreamCookie({
+            backendHost: config.backendHost,
+            backendPort,
+            auth,
+          })
       bound = await listenProxy({
         listenHost: host,
         listenPort: port,
@@ -347,13 +365,14 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
         trustCloudflareConnectingIp: () => config.trustCloudflareConnectingIp === true || tunnelLive(),
         compressResponses: config.compressResponses !== false,
         cacheHashedAssets: config.cacheHashedAssets !== false,
+        upstreamCookie,
         log: config.logRequests
           ? entry => { ctx.logger.debug(`reverse-proxy: ${entry.remote ?? '-'} ${entry.method} ${entry.path} -> ${entry.status}`) }
           : undefined,
       })
     } catch (error) {
       warn(error)
-      return failStart('listen-failed')
+      return failStart(connectionAuth(ctx) === undefined ? 'listen-failed' : 'backend-auth-failed')
     }
     lastFailure = undefined
     state!.enabled = true
@@ -390,6 +409,11 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
     } catch (error) {
       state!.accessToken = previousToken
       sessionStore!.hydrate(previousSessions)
+      // The listener is already down, and the failed write marked durable
+      // state unavailable so start() would refuse ('state-invalid'). Record
+      // WHY the entry went dark instead of leaving a silent stop behind.
+      lastFailure = 'rotate-save-failed'
+      void audit.record('token.rotate-failed')
       throw error
     }
     void audit.record('token.rotate')
@@ -569,6 +593,9 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
       }
       await teardown()
       await save()
+      // Events recorded during teardown (tunnel.stop, ...) are queued async;
+      // flush before the process can exit so the last audit lines survive.
+      await audit.flush()
     }),
     status: () => shared(() => snapshot()),
     start: () => exclusive(start),

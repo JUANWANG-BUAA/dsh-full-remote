@@ -68,6 +68,8 @@ export function createAuditLog(options: {
     enabled,
     path: enabled ? path : undefined,
     record: write,
+    /** Resolve when every queued append has reached disk; shutdown paths await this. */
+    flush: () => queue,
   }
 }
 

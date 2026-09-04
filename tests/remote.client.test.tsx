@@ -9,7 +9,7 @@ import {
 } from '../src/client/trust-settings.ts'
 import type { ProxyApi, ProxyStatus } from '../src/client/types.ts'
 import { translatorFor, zh, en, type ReverseProxyTranslate } from '../src/client/i18n.ts'
-import { toastFromCaught, toastFromStatus, toastFromTunnelDetail } from '../src/client/toast.ts'
+import { toastFromCaught, toastFromReason, toastFromStatus, toastFromTunnelDetail } from '../src/client/toast.ts'
 
 afterEach(cleanup)
 
@@ -505,6 +505,40 @@ describe('remote settings section', () => {
     await waitFor(() => {
       expect(screen.queryByText('https://abc123.trycloudflare.com')).toBeNull()
     })
+  })
+
+  it('warns about a public tunnel while approval mode is off', async () => {
+    const onlineNoApproval: ProxyStatus = {
+      ...stopped,
+      enabled: true,
+      running: true,
+      approvalMode: false,
+      tunnel: { state: 'online', publicUrl: 'https://abc123.trycloudflare.com' },
+    }
+    const service = api({ status: vi.fn().mockResolvedValue(onlineNoApproval) })
+    render(<RemoteSection {...sectionProps(service)} />)
+    expect(await screen.findByText(/公网可达/)).toBeTruthy()
+    expect(screen.getByText(/approvalMode/)).toBeTruthy()
+  })
+
+  it('does not warn about a public tunnel when approval mode is on', async () => {
+    const onlineApproval: ProxyStatus = {
+      ...stopped,
+      enabled: true,
+      running: true,
+      approvalMode: true,
+      tunnel: { state: 'online', publicUrl: 'https://abc123.trycloudflare.com' },
+    }
+    const service = api({ status: vi.fn().mockResolvedValue(onlineApproval) })
+    render(<RemoteSection {...sectionProps(service)} />)
+    expect(await screen.findByText('https://abc123.trycloudflare.com')).toBeTruthy()
+    expect(screen.queryByText(/公网可达/)).toBeNull()
+  })
+
+  it('surfaces a rotate-save failure with its dedicated copy', () => {
+    const toast = toastFromReason('rotate-save-failed', stopped, translatorFor(zh), 'rotate')
+    expect(toast.kind).toBe('error')
+    expect(toast.text).toContain('状态文件写入失败')
   })
 
   it('surfaces a tunnel error token observed by polling', async () => {

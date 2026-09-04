@@ -93,10 +93,11 @@ export function pathnameOf(url: string | undefined) {
 }
 
 /**
- * Read a request body with a hard byte cap. Rejects (and destroys the
- * socket) once the stream exceeds the limit, so chunked uploads cannot
- * bypass it. Rejects on parse errors for JSON callers, on 'body-too-large'
- * for everything else.
+ * Read a request body with a hard byte cap. Once the stream exceeds the
+ * limit the promise rejects with 'body-too-large' and the remainder is
+ * drained (never buffered) instead of destroying the socket, so the caller's
+ * 400/413 still reaches the client. An endless dump is bounded by the
+ * server-level request timeout, not by buffering.
  * @param {import('node:http').IncomingMessage} req
  * @param {number} limit maximum accepted body size in bytes
  * @returns {Promise<Buffer>}
@@ -105,11 +106,17 @@ export function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     let size = 0
+    let overLimit = false
     req.on('data', (chunk: Buffer) => {
+      if (overLimit) return
       size += chunk.length
       if (size > limit) {
+        overLimit = true
+        chunks.length = 0
         reject(new Error('body-too-large'))
-        req.destroy()
+        // Discard the rest of the body so the error response can flush past
+        // TCP backpressure instead of stalling behind an unread socket.
+        req.resume()
         return
       }
       chunks.push(chunk)

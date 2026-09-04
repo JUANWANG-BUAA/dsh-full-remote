@@ -212,9 +212,10 @@ flowchart LR
 ## Requirements
 
 - Node.js `^22.19.0 || >=24`
-- A DeepSeek Harness **web** profile. The plugin depends on `webServer`
-  and is not intended for headless profiles. Verified against
-  **0.1.1-rc.1** (npm dist-tags `latest` and `next`).
+- A DeepSeek Harness **web** profile. The plugin depends on `webServer` and
+  Host `connection` services and is not intended for headless profiles.
+  Verified against **0.1.2-rc.1** (npm `next` dist-tag), with a compatibility
+  path for **0.1.1-rc.1/rc.2**.
 
 ## Installation
 
@@ -410,6 +411,17 @@ The access token must be treated as a secret. Terminate TLS on the public
 side of the tunnel. For LAN use without a tunnel, set
 `tlsCertFile` / `tlsKeyFile` (for example with
 [mkcert](https://github.com/FiloSottile/mkcert)).
+
+**Public exposure checklist.** Whoever holds the token controls the whole
+Harness — credentials and settings included — so for anything reachable
+from the internet:
+
+- enable `approvalMode: true`, so a new device stays pending until you
+  approve it in the local panel (the panel shows a warning whenever the
+  quick tunnel is online with approval off);
+- consider `allowedCidrs` to pin the entry to known networks;
+- keep `auditLog: true` (the default) and rotate the token after invites
+  outlive their need.
 
 ## Limitations
 

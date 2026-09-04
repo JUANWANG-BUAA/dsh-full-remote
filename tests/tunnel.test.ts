@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events'
 import { mkdtemp, rm, writeFile, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createHash } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
 import type { ChildProcess } from 'node:child_process'
 import {
@@ -13,6 +14,7 @@ import {
   extractTgzSingleFile,
   parseTunnelUrl,
   tunnelTrustsForwarding,
+  type CloudflaredAsset,
   type TunnelManager,
   type TunnelStatus,
 } from '../src/tunnel.ts'
@@ -274,6 +276,151 @@ describe('tunnel manager state machine', () => {
     await until(() => manager.status().state === 'error')
     assert.equal(manager.status().detail, 'configured-path-invalid')
     assert.equal(audit.some(e => e.event === 'tunnel.error'), true)
+  })
+
+  describe('download failure modes and the first successful install', () => {
+    /** Hide host cloudflared so every case takes the deterministic download path. */
+    async function withHiddenCloudflared<T>(fn: () => Promise<T>): Promise<T> {
+      const savedPath = process.env.PATH
+      process.env.PATH = ''
+      try {
+        return await fn()
+      } finally {
+        process.env.PATH = savedPath
+      }
+    }
+
+    async function downloadingManager(
+      fetchImpl: unknown,
+      options: { child?: { stdout: EventEmitter, stderr: EventEmitter }, assets?: Record<string, CloudflaredAsset> } = {},
+    ): Promise<{
+      manager: TunnelManager
+      audit: Array<{ event: string }>
+      dir: string
+    }> {
+      const dir = await tempDir()
+      const audit: Array<{ event: string }> = []
+      // Accept either a fetch-like function or a bare fake response object.
+      const response: unknown = typeof fetchImpl === 'function' ? undefined : fetchImpl
+      const fetchLike = typeof fetchImpl === 'function'
+        ? fetchImpl as (url: string, init?: unknown) => Promise<unknown>
+        : async () => response
+      const manager = createTunnelManager({
+        target: () => 'http://127.0.0.1:3081',
+        cacheDir: join(dir, 'bin'),
+        fetchFn: fetchLike as typeof fetch,
+        spawnFn: fakeSpawn(options.child ?? fakeChild()) as unknown as typeof import('node:child_process').spawn,
+        ...(options.assets === undefined ? {} : {
+          // Test asset table: same shape as the pinned releases, but sha256
+          // matches this test's own payload so integrity can genuinely pass.
+          assets: options.assets,
+        }),
+        audit: event => { audit.push({ event }) },
+      })
+      return { manager, audit, dir }
+    }
+
+    /** goreleaser-style single-file payload: .tgz on darwin, raw ELF/exe elsewhere. */
+    function releasePayload(binary: Buffer): { bytes: Buffer, installed: Buffer } {
+      const spec = assetForPlatform(process.platform, process.arch)
+      if (spec === undefined || !spec.tgz) {
+        return { bytes: binary, installed: binary }
+      }
+      const header = Buffer.alloc(512)
+      header.write('cloudflared', 0, 100, 'utf8')
+      header.write(binary.length.toString(8).padStart(11, '0') + '\0', 124, 12, 'utf8')
+      header[156] = 48 // regular file
+      let sum = 0
+      for (const byte of header) sum += byte
+      header.write(sum.toString(8).padStart(6, '0') + '\0 ', 148, 8, 'utf8')
+      const padding = binary.length % 512 === 0 ? 0 : 512 - (binary.length % 512)
+      const payload = gzipSync(Buffer.concat([header, binary, Buffer.alloc(padding)]))
+      return { bytes: payload, installed: extractTgzSingleFile(payload) }
+    }
+
+    interface FakeResponse {
+      ok: boolean
+      status?: number
+      headers?: { get(name: string): string | null }
+      arrayBuffer: () => Promise<ArrayBuffer>
+    }
+
+    async function expectFailure(
+      response: FakeResponse | ((url: string) => Promise<FakeResponse>),
+      detail: string,
+    ): Promise<void> {
+      await withHiddenCloudflared(async () => {
+        const impl = typeof response === 'function' ? response : async () => response
+        const { manager, audit, dir } = await downloadingManager(impl)
+        await manager.start()
+        await until(() => manager.status().state === 'error')
+        assert.equal(manager.status().detail, detail)
+        assert.equal(audit.some(e => e.event === 'tunnel.error'), true)
+        // A failed download never leaves a cached binary behind.
+        const { stat } = await import('node:fs/promises')
+        await assert.rejects(stat(join(dir, 'bin', 'cloudflared')))
+      })
+    }
+
+    it('maps a non-200 reply to download-failed', async () => {
+      await expectFailure({ ok: false, status: 503, arrayBuffer: async () => new ArrayBuffer(0) }, 'download-failed')
+    })
+
+    it('maps a network error to download-failed', async () => {
+      await expectFailure(async () => { throw new Error('getaddrinfo ENOTFOUND') }, 'download-failed')
+    })
+
+    it('maps an aborted transfer to download-failed', async () => {
+      await expectFailure(async () => {
+        const aborted = new Error('The operation was aborted')
+        aborted.name = 'AbortError'
+        throw aborted
+      }, 'download-failed')
+    })
+
+    it('rejects a declared content-length over the cap before reading the body', async () => {
+      await expectFailure({
+        ok: true,
+        headers: { get: name => (name.toLowerCase() === 'content-length' ? String(200 * 1024 * 1024) : null) },
+        arrayBuffer: async () => new ArrayBuffer(0),
+      }, 'download-too-large')
+    })
+
+    it('caches a checksum-valid download, records its digest, and launches it', async () => {
+      await withHiddenCloudflared(async () => {
+        const binary = Buffer.from('#!/bin/sh\necho cached-binary\n')
+        const { bytes, installed } = releasePayload(binary)
+        // Two different digests with different roles, exactly like upstream:
+        // the asset entry pins the PUBLISHED FILE, the cache sidecar records
+        // the unpacked binary.
+        const assetSha = createHash('sha256').update(bytes).digest('hex')
+        const installedDigest = createHash('sha256').update(installed).digest('hex')
+        const spec = assetForPlatform(process.platform, process.arch)
+        assert.ok(spec, 'this platform needs a downloadable asset for download tests')
+        const child = fakeChild()
+        const { manager, dir } = await downloadingManager({
+          ok: true,
+          headers: { get: () => String(bytes.byteLength) },
+          arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+        }, {
+          child,
+          assets: { [`${process.platform}-${process.arch}`]: { ...spec, sha256: assetSha } },
+        })
+        try {
+          await manager.start()
+          // Spawn happens off the async resolve path; wait for output plumbing.
+          await until(() => child.stderr.listenerCount('data') >= 1)
+          child.stderr.emit('data', Buffer.from('INF https://cached-install.trycloudflare.com'))
+          await until(() => manager.status().state === 'online')
+          assert.equal(manager.status().publicUrl, 'https://cached-install.trycloudflare.com')
+          const { readFile } = await import('node:fs/promises')
+          assert.match(await readFile(join(dir, 'bin', 'cloudflared'), 'utf8'), /cached-binary/)
+          assert.equal((await readFile(`${join(dir, 'bin', 'cloudflared')}.sha256`, 'utf8')).trim(), installedDigest)
+        } finally {
+          await manager.stop()
+        }
+      })
+    })
   })
 })
 

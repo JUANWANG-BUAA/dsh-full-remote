@@ -35,6 +35,16 @@ class TestWebServer extends Service {
   }
 }
 
+class TestConnection extends Service {
+  constructor(ctx: Context) {
+    super(ctx, 'connection')
+  }
+
+  authenticatedUrl(baseUrl: string) {
+    return `${baseUrl}/?token=test-launch-token`
+  }
+}
+
 class TestLoader extends Service {
   store: Record<string, unknown> = { 'directory-picker': {} }
   created: string[] = []
@@ -80,6 +90,7 @@ describe('Cordis lifecycle', () => {
     try {
       const ctx = new Context()
       await ctx.plugin(TestWebServer)
+      await ctx.plugin(TestConnection)
       const web = ctx.get('webServer') as TestWebServer
       const fiber = await ctx.plugin(plugin, {
         listenHost: '127.0.0.1',
@@ -126,6 +137,7 @@ describe('Cordis lifecycle', () => {
     try {
       const ctx = new Context()
       await ctx.plugin(TestWebServer)
+      await ctx.plugin(TestConnection)
       await ctx.plugin(TestLoader)
       const loader = ctx.get('loader') as TestLoader
       const fiber = await ctx.plugin(plugin, pluginConfig(dir))
@@ -149,6 +161,7 @@ describe('Cordis lifecycle', () => {
     try {
       const ctx = new Context()
       await ctx.plugin(TestWebServer)
+      await ctx.plugin(TestConnection)
       await ctx.plugin(TestLoader)
       const loader = ctx.get('loader') as TestLoader
       loader.store['directory-picker-browse'] = {}
@@ -190,6 +203,7 @@ describe('Cordis lifecycle', () => {
     try {
       const ctx = new Context()
       await ctx.plugin(TestWebServer)
+      await ctx.plugin(TestConnection)
       await ctx.plugin(NestedIncludeLoader)
       const loader = ctx.get('loader') as NestedIncludeLoader
       const fiber = await ctx.plugin(plugin, pluginConfig(dir))
@@ -208,6 +222,7 @@ describe('Cordis lifecycle', () => {
     try {
       const ctx = new Context()
       await ctx.plugin(TestWebServer)
+      await ctx.plugin(TestConnection)
       await assert.rejects(
         async () => {
           await ctx.plugin(plugin, {
@@ -234,6 +249,7 @@ describe('Cordis lifecycle', () => {
     try {
       const ctx = new Context()
       await ctx.plugin(TestWebServer)
+      await ctx.plugin(TestConnection)
       await assert.rejects(
         async () => {
           await ctx.plugin(plugin, {
@@ -271,6 +287,7 @@ describe('Cordis lifecycle', () => {
     try {
       const ctx = new Context()
       await ctx.plugin(TestWebServer)
+      await ctx.plugin(TestConnection)
       const base = {
         listenHost: '127.0.0.1',
         listenPort: 0,

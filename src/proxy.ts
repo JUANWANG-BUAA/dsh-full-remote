@@ -67,6 +67,18 @@ export interface ProxyServer {
   closeSession: (sessionId: string) => void
 }
 
+/** Minimal host-side auth surface added by Harness 0.1.2. */
+export interface BackendBrowserAuth {
+  authenticatedUrl(baseUrl: string): string
+}
+
+/** Input needed to mint the internal Harness browser-session cookie. */
+export interface BootstrapUpstreamCookieOptions {
+  backendHost: string
+  backendPort: number
+  auth: BackendBrowserAuth
+}
+
 /** Caller-supplied configuration for listenProxy. */
 export interface ProxySpec {
   listenHost: string
@@ -112,6 +124,8 @@ export interface ProxySpec {
   compressResponses?: boolean
   /** Add immutable Cache-Control on hashed /assets/* 200s with no upstream cache header. Default true. */
   cacheHashedAssets?: boolean
+  /** Browser-session cookie for Harness 0.1.2+; omitted on older Harness builds. */
+  upstreamCookie?: string
 }
 
 /** ProxySpec after listenProxy resolves defaults and internal helpers. */
@@ -338,6 +352,48 @@ function pipeUpstreamBody(incoming: IncomingMessage, res: ServerResponse, gzip: 
   incoming.pipe(gzipStream).pipe(res)
 }
 
+/**
+ * Exchange Harness's process launch token for its browser-session cookie.
+ * Harness 0.1.2 authenticates the Web index and every `/api` request with
+ * this cookie, while older releases simply have no `authenticatedUrl` method
+ * and therefore never call this compatibility path.
+ */
+export function bootstrapUpstreamCookie(options: BootstrapUpstreamCookieOptions): Promise<string> {
+  const authority = rewriteLoopbackAuthority(options.backendPort)
+  let launchUrl: URL
+  try {
+    launchUrl = new URL(options.auth.authenticatedUrl(`http://${authority}`))
+  } catch (error) {
+    return Promise.reject(new Error('reverse-proxy: Harness returned an invalid authenticated URL', { cause: error }))
+  }
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({
+      hostname: options.backendHost,
+      port: options.backendPort,
+      method: 'GET',
+      path: `${launchUrl.pathname}${launchUrl.search}`,
+      headers: {
+        host: authority,
+        connection: 'close',
+      },
+    }, (response) => {
+      const setCookies = response.headers['set-cookie'] ?? []
+      const cookie = setCookies.find(value => value.includes('='))?.split(';', 1)[0]
+      const status = response.statusCode ?? 0
+      response.once('end', () => {
+        if (status >= 300 && status < 400 && cookie !== undefined) {
+          resolve(cookie)
+          return
+        }
+        reject(new Error(`reverse-proxy: Harness browser-session exchange failed with HTTP ${String(status)}`))
+      })
+      response.resume()
+    })
+    request.once('error', reject)
+    request.end()
+  })
+}
+
 function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSpec, sessionId: string) {
   const contentLength = Number(req.headers['content-length'] ?? 0)
   if (!Number.isFinite(contentLength) || contentLength < 0 || contentLength > spec.maxRequestBytes) {
@@ -354,6 +410,7 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
       tls: spec.tls === true,
       trustForwardedProto: spec.trustForwardedProto(),
       forwardedFor: effectiveRemoteAddress(req, spec),
+      upstreamCookie: spec.upstreamCookie,
     }),
   }, (incoming) => {
     clearConnectTimeout()
@@ -391,13 +448,18 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
   let received = 0
   let overflow = false
   req.on('data', (chunk) => {
+    if (overflow) return
     received += chunk.length
-    if (!overflow && received > spec.maxRequestBytes) {
+    if (received > spec.maxRequestBytes) {
       overflow = true
       // The upstream request is dead from here on; disarm its connect timer
       // so it cannot fire a second destroy up to upstreamTimeoutMs later.
       clearConnectTimeout()
       req.unpipe(up)
+      // Drain the remainder so the 413 below can flush past TCP backpressure
+      // instead of stalling behind a full socket buffer the client cannot
+      // finish writing into. Draining is cheap: the guard above short-circuits.
+      drainRequest(req)
       up.destroy()
       if (!res.headersSent) {
         sendText(res, 413, 'request too large\n', { connection: 'close' })
@@ -778,6 +840,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
       tls: tlsEnabled,
       trustForwardedProto: runtimeSpec.trustForwardedProto(),
       forwardedFor: upgradeRemote,
+      upstreamCookie: runtimeSpec.upstreamCookie,
     })
     headers.connection = 'Upgrade'
     headers.upgrade = req.headers.upgrade ?? 'websocket'

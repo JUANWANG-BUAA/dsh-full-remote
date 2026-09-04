@@ -108,6 +108,8 @@ export interface TunnelManagerOptions {
   cacheDir: string
   spawnFn?: typeof spawn
   fetchFn?: typeof fetch
+  /** Asset table override (tests, private mirrors); defaults to the pinned releases. */
+  assets?: Record<string, CloudflaredAsset>
   audit?: (event: string, fields?: Record<string, unknown>) => void
   log?: (message: string) => void
 }
@@ -146,6 +148,7 @@ async function findOnPath(name: string): Promise<string | undefined> {
 export function createTunnelManager(options: TunnelManagerOptions): TunnelManager {
   const spawnFn = options.spawnFn ?? spawn
   const fetchFn = options.fetchFn ?? fetch
+  const assets = options.assets ?? CLOUDFLARED_ASSETS
   const binName = process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared'
   const cachedBin = join(options.cacheDir, binName)
   const cachedDigest = `${cachedBin}.sha256`
@@ -248,7 +251,7 @@ export function createTunnelManager(options: TunnelManagerOptions): TunnelManage
     const onPath = await findOnPath('cloudflared')
     if (onPath !== undefined) return onPath
     if (await cachedBinaryIsValid()) return cachedBin
-    const spec = assetForPlatform(process.platform, process.arch)
+    const spec = assets[`${process.platform}-${process.arch}`]
     if (spec === undefined) throw new TunnelError('unsupported-platform')
     setStage('downloading')
     return download(spec)

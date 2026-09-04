@@ -1,11 +1,11 @@
 # Compatibility and composition
 
 `dsh-full-remote` is a bundle, not a replacement web application. It expects
-the Harness `webServer` service and the published client runtime/UI-slots
-packages in the supported peer range (`0.1.0-rc.5` through `<0.2`). It is
-verified against DeepSeek Harness **0.1.1-rc.1** and **0.1.1-rc.2** (these
-are the npm dist-tags `latest` and `next`). It is not intended for a headless
-profile.
+the Harness `webServer` and Host `connection` services plus the published
+client runtime/UI-slots packages in the supported peer range (`0.1.1-rc.1`
+through `<0.2`). It is verified against DeepSeek Harness **0.1.2-rc.1** (the
+npm `next` dist-tag), with a compatibility path for **0.1.1-rc.1/rc.2**. It is
+not intended for a headless profile.
 
 ## Installation order
 
@@ -61,6 +61,11 @@ After composing plugins, verify all of the following through the proxy:
 8. on a non-loopback hostname, Settings → Models lists
    `DeepSeek-V4-Flash-Vision-Exp`, and a paste/drop of a JPEG/PNG/WebP/GIF
    under the Harness image limits is not 413'd by this proxy.
+
+Harness 0.1.2 protects the Web index and `/api` with a browser-session cookie.
+When the Host Connection service exposes `authenticatedUrl()`, this plugin
+performs the local process-token exchange at proxy start and keeps that cookie
+internal; the remote device cookie is never forwarded upstream.
 
 ## Multimodal / vision
 
