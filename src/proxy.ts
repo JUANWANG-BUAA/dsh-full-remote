@@ -90,7 +90,7 @@ export interface ProxySpec {
   controlPrefix: string
   maxRequestBytes: number
   upstreamTimeoutMs: number
-  /** First-byte wait for host command POSTs such as `/api/commands/execute`. Defaults to the same 5-minute window as `requestTimeoutMs`. */
+  /** First-byte wait for host command POSTs: `/api/commands/execute` (Harness 0.1.2) or a slash-command `session.prompt` body (Harness 0.1.0/0.1.1). Defaults to the same 5-minute window as `requestTimeoutMs`. */
   commandTimeoutMs?: number
   /** Session TTL; optional when a `sessionStore` is supplied (defaults to the store's own default). */
   sessionMaxAgeSeconds?: number
@@ -309,6 +309,59 @@ function isCommandExecutePath(url: string | undefined): boolean {
   return pathnameOf(url) === '/api/commands/execute'
 }
 
+/**
+ * Harness 0.1.2 wire form of the command call above. On Harness 0.1.0/0.1.1
+ * there is no dedicated command route at all: the composer sends the command
+ * line as an ordinary `session.prompt` (`POST /api/session.prompt`) whose
+ * single text part starts with '/', and the backend only answers after the
+ * command handler settles — so a prompt-shaped body needs the same sniffing
+ * before its first-byte window is chosen.
+ */
+const PROMPT_CARRIER_PATHS = new Set(['/api/session.prompt', '/api/session/prompt'])
+
+function isPromptCarrierPath(url: string | undefined): boolean {
+  return PROMPT_CARRIER_PATHS.has(pathnameOf(url))
+}
+
+/**
+ * Upper bound for the passive command-body sniff. A slash-command prompt is
+ * one short text part, so anything past this cap is an ordinary (possibly
+ * image-carrying) prompt and keeps the normal RPC first-byte window.
+ */
+const COMMAND_SNIFF_LIMIT_BYTES = 64 * 1024
+
+function contentArrayOf(value: unknown, depth = 0): unknown[] | undefined {
+  if (depth > 3 || typeof value !== 'object' || value === null) return undefined
+  const record = value as Record<string, unknown>
+  if (Array.isArray(record.content)) return record.content
+  for (const key of ['payload', 'request', 'args'] as const) {
+    const nested = contentArrayOf(record[key], depth + 1)
+    if (nested !== undefined) return nested
+  }
+  return undefined
+}
+
+/**
+ * Whether a buffered prompt-carrier body is a slash-command line: content is
+ * exactly one text block starting with '/', mirroring Harness's own
+ * admission rule. Any parse miss is inconclusive and keeps the normal RPC
+ * first-byte window — the proxy never rejects based on this sniff.
+ */
+function promptBodyIsSlashCommand(raw: Buffer): boolean {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw.toString('utf8'))
+  } catch {
+    return false
+  }
+  const content = contentArrayOf(parsed)
+  if (content === undefined || content.length !== 1) return false
+  const part = content[0]
+  if (typeof part !== 'object' || part === null) return false
+  const { type, text } = part as { type?: unknown, text?: unknown }
+  return type === 'text' && typeof text === 'string' && text.startsWith('/')
+}
+
 function inboundMethodHasBody(method: string | undefined): boolean {
   const verb = (method ?? 'GET').toUpperCase()
   return verb !== 'GET' && verb !== 'HEAD'
@@ -477,12 +530,33 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
   res.once('close', () => {
     if (!res.writableEnded) abortUpstream()
   })
+  // Passive bounded copy of a prompt-carrier body, kept only to decide the
+  // first-byte window at body end. Piping to upstream is untouched; the copy
+  // is dropped the moment it outgrows what a slash-command line can be.
+  let sniffPromptBody = isPromptCarrierPath(req.url) && contentLength <= COMMAND_SNIFF_LIMIT_BYTES
+  let sniffed: Buffer[] = []
+  let sniffedBytes = 0
+  if (sniffPromptBody) {
+    req.on('data', (chunk: Buffer) => {
+      if (!sniffPromptBody) return
+      sniffedBytes += chunk.length
+      if (sniffedBytes > COMMAND_SNIFF_LIMIT_BYTES) {
+        sniffPromptBody = false
+        sniffed = []
+        return
+      }
+      sniffed.push(chunk)
+    })
+  }
   if (inboundMethodHasBody(req.method)) {
     req.once('end', () => {
       if (overflow || res.headersSent) return
-      const firstByteTimeoutMs = isCommandExecutePath(req.url)
-        ? (spec.commandTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS)
-        : spec.upstreamTimeoutMs
+      let firstByteTimeoutMs = spec.upstreamTimeoutMs
+      if (isCommandExecutePath(req.url)) {
+        firstByteTimeoutMs = spec.commandTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS
+      } else if (sniffPromptBody && promptBodyIsSlashCommand(Buffer.concat(sniffed))) {
+        firstByteTimeoutMs = spec.commandTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS
+      }
       armUpstreamFirstByteTimeout(up, firstByteTimeoutMs, () => res.headersSent)
     })
   }

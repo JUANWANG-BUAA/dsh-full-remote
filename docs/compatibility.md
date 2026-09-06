@@ -85,10 +85,15 @@ forwards the Web `/api` the composer already uses:
 `session.prompt`) also the wait for the first upstream byte after the client
 finishes sending. A slow tunnel upload after connect is bounded by
 `requestTimeoutMs` (default 5 minutes), not by 15 seconds. GET/HEAD including
-SSE never use that post-body wait. Host command POSTs such as
-`/api/commands/execute` use `commandTimeoutMs` (default 5 minutes) instead of
-`upstreamTimeoutMs` for that first-byte wait because Harness command handlers
-may legitimately run long before responding (for example `/compact`).
+SSE never use that post-body wait. Host command POSTs use `commandTimeoutMs`
+(default 5 minutes) instead of `upstreamTimeoutMs` for that first-byte wait
+because Harness command handlers may legitimately run long before responding
+(for example `/compact`). That covers both wire generations: Harness 0.1.2
+calls commands on `POST /api/commands/execute`, while Harness 0.1.0/0.1.1
+carry the command line as an ordinary `POST /api/session.prompt` whose single
+text part starts with `/` — the proxy sniffs that bounded prompt body and
+applies the command window only to command-shaped prompts, so ordinary
+prompts keep the short hung-backend window.
 
 Raster image responses (`image/png`, `image/jpeg`, `image/webp`,
 `image/gif`) are never gzipped. JSON RPC envelopes still may be.

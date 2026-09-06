@@ -3,6 +3,23 @@
 All notable changes to dsh-full-remote (formerly dsh-reverse-proxy) are
 documented in this file.
 
+## 0.3.10 (2026-09-06)
+
+### Fixed
+
+- Manual `/compact` and other host commands no longer 502 through the proxy
+  on DeepSeek Harness 0.1.0/0.1.1 (#25). Those releases have no dedicated
+  command route: the composer sends the command line as an ordinary
+  `POST /api/session.prompt` whose single text part starts with `/`, and the
+  backend answers only after the command handler settles — so the request
+  hit the default 15s first-byte window and the proxy reported `502 bad
+  gateway` while direct `127.0.0.1` access worked. The proxy now sniffs the
+  bounded prompt body and applies `commandTimeoutMs` (default 5 minutes) to
+  command-shaped prompts on both wire generations
+  (`/api/session.prompt` and `/api/session/prompt`); ordinary prompts keep
+  the short hung-backend window, and the `/api/commands/execute` path
+  (Harness 0.1.2) is unchanged.
+
 ## 0.3.9 (2026-08-27)
 
 Findings from a full plugin audit, addressed.

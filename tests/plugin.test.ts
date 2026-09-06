@@ -982,6 +982,157 @@ describe('authenticated reverse proxy', () => {
     assert.equal(proxied.body, '{"ok":true}')
   })
 
+  it('allows a slash-command prompt line through /api/session.prompt to outlast the upstream first-byte timeout (#25)', { timeout: 5_000 }, async () => {
+    const backend = createServer((req, res) => {
+      req.resume()
+      req.on('end', () => {
+        setTimeout(() => {
+          res.writeHead(200, { 'content-type': 'application/json' })
+          res.end('{"accepted":true,"command":{"kind":"success"}}')
+        }, 350)
+      })
+    })
+    await new Promise<void>((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
+    const token = generateAccessToken()
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: portOf(backend),
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 16 * 1024,
+      upstreamTimeoutMs: 150,
+      commandTimeoutMs: 1_000,
+      loginDelayMs: 0,
+    })
+    cleanups.push(proxy.close)
+
+    const login = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    const cookie = login.headers['set-cookie']![0].split(';', 1)[0]
+
+    // Harness 0.1.0/0.1.1 wire form: /compact is an ordinary session.prompt
+    // whose single text part starts with '/', answered only when the command
+    // handler settles.
+    const proxied = await http({
+      port: proxy.port,
+      path: '/api/session.prompt',
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'client-request',
+        rpcId: 'rpc-1',
+        method: 'session.prompt',
+        payload: {
+          sessionId: 'session-1',
+          mode: 'queue',
+          content: [{ type: 'text', text: '/compact' }],
+        },
+      }),
+    })
+    assert.equal(proxied.status, 200)
+    assert.equal(proxied.body, '{"accepted":true,"command":{"kind":"success"}}')
+  })
+
+  it('keeps the short first-byte window for ordinary /api/session.prompt bodies', { timeout: 5_000 }, async () => {
+    const backend = createServer((req, res) => {
+      req.resume()
+      req.on('end', () => {
+        setTimeout(() => {
+          res.writeHead(200, { 'content-type': 'application/json' })
+          res.end('{"accepted":true}')
+        }, 350)
+      })
+    })
+    await new Promise<void>((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
+    const token = generateAccessToken()
+    const proxy = await listenProxy({
+      listenHost: '127.0.0.1',
+      listenPort: 0,
+      backendHost: '127.0.0.1',
+      backendPort: portOf(backend),
+      accessToken: token,
+      cookieName: 'session',
+      controlPrefix: '/dsh-reverse-proxy',
+      maxRequestBytes: 16 * 1024,
+      upstreamTimeoutMs: 150,
+      commandTimeoutMs: 1_000,
+      loginDelayMs: 0,
+    })
+    cleanups.push(proxy.close)
+
+    const login = await http({
+      port: proxy.port,
+      path: '/_dsh_reverse_proxy/login',
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: `token=${encodeURIComponent(token)}`,
+    })
+    const cookie = login.headers['set-cookie']![0].split(';', 1)[0]
+
+    const ordinary = await http({
+      port: proxy.port,
+      path: '/api/session.prompt',
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'client-request',
+        rpcId: 'rpc-2',
+        method: 'session.prompt',
+        payload: {
+          sessionId: 'session-1',
+          mode: 'queue',
+          content: [{ type: 'text', text: 'hello model' }],
+        },
+      }),
+    })
+    assert.equal(ordinary.status, 502)
+
+    // Multi-part content is never a slash command even when the first part
+    // starts with '/', and a non-JSON body stays on the ordinary window.
+    const multiPart = await http({
+      port: proxy.port,
+      path: '/api/session.prompt',
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'client-request',
+        rpcId: 'rpc-3',
+        method: 'session.prompt',
+        payload: {
+          sessionId: 'session-1',
+          mode: 'queue',
+          content: [{ type: 'text', text: '/compact' }, { type: 'text', text: 'more' }],
+        },
+      }),
+    })
+    assert.equal(multiPart.status, 502)
+
+    const notJson = await http({
+      port: proxy.port,
+      path: '/api/session.prompt',
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: 'not json at all',
+    })
+    assert.equal(notJson.status, 502)
+  })
+
 
   it('allows headersTimeoutMs larger than the default request timeout', async () => {
     const backend = createServer((_req, res) => {
