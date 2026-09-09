@@ -2,8 +2,9 @@
  * i18n — the settings page's zh/en copy tokens.
  *
  * Registered into the OPTIONAL dsh-client-locale service; without it the
- * page uses the stable zh fallback (matching the harness fallback locale).
+ * page follows the browser language. An explicit browser preference wins.
  */
+import { browserLanguage, createLanguageController, type LanguageController } from './language.ts'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 
 /**
@@ -12,11 +13,13 @@ import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
  * The locale service (`@deepseek-ai/dsh-client-locale`) is OPTIONAL: when the
  * host composition provides it, the dictionary is registered and every text
  * follows the active DeepSeek Harness locale; otherwise the page falls back
- * to the zh copy that matches the harness's own fallback locale.
+ * to the browser language (English for non-Chinese browsers).
  */
 export const NS = 'reverse-proxy'
 
 export const zh = {
+  'language.label': '语言 / Language',
+  'language.auto': '自动（跟随 Harness / 浏览器）',
   'action.label': '反向代理',
   'section.title': '反向代理',
   'section.intro': '发布一个受令牌保护的本地入口，把任意隧道指到下方地址即可远程使用 DeepSeek Harness。',
@@ -197,6 +200,8 @@ export const zh = {
 } as const
 
 export const en: Record<keyof typeof zh, string> = {
+  'language.label': 'Language / 语言',
+  'language.auto': 'Auto (Harness / browser)',
   'action.label': 'Reverse proxy',
   'section.title': 'Reverse proxy',
   'section.intro': 'Publish a token-gated local entry point. Point any tunnel at the address below to use DeepSeek Harness remotely.',
@@ -388,17 +393,24 @@ export function translatorFor(dict: Record<keyof typeof zh, string>): ReversePro
   }
 }
 
-const fallback = translatorFor(zh)
-
-/**
- * Register the namespace with the optional locale runtime and return a
- * translate function bound to it. Without the locale service the stable zh
- * fallback is returned.
- */
-export function bindTranslate(ctx: ClientContext): { t: ReverseProxyTranslate, dispose?: () => void } {
+/** Explicit preference wins over the optional host locale and browser fallback. */
+export function bindTranslate(ctx: ClientContext): {
+  t: ReverseProxyTranslate
+  language: LanguageController
+  dispose: () => void
+} {
+  const language = createLanguageController()
   const locale = ctx.get('locale')
-  if (locale === undefined) return { t: fallback }
-  const dispose = locale.register(NS, { zh: { ...zh }, en: { ...en } })
-  const bound = locale.bind(NS) as (key: string, params?: Record<string, unknown>) => string
-  return { t: (key, params) => bound(key, params), dispose }
+  const unregister = locale?.register(NS, { zh: { ...zh }, en: { ...en } })
+  const bound = locale?.bind(NS) as ReverseProxyTranslate | undefined
+  const dictionaries = { zh: translatorFor(zh), en: translatorFor(en) }
+  return {
+    language,
+    t: (key, params) => {
+      const selected = language.getPreference()
+      if (selected === 'auto' && bound !== undefined) return bound(key, params)
+      return dictionaries[selected === 'auto' ? browserLanguage() : selected](key, params)
+    },
+    dispose: () => { language.dispose(); unregister?.() },
+  }
 }

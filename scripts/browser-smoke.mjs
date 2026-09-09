@@ -35,6 +35,13 @@ try {
   await page.getByText('本机特权通道已打开').waitFor()
   await page.getByRole('button', { name: '生成邀请' }).click()
   await page.getByText(/login\?invite=/).waitFor()
+  await page.getByRole('combobox', { name: /Language/ }).selectOption('en')
+  await page.getByRole('heading', { name: 'Reverse proxy' }).waitFor()
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.getByRole('heading', { name: 'Reverse proxy' }).waitFor()
+  if (await page.getByRole('combobox', { name: /Language/ }).inputValue() !== 'en') {
+    throw new Error('browser smoke: language preference was not persisted')
+  }
   if (errors.length > 0) throw new Error(`browser page errors:\n${errors.join('\n')}`)
   console.log('browser smoke passed: Chromium rendered, self-check and invite flows completed')
 } finally {

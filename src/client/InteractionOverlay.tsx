@@ -8,6 +8,7 @@
  */
 import { useEffect, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import { useLanguage, type LanguageController } from './language.ts'
 import type { ReverseProxyTranslate } from './i18n.ts'
 import {
   parseRecommendedLabel,
@@ -28,6 +29,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** Injected face: translate, answer callbacks, optional test override. */
 export type InteractionOverlayInjected = {
+  language?: LanguageController
   t: ReverseProxyTranslate
   /** Test seam; omit in production so the overlay follows hostname/viewport. */
   enabled?: boolean
@@ -68,6 +70,7 @@ function emptyDrafts(questions: readonly QuestionItemView[]): DraftAnswer[] {
  */
 export function InteractionOverlay({
   t,
+  language,
   enabled,
   openSession,
   answerApproval,
@@ -75,6 +78,7 @@ export function InteractionOverlay({
   cancelQuestion,
   useRemotePending,
 }: InteractionOverlayProps) {
+  useLanguage(language)
   const [autoEnabled, setAutoEnabled] = useState(() => enabled ?? shouldUseInteractionOverlay())
   useEffect(() => {
     if (enabled !== undefined) {

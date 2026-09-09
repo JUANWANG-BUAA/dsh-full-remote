@@ -9,6 +9,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { AuditResult, InviteResult, ProxyApi, ProxyStatus, SelfCheckResult, SessionInfo, TunnelStatus } from './types.ts'
 import { DevicesSection } from './DevicesSection.tsx'
 import type { ReverseProxyTranslate } from './i18n.ts'
+import { useLanguage, type LanguageController } from './language.ts'
 import { PanelToast } from './PanelToast.tsx'
 import { ReverseProxyIcon } from './ReverseProxyIcon.tsx'
 import { toastFromCaught, toastFromReason, toastFromStatus, toastFromTunnelDetail, type PanelToastModel, type ToastIntent } from './toast.ts'
@@ -17,7 +18,7 @@ import css from './remote.module.css'
 
 export type RemoteSectionProps =
   & PropsRuntime<'settings.section'>
-  & { api: ProxyApi, t: ReverseProxyTranslate }
+  & { api: ProxyApi, t: ReverseProxyTranslate, language?: LanguageController }
 
 /** Only render QR SVG that looks like our own generator output. */
 function safeQrSvg(svg: string | undefined) {
@@ -49,7 +50,8 @@ function CopyField(props: {
   )
 }
 
-export function RemoteSection({ api, t }: RemoteSectionProps) {
+export function RemoteSection({ api, t, language }: RemoteSectionProps) {
+  useLanguage(language)
   const [status, setStatus] = useState<ProxyStatus>()
   const [accessToken, setAccessToken] = useState<string>()
   const [busyKind, setBusyKind] = useState<'start' | 'stop' | 'listen' | 'token' | 'check' | 'invite' | 'device' | 'tunnel' | undefined>()
@@ -462,6 +464,19 @@ export function RemoteSection({ api, t }: RemoteSectionProps) {
   return (
     <div className={css.section} data-shot="section">
       <h2 className={css.title}>{t('section.title')}</h2>
+      {language !== undefined && (
+        <label className={css.language}>
+          {t('language.label')}{' '}
+          <select value={language.getPreference()} onChange={event => {
+            const value = event.target.value
+            if (value === 'auto' || value === 'en' || value === 'zh') language.setPreference(value)
+          }}>
+            <option value="auto">{t('language.auto')}</option>
+            <option value="en">English</option>
+            <option value="zh">中文</option>
+          </select>
+        </label>
+      )}
       <p className={css.intro}>{t('section.intro')}</p>
 
       {toast !== undefined && (

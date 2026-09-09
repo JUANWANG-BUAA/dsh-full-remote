@@ -241,3 +241,20 @@ Use a verified GraphQL `addDiscussionComment` mutation in a future run, or omit 
 - Related Files: docs/github-metadata.md
 
 ---
+
+## [ERR-20260909-001] release-auth-and-canary
+
+**Logged**: 2026-09-09
+**Priority**: medium
+**Status**: pending
+**Area**: infra
+
+### Summary
+The previous npm publish failed with HTTP 404; the local npm identity check returns 401. GitHub authentication alone does not authorize npm publication. GitHub Release can carry the verified tarball independently.
+
+The weekly canary also failed because it hard-coded upstream `main` while the actual default branch is `master`. Fixed by allowing checkout to resolve the upstream default branch.
+
+### Suggested Action
+Restore npm publishing credentials or trusted-publisher configuration before claiming npm availability. Verify the registry after publishing. Discover workflow filenames before reading them (`publish.yml`, not `release.yml`).
+
+---

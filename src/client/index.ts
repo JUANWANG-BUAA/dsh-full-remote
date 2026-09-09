@@ -4,7 +4,7 @@
  * Registers one official slot (`settings.section`, order 30: after General,
  * Models, Plugins, Agent presets) and wires the loopback control API.
  * The locale service is OPTIONAL: present, the page follows the active
- * DSh locale; absent, it falls back to zh.
+ * DSh locale; absent, it follows the browser language. A saved plugin override wins.
  *
  * Also registers a `shell.overlay` confirmation sheet so a remote/mobile
  * browser can answer userQuestions and tool approvals that would otherwise
@@ -125,14 +125,14 @@ export function apply(ctx: ClientContext): void {
     trustSettingsPersistence(binder, () => scope.get('connection') as { isLoopback?: boolean } | undefined)
   })
   const api = createApi()
-  const { t, dispose } = bindTranslate(ctx)
+  const { t, language, dispose } = bindTranslate(ctx)
   if (dispose !== undefined) ctx.effect(() => dispose)
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'reverse-proxy',
     order: 30,
     label: () => t('action.label'),
-    inject: () => ({ api, t }),
+    inject: () => ({ api, t, language }),
   }, RemoteSection))
   ctx.inject(['sessions'], (scope: ClientContext) => {
     const sessions = scope.get('sessions') as ISessions | undefined
@@ -145,6 +145,7 @@ export function apply(ctx: ClientContext): void {
       order: 40,
       inject: () => ({
         t,
+        language,
         openSession: (id: string) => { sessions.open(id as Parameters<ISessions['open']>[0]) },
         answerApproval: (key: string, outcome: 'allowed-once' | 'rejected') => source.answerApproval(key, outcome),
         answerQuestion: source.answerQuestion,

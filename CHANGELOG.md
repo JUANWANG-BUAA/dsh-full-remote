@@ -3,6 +3,27 @@
 All notable changes to dsh-full-remote (formerly dsh-reverse-proxy) are
 documented in this file.
 
+## 0.3.11 (2026-09-09)
+
+### Fixed
+
+- Restore English in the plugin settings when the optional Harness locale
+  service is absent (#30). The fallback now follows the browser language
+  instead of always using Chinese; non-Chinese languages fall back to English.
+
+- Weekly upstream canary now checks out the actual Harness default branch
+  instead of hard-coding `main` (upstream uses `master`).
+
+### Added
+
+- An Auto / English / 中文 language selector in the settings panel. Explicit
+  choices override the host locale, persist per browser/origin, and synchronize
+  across tabs and remote confirmation overlays without resetting form drafts
+  or restarting control polling. Blocked browser storage remains usable.
+- Regression coverage for browser and host locale selection, persistence,
+  cross-tab updates, blocked storage, and live panel switching, plus a Chromium
+  switch-and-reload smoke check.
+
 ## 0.3.10 (2026-09-06)
 
 ### Fixed

@@ -166,6 +166,10 @@ ngrok http 3081
 
 ## 使用
 
+### 界面语言
+
+插件面板提供 **Language / 语言** 选择器：**自动**、**English**、**中文**。自动模式优先跟随 Harness 语言，语言服务不可用时跟随浏览器（非中文浏览器使用英文）。手动选择按浏览器和访问地址保存，并同步应用于远程确认弹层。登录页、等待审批页与设备主页仍跟随浏览器的 HTTP 语言头。
+
 ### 启动与停止
 
 在设置页点击 **启动代理** 开始监听，点击 **停止代理** 停止。
@@ -200,7 +204,7 @@ ngrok http 3081
 dsh plugin --profile web update --latest dsh-full-remote
 ```
 
-然后重启 `dsh web`。`--latest` 会忽略现有版本范围，装上最新版并改写 `package.json`。指定某一版用 `dsh plugin --profile web update dsh-full-remote@0.3.7`。
+然后重启 `dsh web`。`--latest` 会忽略现有版本范围，装上最新版并改写 `package.json`。指定某一版用 `dsh plugin --profile web update dsh-full-remote@0.3.11`。
 
 ## 截图
 
@@ -313,7 +317,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.3.7.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.11.tgz
 ```
 
 git 安装会执行 `prepare` 构建，pnpm ≥ 10 需要放行：

@@ -1,5 +1,6 @@
+import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ComponentProps } from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { InteractionOverlay } from '../src/client/InteractionOverlay.tsx'
 import {
@@ -11,7 +12,7 @@ import {
   type RemotePendingItem,
   type RemotePendingState,
 } from '../src/client/pending-source.ts'
-import { translatorFor, zh } from '../src/client/i18n.ts'
+import { bindTranslate, translatorFor, zh } from '../src/client/i18n.ts'
 
 afterEach(cleanup)
 
@@ -307,4 +308,19 @@ describe('createPendingSource', () => {
     })
     source.dispose()
   })
+})
+
+
+it('updates an open approval overlay when the plugin language changes', () => {
+  const binding = bindTranslate({ get: () => undefined } as unknown as ClientContext)
+  try {
+    binding.language.setPreference('zh')
+    render(<InteractionOverlay {...overlayProps({ items: [approvalItem] }, binding)} />)
+    expect(screen.getByRole('button', { name: '允许一次' })).toBeTruthy()
+    act(() => { binding.language.setPreference('en') })
+    expect(screen.getByRole('button', { name: 'Allow once' })).toBeTruthy()
+  } finally {
+    binding.dispose()
+    localStorage.clear()
+  }
 })

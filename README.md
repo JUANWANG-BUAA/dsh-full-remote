@@ -296,7 +296,11 @@ dsh plugin --profile web update --latest dsh-full-remote
 
 Then restart `dsh web`. `--latest` ignores the current range, installs the
 newest version, and rewrites `package.json`. For a specific version use
-`dsh plugin --profile web update dsh-full-remote@0.3.7`.
+`dsh plugin --profile web update dsh-full-remote@0.3.11`.
+
+### Language
+
+The plugin panel has a **Language / 语言** selector: **Auto**, **English**, or **中文**. Auto follows the Harness locale when available, otherwise your browser language (English for non-Chinese browsers). An explicit choice is saved per browser and origin and also applies to remote confirmation overlays. Login, approval-wait, and device-home pages continue to follow the browser’s HTTP language header.
 
 ## Screenshots
 
@@ -464,7 +468,7 @@ from the internet:
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.3.7.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.11.tgz
 ```
 
 Git installs run the `prepare` build. On pnpm ≥ 10 allow it:
