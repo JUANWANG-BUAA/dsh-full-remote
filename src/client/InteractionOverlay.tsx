@@ -91,7 +91,7 @@ export function InteractionOverlay({
     return () => { window.removeEventListener('resize', sync) }
   }, [enabled])
 
-  const items = useRemotePending(state => state.items)
+  const items = useRemotePending((state: RemotePendingState) => state.items)
   const show = enabled ?? autoEnabled
   const item = items[0]
   if (!show || item === undefined) return null

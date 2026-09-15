@@ -3,6 +3,17 @@
 All notable changes to dsh-full-remote (formerly dsh-reverse-proxy) are
 documented in this file.
 
+## Unreleased
+
+### Changed
+
+- Verify the browser-session authentication bridge and packaged-plugin smoke
+  flow against DeepSeek Harness **0.1.5-rc.2**
+  (`fb2c4b9e698e30edb738bca4cf0618587db7d203`) and compile against its
+  published Connection, UI slots, and invariants packages.
+- Preserve the remote interaction overlay's selector type when compiling
+  against the Harness 0.1.5 UI slots declarations.
+
 ## 0.3.11 (2026-09-09)
 
 ### Fixed

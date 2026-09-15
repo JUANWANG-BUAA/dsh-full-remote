@@ -140,7 +140,7 @@ flowchart LR
 ## 环境要求
 
 - Node.js `^22.19.0 || >=24`
-- DeepSeek Harness 的 **web** profile。插件依赖 `webServer` 与 Host Connection 服务，不适用于 headless profile。已在 **0.1.2-rc.1** 验证（npm dist-tag `next`），并保留对 **0.1.1-rc.1/rc.2** 的兼容路径。
+- DeepSeek Harness 的 **web** profile。插件依赖 `webServer` 与 Host Connection 服务，不适用于 headless profile。已在 **0.1.5-rc.2** 验证（npm dist-tag `next`），并保留对 **0.1.1-rc.1/rc.2** 的兼容路径。
 
 ## 安装
 
