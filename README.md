@@ -214,7 +214,7 @@ flowchart LR
 - Node.js `^22.19.0 || >=24`
 - A DeepSeek Harness **web** profile. The plugin depends on `webServer` and
   Host `connection` services and is not intended for headless profiles.
-  Verified against **0.1.2-rc.1** (npm `next` dist-tag), with a compatibility
+  Verified against **0.1.5-rc.2** (npm `next` dist-tag), with a compatibility
   path for **0.1.1-rc.1/rc.2**.
 
 ## Installation

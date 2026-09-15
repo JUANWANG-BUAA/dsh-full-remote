@@ -3,7 +3,7 @@
 `dsh-full-remote` is a bundle, not a replacement web application. It expects
 the Harness `webServer` and Host `connection` services plus the published
 client runtime/UI-slots packages in the supported peer range (`0.1.1-rc.1`
-through `<0.2`). It is verified against DeepSeek Harness **0.1.2-rc.1** (the
+through `<0.2`). It is verified against DeepSeek Harness **0.1.5-rc.2** (the
 npm `next` dist-tag), with a compatibility path for **0.1.1-rc.1/rc.2**. It is
 not intended for a headless profile.
 
