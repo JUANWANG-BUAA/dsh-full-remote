@@ -499,3 +499,33 @@ the command's reported field list before composing cross-command JSON queries.
 - Related Files: docs/release-0.3.12.md
 
 ---
+
+## [ERR-20260916-009] gh-api-form-field-switches-method
+
+**Logged**: 2026-09-16T19:24:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: infra
+
+### Summary
+
+Using `gh api -f ref=main` without an explicit method changed a repository
+content read into a POST request and returned 404.
+
+### Error
+
+```text
+gh: Not Found (HTTP 404)
+```
+
+### Suggested Fix
+
+Use `gh api -X GET ... -f ref=main` when passing query parameters to a
+read-only GitHub API request.
+
+### Metadata
+
+- Reproducible: yes
+- Related Files: README.md, README.zh.md
+
+---
