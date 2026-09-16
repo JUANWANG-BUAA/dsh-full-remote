@@ -1,6 +1,6 @@
 # Publishing strategy
 
-## Registry reality (checked 2026-08-21)
+## Registry reality (checked 2026-09-16)
 
 - `@deepseek-ai/dsh` publishes `0.1.1-rc.1` on dist-tags `latest` and
   `next`.
@@ -10,7 +10,9 @@
 - `@deepseek-ai/dsh-web-app@latest` historically lagged; do not tell
   users to install that package. Default `dsh --profile web` already
   provides `webServer`.
-- The current published plugin is `dsh-full-remote@0.3.7`.
+- The npm `latest` tag still points to `dsh-full-remote@0.3.7`; releases
+  `0.3.8` through `0.3.11` were tagged on GitHub but their npm publish jobs
+  failed because the configured npm credential no longer had publish access.
 - The legacy `dsh-reverse-proxy@0.1.0` package is deprecated and points users
   to `dsh-full-remote`.
 
@@ -72,6 +74,8 @@ package is a different product.
 - [x] Tag `v0.3.5` (HTTP gzip + hashed-asset cache, coexist with `deepseek-harness-auth` browse rows).
 - [x] Tag `v0.3.6` (Harness 0.1.0-rc.8 ModuleLoader wrap + remote Models settings #13); published 2026-08-21.
 - [x] Tag `v0.3.7` (Harness 0.1.1-rc.1 vision body cap, timeouts, multiline overlay); published 2026-08-21.
+- [ ] Publish `v0.3.12` after restoring npm package write access; verify both
+  `npm view dsh-full-remote version` and the provenance link.
 - [x] Deprecate `dsh-reverse-proxy@0.1.0`; verified with `npm view dsh-reverse-proxy deprecated` on 2026-08-18.
 - [x] Apply GitHub topics from `docs/github-metadata.md` (applied 2026-08-16).
 - [x] PR the plugin into `awesome-dsh-plugin` as `dsh-full-remote` ([#833](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/833), updated 2026-08-16).

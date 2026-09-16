@@ -3,6 +3,23 @@
 All notable changes to dsh-full-remote (formerly dsh-reverse-proxy) are
 documented in this file.
 
+## 0.3.12 (2026-09-16)
+
+### Fixed
+
+- The proxy now starts when DeepSeek Harness Desktop runs its embedded Web
+  backend with `--skip-auth` / `DSH_SKIP_AUTH=1` (#31). In this explicit mode
+  Harness returns the launch URL as a successful index response without
+  minting a browser-session cookie; the plugin no longer misreports that as
+  `backend-auth-failed`. Its own access-token and per-device session gate is
+  unchanged.
+
+### Added
+
+- Regression coverage proves that a cookie-free 2xx launch response is
+  accepted only when backend authentication is explicitly disabled; the same
+  response still fails closed in normal authenticated mode.
+
 ## 0.3.11 (2026-09-09)
 
 ### Fixed

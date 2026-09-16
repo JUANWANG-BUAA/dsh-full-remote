@@ -258,3 +258,92 @@ The weekly canary also failed because it hard-coded upstream `main` while the ac
 Restore npm publishing credentials or trusted-publisher configuration before claiming npm availability. Verify the registry after publishing. Discover workflow filenames before reading them (`publish.yml`, not `release.yml`).
 
 ---
+
+## [ERR-20260916-001] apply-patch-context-drift
+
+**Logged**: 2026-09-16T10:30:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: docs
+
+### Summary
+
+A multi-file patch was rejected because a README sentence was wrapped
+differently from the assumed context. No files were changed.
+
+### Error
+
+```text
+apply_patch verification failed: Failed to find expected lines in README.md
+```
+
+### Suggested Fix
+
+Inspect the exact nearby text before patching prose, and split broad patches
+into smaller groups so a documentation context mismatch does not block code
+changes.
+
+### Metadata
+
+- Reproducible: yes
+- Related Files: README.md
+
+---
+
+## [ERR-20260916-002] node26-localstorage-shadow
+
+**Logged**: 2026-09-16T18:30:00+08:00
+**Priority**: medium
+**Status**: pending
+**Area**: tests
+
+### Summary
+
+The client suite fails under local Node 26 because Node's experimental global
+`localStorage` is unavailable without `--localstorage-file` and shadows the
+jsdom storage object expected by the tests. The release workflow uses Node 22.
+
+### Error
+
+```text
+ExperimentalWarning: localStorage is not available because --localstorage-file was not provided
+TypeError: Cannot read properties of undefined (reading 'clear')
+```
+
+### Suggested Fix
+
+Run release verification with the workflow's Node 22 runtime. Separately,
+harden the Vitest setup so jsdom's storage globals win on Node 26, or narrow
+the supported engine range until that compatibility is covered.
+
+### Metadata
+
+- Reproducible: yes
+- Related Files: tests/remote.client.test.tsx, tests/interaction.client.test.tsx, vitest.config.ts
+
+---
+
+## [ERR-20260916-003] ignored-tracked-add-exit
+
+**Logged**: 2026-09-16T18:35:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: config
+
+### Summary
+
+`git add` staged the tracked `.learnings/ERRORS.md` file but returned a
+non-zero status because the directory now matches an ignore rule, preventing
+the chained commit from running.
+
+### Suggested Fix
+
+Verify the index after this warning, then use `git add -f` for the tracked
+learning file before committing.
+
+### Metadata
+
+- Reproducible: yes
+- Related Files: .gitignore, .learnings/ERRORS.md
+
+---

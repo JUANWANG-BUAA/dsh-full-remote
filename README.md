@@ -296,7 +296,7 @@ dsh plugin --profile web update --latest dsh-full-remote
 
 Then restart `dsh web`. `--latest` ignores the current range, installs the
 newest version, and rewrites `package.json`. For a specific version use
-`dsh plugin --profile web update dsh-full-remote@0.3.11`.
+`dsh plugin --profile web update dsh-full-remote@0.3.12`.
 
 ### Language
 
@@ -468,7 +468,7 @@ from the internet:
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.3.11.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
 ```
 
 Git installs run the `prepare` build. On pnpm ≥ 10 allow it:

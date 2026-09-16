@@ -204,7 +204,7 @@ ngrok http 3081
 dsh plugin --profile web update --latest dsh-full-remote
 ```
 
-然后重启 `dsh web`。`--latest` 会忽略现有版本范围，装上最新版并改写 `package.json`。指定某一版用 `dsh plugin --profile web update dsh-full-remote@0.3.11`。
+然后重启 `dsh web`。`--latest` 会忽略现有版本范围，装上最新版并改写 `package.json`。指定某一版用 `dsh plugin --profile web update dsh-full-remote@0.3.12`。
 
 ## 截图
 
@@ -317,7 +317,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.3.11.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
 ```
 
 git 安装会执行 `prepare` 构建，pnpm ≥ 10 需要放行：

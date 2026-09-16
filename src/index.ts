@@ -327,6 +327,10 @@ export function createRuntime(ctx: RuntimeContext, config: RuntimeConfig, deps: 
             backendHost: config.backendHost,
             backendPort,
             auth,
+            // Harness Desktop starts its embedded backend with --skip-auth and
+            // DSH_SKIP_AUTH=1. In that explicit mode the launch URL returns the
+            // index directly (2xx) and no upstream browser cookie is minted.
+            allowUnauthenticated: process.env.DSH_SKIP_AUTH === '1',
           })
       bound = await listenProxy({
         listenHost: host,

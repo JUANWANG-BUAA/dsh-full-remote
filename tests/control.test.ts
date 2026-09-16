@@ -302,6 +302,50 @@ describe('runtime control surface', () => {
     assert.equal(stopped.enabled, false)
   })
 
+  it('starts without an upstream cookie only when Harness explicitly disables auth', async () => {
+    const backend = createHttpServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+      res.end('<!doctype html>')
+    })
+    await new Promise<void>((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
+    const address = backend.address()
+    if (address === null || typeof address === 'string') throw new Error('expected a TCP bind')
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-reverse-proxy-skip-auth-'))
+    cleanups.push(() => rm(dir, { recursive: true, force: true }))
+    const ctx = {
+      ...makeContext(),
+      get(name: string) {
+        return name === 'connection'
+          ? { authenticatedUrl: (base: string) => `${base}/?token=launch-token` }
+          : undefined
+      },
+    }
+
+    const previous = process.env.DSH_SKIP_AUTH
+    delete process.env.DSH_SKIP_AUTH
+    try {
+      const guarded = createRuntime(ctx, makeConfig(join(dir, 'guarded.json'), { backendPort: address.port }))
+      cleanups.push(() => guarded.dispose())
+      const refused = await guarded.start()
+      assert.equal(refused.running, false)
+      assert.equal(refused.reason, 'backend-auth-failed')
+
+      process.env.DSH_SKIP_AUTH = '1'
+      const embedded = createRuntime(ctx, makeConfig(join(dir, 'embedded.json'), { backendPort: address.port }))
+      cleanups.push(() => embedded.dispose())
+      const started = await embedded.start()
+      assert.equal(started.running, true)
+      assert.equal(started.reason, undefined)
+    } finally {
+      if (previous === undefined) delete process.env.DSH_SKIP_AUTH
+      else process.env.DSH_SKIP_AUTH = previous
+    }
+  })
+
   it('persists runtime listen overrides with 0600 permissions', async () => {
     const { runtime, stateFile } = await makeRuntime()
     const updated = await runtime.setListen('0.0.0.0', 0)

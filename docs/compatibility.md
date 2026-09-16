@@ -67,6 +67,12 @@ When the Host Connection service exposes `authenticatedUrl()`, this plugin
 performs the local process-token exchange at proxy start and keeps that cookie
 internal; the remote device cookie is never forwarded upstream.
 
+Harness Desktop may start its embedded backend with `--skip-auth` and
+`DSH_SKIP_AUTH=1`. In that explicit mode the launch URL returns the index with
+a successful 2xx response and does not mint a browser-session cookie. The
+plugin accepts that cookie-free upstream only while the flag is exactly `1`;
+its own access-token and per-device session gate remains active.
+
 ## Multimodal / vision
 
 Harness 0.1.1-rc.1 adds `deepseek-v4-flash-vision-exp` to the official

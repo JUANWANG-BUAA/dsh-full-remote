@@ -516,6 +516,28 @@ describe('header forwarding', () => {
     assert.equal(malformed, false)
   })
 
+  it('accepts a successful cookie-free launch response only when backend auth is explicitly disabled', async () => {
+    const backend = createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+      res.end('<!doctype html>')
+    })
+    await new Promise<void>((resolve, reject) => {
+      backend.once('error', reject)
+      backend.listen(0, '127.0.0.1', resolve)
+    })
+    cleanups.push(() => new Promise<void>(resolve => backend.close(() => resolve())))
+    const options = {
+      backendHost: '127.0.0.1',
+      backendPort: portOf(backend),
+      auth: { authenticatedUrl: (base: string) => `${base}/?token=launch-token` },
+    }
+    await assert.rejects(
+      bootstrapUpstreamCookie(options),
+      /browser-session exchange failed with HTTP 200/,
+    )
+    assert.equal(await bootstrapUpstreamCookie({ ...options, allowUnauthenticated: true }), undefined)
+  })
+
   it('allows the caller to override the forwarded-for value', () => {
     const headers = forwardHeaders({
       headers: { host: 'public.example' },

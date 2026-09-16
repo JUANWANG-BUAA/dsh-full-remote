@@ -77,6 +77,8 @@ export interface BootstrapUpstreamCookieOptions {
   backendHost: string
   backendPort: number
   auth: BackendBrowserAuth
+  /** Accept a successful index response without a cookie when Harness auth is explicitly disabled. */
+  allowUnauthenticated?: boolean
 }
 
 /** Caller-supplied configuration for listenProxy. */
@@ -411,7 +413,7 @@ function pipeUpstreamBody(incoming: IncomingMessage, res: ServerResponse, gzip: 
  * this cookie, while older releases simply have no `authenticatedUrl` method
  * and therefore never call this compatibility path.
  */
-export function bootstrapUpstreamCookie(options: BootstrapUpstreamCookieOptions): Promise<string> {
+export function bootstrapUpstreamCookie(options: BootstrapUpstreamCookieOptions): Promise<string | undefined> {
   const authority = rewriteLoopbackAuthority(options.backendPort)
   let launchUrl: URL
   try {
@@ -436,6 +438,10 @@ export function bootstrapUpstreamCookie(options: BootstrapUpstreamCookieOptions)
       response.once('end', () => {
         if (status >= 300 && status < 400 && cookie !== undefined) {
           resolve(cookie)
+          return
+        }
+        if (options.allowUnauthenticated === true && status >= 200 && status < 300 && cookie === undefined) {
+          resolve(undefined)
           return
         }
         reject(new Error(`reverse-proxy: Harness browser-session exchange failed with HTTP ${String(status)}`))
