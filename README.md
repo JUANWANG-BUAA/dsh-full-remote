@@ -1,7 +1,7 @@
 # dsh-full-remote
 
 [![Awesome dsh-plugin](https://awesome.re/badge.svg)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
-[![npm](https://img.shields.io/npm/v/dsh-full-remote?style=flat-square)](https://www.npmjs.com/package/dsh-full-remote)
+[![GitHub Release](https://img.shields.io/github/v/release/JUANWANG-BUAA/dsh-full-remote?style=flat-square)](https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/latest)
 [![CI](https://github.com/JUANWANG-BUAA/dsh-full-remote/actions/workflows/ci.yml/badge.svg)](https://github.com/JUANWANG-BUAA/dsh-full-remote/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](./LICENSE)
 [![GitHub Repo stars](https://img.shields.io/github/stars/JUANWANG-BUAA/dsh-full-remote?style=flat-square)](https://github.com/JUANWANG-BUAA/dsh-full-remote/stargazers)
@@ -11,6 +11,8 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/JUANWANG-BUAA/dsh-full-remote/pulls)
 
 **Listed in [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)** · DeepSeek Harness plugin
+
+**Current release: [v0.3.12](https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/tag/v0.3.12)** · Distributed through GitHub Releases
 
 **English** | [中文](./README.zh.md)
 
@@ -24,7 +26,8 @@ directory browsing remain available.
 ## 60-second quick start
 
 ```sh
-dsh plugin --profile web add dsh-full-remote
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.3.12/dsh-full-remote-0.3.12.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
 dsh --profile web
 ```
 
@@ -220,9 +223,16 @@ flowchart LR
 ## Installation
 
 ```sh
-dsh plugin --profile web add dsh-full-remote
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.3.12/dsh-full-remote-0.3.12.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.3.12/SHA256SUMS
+shasum -a 256 -c SHA256SUMS
+dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
 dsh --profile web
 ```
+
+The current release is **v0.3.12**. npm publication is separate and currently
+lags behind the GitHub release, so use the attached tarball above when
+installing or upgrading this version.
 
 1. Open `http://127.0.0.1:3080`.
 2. Open **Settings → Reverse proxy** (last entry in the left navigation).
@@ -285,18 +295,16 @@ is running.
 
 ### Upgrade
 
-`dsh plugin` forwards to pnpm. If you installed with an exact pin such as
-`add dsh-full-remote@0.2.4`, a bare `update dsh-full-remote` reports
-Already up to date and stays on the old version. To jump to the latest npm
-release:
+Download the current GitHub release and add its tarball to the existing web
+profile:
 
 ```sh
-dsh plugin --profile web update --latest dsh-full-remote
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.3.12/dsh-full-remote-0.3.12.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
 ```
 
-Then restart `dsh web`. `--latest` ignores the current range, installs the
-newest version, and rewrites `package.json`. For a specific version use
-`dsh plugin --profile web update dsh-full-remote@0.3.12`.
+Then restart `dsh web`. This replaces an older registry-installed or tarball
+version with **v0.3.12**.
 
 ### Language
 
@@ -304,7 +312,7 @@ The plugin panel has a **Language / 语言** selector: **Auto**, **English**, or
 
 ## Screenshots
 
-The gallery is hosted in the repository; the npm package keeps only runtime
+The gallery is hosted in the repository; the release package keeps only runtime
 files and links back here so installation stays small.
 
 ### Desktop

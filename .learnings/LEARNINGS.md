@@ -55,3 +55,37 @@ Harness 适配与 issue 修复只改本插件；不要改官方 deepseek-harness
 - Tags: harness, official-source
 
 ---
+
+## [LRN-20260916-001] correction
+
+**Logged**: 2026-09-16T19:20:00+08:00
+**Priority**: high
+**Status**: resolved
+**Area**: docs
+
+### Summary
+
+A GitHub-only release is not documented correctly if README badges and primary
+install commands still resolve to the older npm registry version.
+
+### Details
+
+The README contained some `0.3.12` examples, but its prominent version badge,
+quick start, installation, and upgrade paths still used npm. Because npm
+remained at `0.3.7`, the repository landing page appeared stale and its primary
+commands installed the wrong version.
+
+### Suggested Action
+
+Before publishing a GitHub-only release, audit both READMEs end to end: visible
+version badge, current-version text, quick start, installation, upgrade, and
+distribution wording must all point to the GitHub tarball. Verify the rendered
+tagged README, not just a search hit for the new version.
+
+### Metadata
+
+- Source: user_feedback
+- Related Files: README.md, README.zh.md, docs/release-0.3.12.md
+- Tags: release, readme, version, github, npm
+
+---

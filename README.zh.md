@@ -1,7 +1,7 @@
 # dsh-full-remote
 
 [![Awesome dsh-plugin](https://awesome.re/badge.svg)](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
-[![npm](https://img.shields.io/npm/v/dsh-full-remote?style=flat-square)](https://www.npmjs.com/package/dsh-full-remote)
+[![GitHub Release](https://img.shields.io/github/v/release/JUANWANG-BUAA/dsh-full-remote?style=flat-square)](https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/latest)
 [![CI](https://github.com/JUANWANG-BUAA/dsh-full-remote/actions/workflows/ci.yml/badge.svg)](https://github.com/JUANWANG-BUAA/dsh-full-remote/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](./LICENSE)
 [![GitHub Repo stars](https://img.shields.io/github/stars/JUANWANG-BUAA/dsh-full-remote?style=flat-square)](https://github.com/JUANWANG-BUAA/dsh-full-remote/stargazers)
@@ -12,6 +12,8 @@
 
 **已收录进 [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)** · DeepSeek Harness 插件
 
+**当前版本：[v0.3.12](https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/tag/v0.3.12)** · 通过 GitHub Releases 分发
+
 [English](./README.md) | **中文**
 
 `dsh-full-remote` 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的一个插件：它在 Harness Web 服务前放置一层带鉴权的反向代理，使 Web 界面可以通过公网隧道或局域网设备访问，同时保持设置、凭据、目录浏览等特权接口可用。
@@ -19,7 +21,8 @@
 ## 60 秒快速开始
 
 ```sh
-dsh plugin --profile web add dsh-full-remote
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.3.12/dsh-full-remote-0.3.12.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
 dsh --profile web
 ```
 
@@ -145,9 +148,15 @@ flowchart LR
 ## 安装
 
 ```sh
-dsh plugin --profile web add dsh-full-remote
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.3.12/dsh-full-remote-0.3.12.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.3.12/SHA256SUMS
+shasum -a 256 -c SHA256SUMS
+dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
 dsh --profile web
 ```
+
+当前版本为 **v0.3.12**。npm 发布与 GitHub Release 相互独立，目前 registry
+版本落后；安装或升级本版本时请使用上面的 GitHub 附件。
 
 1. 打开 `http://127.0.0.1:3080`。
 2. 打开 **设置 → 反向代理**（左侧导航最后一项）。
@@ -198,17 +207,19 @@ ngrok http 3081
 
 ### 升级
 
-`dsh plugin` 只是把参数转给 pnpm。若当初用 `add dsh-full-remote@0.2.4` 这类精确版本安装，裸 `update dsh-full-remote` 会显示 Already up to date，实际停在旧版。要无痛升到 npm 最新版：
+下载当前 GitHub Release，并把 tarball 添加到现有 web profile：
 
 ```sh
-dsh plugin --profile web update --latest dsh-full-remote
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.3.12/dsh-full-remote-0.3.12.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
 ```
 
-然后重启 `dsh web`。`--latest` 会忽略现有版本范围，装上最新版并改写 `package.json`。指定某一版用 `dsh plugin --profile web update dsh-full-remote@0.3.12`。
+然后重启 `dsh web`。这会把 registry 或旧 tarball 安装的版本替换为
+**v0.3.12**。
 
 ## 截图
 
-截图画廊保留在 GitHub 仓库中；npm 包只携带运行所需文件并链接回这里，
+截图画廊保留在 GitHub 仓库中；发布包只携带运行所需文件并链接回这里，
 因此安装包更小。
 
 ### 桌面端
