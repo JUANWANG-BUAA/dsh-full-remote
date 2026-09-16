@@ -9,12 +9,21 @@ In that mode Harness serves the launch URL directly with HTTP 2xx and does not c
 This release is distributed through GitHub. npm publication is an independent,
 manually triggered step and is not required for this release.
 
-### Upgrade
+### Install from GitHub
 
 ```sh
-dsh plugin --profile web update --latest dsh-full-remote
+gh release download v0.3.12 \
+  --repo JUANWANG-BUAA/dsh-full-remote \
+  --pattern 'dsh-full-remote-0.3.12.tgz'
+dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
 ```
 
 Restart `dsh web` after updating.
+
+### Validation
+
+All 233 host tests and 66 client tests passed, together with lint, typecheck,
+build, coverage gates, Chromium smoke, real Harness boot, composition checks,
+the production dependency audit, and CodeQL.
 
 Full notes: [CHANGELOG](https://github.com/JUANWANG-BUAA/dsh-full-remote/blob/v0.3.12/CHANGELOG.md) · [中文 README](https://github.com/JUANWANG-BUAA/dsh-full-remote/blob/v0.3.12/README.zh.md) · [English README](https://github.com/JUANWANG-BUAA/dsh-full-remote/blob/v0.3.12/README.md)
