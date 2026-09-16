@@ -6,6 +6,9 @@ This release fixes [#31](https://github.com/JUANWANG-BUAA/dsh-full-remote/issues
 
 In that mode Harness serves the launch URL directly with HTTP 2xx and does not create an upstream browser-session cookie. dsh-full-remote now recognizes that explicit configuration while keeping its own access-token and per-device session gate fully enabled. Cookie-free 2xx responses still fail closed during normal authenticated operation.
 
+This release is distributed through GitHub. npm publication is an independent,
+manually triggered step and is not required for this release.
+
 ### Upgrade
 
 ```sh

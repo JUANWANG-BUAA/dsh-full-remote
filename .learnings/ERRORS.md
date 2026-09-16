@@ -347,3 +347,123 @@ learning file before committing.
 - Related Files: .gitignore, .learnings/ERRORS.md
 
 ---
+
+## [ERR-20260916-004] npm-login-interrupt-exit-handler
+
+**Logged**: 2026-09-16T18:35:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: infra
+
+### Summary
+
+Interrupting a waiting `npm login --auth-type=web` session exited without
+publishing, but npm also reported that its exit handler was never called.
+
+### Error
+
+```text
+npm error Exit handler never called!
+```
+
+### Context
+
+The user chose a GitHub-only release while the CLI was waiting for browser
+authentication, so the login process was cancelled. No publish command ran.
+
+### Suggested Fix
+
+Start npm authentication only when registry publication is explicitly in
+scope. After cancellation, verify that no publish command ran and treat the
+message as an upstream npm CLI shutdown bug.
+
+### Metadata
+
+- Reproducible: unknown
+- Related Files: .github/workflows/publish.yml, docs/publishing.md
+
+---
+
+## [ERR-20260916-005] release-doc-patch-context-drift
+
+**Logged**: 2026-09-16T18:36:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: docs
+
+### Summary
+
+A multi-file release patch failed because a release-note paragraph was stored
+on one line instead of the assumed wrapped form. No files were changed.
+
+### Suggested Fix
+
+Inspect exact prose context and patch release documents independently.
+
+### Metadata
+
+- Reproducible: yes
+- Related Files: docs/release-0.3.12.md
+- See Also: ERR-20260916-001
+
+---
+
+## [ERR-20260916-006] shell-backticks-in-search-pattern
+
+**Logged**: 2026-09-16T18:36:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: infra
+
+### Summary
+
+Backticks inside a double-quoted search expression were evaluated by the
+shell as command substitution before `rg` ran.
+
+### Error
+
+```text
+zsh: command not found: v0.3.12
+```
+
+### Suggested Fix
+
+Use single-quoted search patterns whenever Markdown code spans are included.
+
+### Metadata
+
+- Reproducible: yes
+- Related Files: docs/publishing.md
+
+---
+
+## [ERR-20260916-007] workflow-linter-unavailable
+
+**Logged**: 2026-09-16T18:37:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: infra
+
+### Summary
+
+Neither `actionlint` nor a project-local `prettier` executable was available
+for validating the release workflow.
+
+### Error
+
+```text
+[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command "prettier" not found
+```
+
+### Suggested Fix
+
+Use an installed YAML parser for syntax validation and rely on GitHub's own
+workflow parsing after push. Add `actionlint` only if workflow linting becomes
+a recurring maintenance need.
+
+### Metadata
+
+- Reproducible: yes
+- Related Files: .github/workflows/publish.yml
+
+---

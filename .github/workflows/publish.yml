@@ -1,12 +1,10 @@
-name: Publish
+name: Publish npm
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 concurrency:
-  group: publish-${{ github.ref }}
+  group: publish-npm-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
