@@ -467,3 +467,35 @@ a recurring maintenance need.
 - Related Files: .github/workflows/publish.yml
 
 ---
+
+## [ERR-20260916-008] gh-release-json-field-variance
+
+**Logged**: 2026-09-16T19:08:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: infra
+
+### Summary
+
+The installed `gh` version rejected `url` for `gh release list` and
+`isLatest` for `gh release view`, even though related release commands expose
+other URL and status fields.
+
+### Error
+
+```text
+Unknown JSON field: "url"
+Unknown JSON field: "isLatest"
+```
+
+### Suggested Fix
+
+Use `gh release view --json url` for a release URL and omit `isLatest`; inspect
+the command's reported field list before composing cross-command JSON queries.
+
+### Metadata
+
+- Reproducible: yes
+- Related Files: docs/release-0.3.12.md
+
+---
