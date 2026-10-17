@@ -46,11 +46,20 @@ package is a different product.
 
 ## When to publish
 
-- GitHub releases and npm publication are intentionally decoupled. Pushing a
-  `v*` tag creates no registry side effect.
-- When an npm release is wanted, manually run the `Publish npm` workflow for
-  the release tag. The workflow accepts only a tag exactly matching
-  `package.json` and only when that commit is reachable from `main`.
+- Pushing a `v*` tag publishes to npm: `.github/workflows/publish.yml` runs on
+  the tag and refuses any ref whose name is not exactly
+  `v$(package.json version)` or whose commit is not reachable from `main`.
+  A GitHub release for that tag is the same act, so the two stay bound.
+- If a tag's publish fails, fix the cause and re-run the workflow manually on
+  that tag (`gh workflow run publish.yml --ref v0.4.1`) — the tag is never
+  moved and the provenance statement still names it.
+- Since 2026-08-24 every publish has failed on a stale credential: `NPM_TOKEN`
+  was last refreshed 2026-08-15, and the registry answers
+  `404 Not Found - PUT https://registry.npmjs.org/dsh-full-remote`. npm returns
+  404 (not 403) when the token cannot publish the package, so a 404 here means
+  "replace the secret", not "the package is gone". Use a Granular Access Token
+  for the `juanwang` account with read-and-write access and 2FA bypass, then
+  `gh secret set NPM_TOKEN`.
 - Bump the peer range only when the harness publishes rc releases with the
   slot API this plugin uses; keep the range failing loudly rather than
   silently mounting nothing.

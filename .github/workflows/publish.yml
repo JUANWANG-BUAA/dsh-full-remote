@@ -1,6 +1,11 @@
 name: Publish npm
 
 on:
+  # A release tag publishes to npm. Keep workflow_dispatch as the re-run path
+  # for a tag whose publish failed (the Verify step pins the ref to a tag).
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 concurrency:
