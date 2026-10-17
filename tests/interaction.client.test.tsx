@@ -1,4 +1,4 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context } from '@deepseek-ai/cordis'
 import type { ComponentProps } from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -42,7 +42,6 @@ const approvalItem: RemotePendingItem = {
   presentation: 'approval',
   sessionId: 's1',
   sessionTitle: 'Demo session',
-  current: true,
   ready: true,
   approval: { toolName: 'bash', reason: 'Run rm -rf /tmp/demo' },
 }
@@ -53,7 +52,6 @@ const questionItem: RemotePendingItem = {
   presentation: 'question',
   sessionId: 's1',
   sessionTitle: 'Demo session',
-  current: true,
   ready: true,
   questions: [{
     id: 'q',
@@ -171,7 +169,6 @@ describe('InteractionOverlay', () => {
         presentation: 'question',
         sessionId: 's2',
         sessionTitle: 'Other',
-        current: false,
         ready: false,
       }],
     }, { openSession })} />)
@@ -189,7 +186,6 @@ describe('InteractionOverlay', () => {
         presentation: 'plan-review',
         sessionId: 's1',
         sessionTitle: 'Demo session',
-        current: true,
         ready: true,
         questions: [{
           id: 'p',
@@ -210,109 +206,94 @@ describe('InteractionOverlay', () => {
 })
 
 describe('createPendingSource', () => {
-  it('projects ready waits from a bound session and answers through respond()', async () => {
-    const respond = vi.fn().mockResolvedValue({ accepted: true })
-    const wait = {
-      kind: 'approval' as const,
-      key: 'a:9',
-      sessionId: 's1',
-      payload: { approvalId: 'ap', toolName: 'bash', reason: 'why' },
-      respond,
-    }
-    const listeners = new Set<() => void>()
-    const listSnapshot = {
-      ids: ['s1'],
-      byId: {
-        s1: {
-          id: 's1',
-          displayTitle: 'Demo',
-          running: true,
-          blank: false,
-          updatedAt: 1,
-          pendingInteraction: 'approval' as const,
-        },
-      },
-      current: 's1',
+  function fakeSessions(titles: Record<string, string>) {
+    const snapshot = {
+      ids: Object.keys(titles),
+      byId: Object.fromEntries(
+        Object.entries(titles).map(([id, displayTitle]) => [id, { id, displayTitle }]),
+      ),
       phase: 'ready' as const,
-      subagentsByParent: {},
-      jobsBySession: {},
-      currentAddress: undefined,
+      projectionsBySession: {},
     }
-    const sessionListeners = new Set<() => void>()
-    const sessions = {
+    return {
       list: {
-        getSnapshot: () => listSnapshot,
-        subscribe: (fn: () => void) => {
-          listeners.add(fn)
-          return () => { listeners.delete(fn) }
-        },
+        getSnapshot: () => snapshot,
+        subscribe: () => () => {},
       },
-      binding: () => ({
-        sessionId: 's1',
-        session: {
-          getSnapshot: () => ({ pending: [wait] }),
-          subscribe: (fn: () => void) => {
-            sessionListeners.add(fn)
-            return () => { sessionListeners.delete(fn) }
-          },
-        },
-      }),
-      open: vi.fn(),
     }
-    const source = createPendingSource(sessions as never)
+  }
+
+  function fakeUiSession(interactions: readonly Record<string, unknown>[]) {
+    const status = new Map(interactions.map(interaction => [
+      interaction.sessionId as string,
+      { running: true, pendingInteraction: interaction, completionUnread: false },
+    ]))
+    return {
+      sessionStatus: {
+        getSnapshot: () => status,
+        subscribe: () => () => {},
+      },
+    }
+  }
+
+  it('projects a pending approval and answers the published interaction', async () => {
+    const answer = vi.fn().mockResolvedValue(undefined)
+    const sessions = fakeSessions({ s1: 'Demo' })
+    const uiSession = fakeUiSession([
+      { kind: 'approval', key: 'a:9', sessionId: 's1', toolName: 'bash', reason: 'why', answerable: true, answer },
+    ])
+    const source = createPendingSource(sessions as never, uiSession as never)
     expect(source.getSnapshot().items).toEqual([expect.objectContaining({
       key: 'a:9',
       ready: true,
+      sessionTitle: 'Demo',
       approval: { toolName: 'bash', reason: 'why' },
     })])
     await source.answerApproval('a:9', 'allowed-once')
-    expect(respond).toHaveBeenCalledWith({
-      ok: true,
-      value: { sessionId: 's1', approvalId: 'ap', outcome: 'allowed-once' },
-    })
+    expect(answer).toHaveBeenCalledWith('allowed-once')
     source.dispose()
   })
 
-  it('falls back to an open-session hint when the wait is not instantiated', () => {
-    const listSnapshot = {
-      ids: ['s1'],
-      byId: {
-        s1: {
-          id: 's1',
-          displayTitle: 'Demo',
-          running: true,
-          blank: false,
-          updatedAt: 1,
-          pendingInteraction: 'question' as const,
-        },
-      },
-      current: undefined,
-      phase: 'ready' as const,
-      subagentsByParent: {},
-      jobsBySession: {},
-      currentAddress: undefined,
-    }
-    const sessions = {
-      list: {
-        getSnapshot: () => listSnapshot,
-        subscribe: () => () => {},
-      },
-      binding: () => undefined,
-      open: vi.fn(),
-    }
-    const source = createPendingSource(sessions as never)
-    expect(source.getSnapshot().items[0]).toMatchObject({
-      key: 'hint:s1',
-      ready: false,
-      sessionTitle: 'Demo',
-    })
+  it('projects a question batch, answers it, and dismisses it', async () => {
+    const answer = vi.fn().mockResolvedValue(undefined)
+    const dismiss = vi.fn().mockResolvedValue(undefined)
+    const sessions = fakeSessions({ s1: 'Demo' })
+    const uiSession = fakeUiSession([{
+      kind: 'question',
+      key: 'q:1',
+      sessionId: 's1',
+      questions: [{ id: 'q', question: 'Which branch?', options: [{ label: 'main' }] }],
+      dismissal: 'cancel',
+      answer,
+      dismiss,
+    }])
+    const source = createPendingSource(sessions as never, uiSession as never)
+    expect(source.getSnapshot().items).toEqual([expect.objectContaining({
+      key: 'q:1',
+      presentation: 'question',
+      ready: true,
+      questions: [expect.objectContaining({ id: 'q', question: 'Which branch?' })],
+    })])
+    await source.answerQuestion('q:1', { answers: [{ id: 'q', selected: ['main'] }] })
+    expect(answer).toHaveBeenCalledWith({ answers: [{ id: 'q', selected: ['main'] }] })
+    await source.cancelQuestion('q:1')
+    expect(dismiss).toHaveBeenCalled()
+    source.dispose()
+  })
+
+  it('refuses a stale key once the interaction is gone', async () => {
+    const sessions = fakeSessions({ s1: 'Demo' })
+    const uiSession = fakeUiSession([])
+    const source = createPendingSource(sessions as never, uiSession as never)
+    await expect(source.answerApproval('gone', 'rejected')).rejects.toThrow('no longer pending')
+    await expect(source.cancelQuestion('gone')).rejects.toThrow('no longer pending')
     source.dispose()
   })
 })
 
 
 it('updates an open approval overlay when the plugin language changes', () => {
-  const binding = bindTranslate({ get: () => undefined } as unknown as ClientContext)
+  const binding = bindTranslate({ get: () => undefined } as unknown as Context)
   try {
     binding.language.setPreference('zh')
     render(<InteractionOverlay {...overlayProps({ items: [approvalItem] }, binding)} />)

@@ -12,7 +12,7 @@
 
 **已收录进 [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)** · DeepSeek Harness 插件
 
-**当前版本：[v0.3.12](https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/tag/v0.3.12)** · 通过 GitHub Releases 分发
+**当前版本：[v0.4.0](https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/tag/v0.4.0)** · 通过 GitHub Releases 分发
 
 [English](./README.md) | **中文**
 
@@ -21,8 +21,8 @@
 ## 60 秒快速开始
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.3.12/dsh-full-remote-0.3.12.tgz
-dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.4.0.tgz
 dsh --profile web
 ```
 
@@ -35,7 +35,7 @@ dsh --profile web
 
 | 桌面控制面板 | 手机工作区 |
 |---|---|
-| ![桌面控制面板](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-desktop.png) | ![手机工作区](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile.png) |
+| ![桌面控制面板](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-desktop.png) | ![手机控制面板](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-panel.png) |
 
 | 手机端选项确认 | 远程桌面确认卡片 |
 |---|---|
@@ -143,19 +143,19 @@ flowchart LR
 ## 环境要求
 
 - Node.js `^22.19.0 || >=24`
-- DeepSeek Harness 的 **web** profile。插件依赖 `webServer` 与 Host Connection 服务，不适用于 headless profile。已在 **0.1.2-rc.1** 验证（npm dist-tag `next`），并保留对 **0.1.1-rc.1/rc.2** 的兼容路径。
+- DeepSeek Harness 的 **web** profile（**0.2**，即 npm dist-tag `next` 的 `0.2.1-rc.2`，与 DeepSeek Harness 桌面 App 0.2.1 同版）。插件依赖 `webServer`、Host Connection 服务，以及 0.2 的客户端服务（`uiSession`、`uiWorkspace`、`ui-approval`、`ui-user-questions`），不适用于 headless profile。不再支持 0.1.x：0.2 客户端移除了 `@deepseek-ai/dsh-client-runtime`，待处理交互改由 `uiSession` 注册表发布。0.2.1 新增了 Remote 访问快照（`dsh-api-remote-access`），它不会收紧本代理服务的浏览器身份，见[兼容性](./docs/compatibility.md#deepseek-harness-021)。
 
 ## 安装
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.3.12/dsh-full-remote-0.3.12.tgz
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.3.12/SHA256SUMS
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.0.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/SHA256SUMS
 shasum -a 256 -c SHA256SUMS
-dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.4.0.tgz
 dsh --profile web
 ```
 
-当前版本为 **v0.3.12**。npm 发布与 GitHub Release 相互独立，目前 registry
+当前版本为 **v0.4.0**。npm 发布与 GitHub Release 相互独立，目前 registry
 版本落后；安装或升级本版本时请使用上面的 GitHub 附件。
 
 1. 打开 `http://127.0.0.1:3080`。
@@ -210,12 +210,12 @@ ngrok http 3081
 下载当前 GitHub Release，并把 tarball 添加到现有 web profile：
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.3.12/dsh-full-remote-0.3.12.tgz
-dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.4.0.tgz
 ```
 
 然后重启 `dsh web`。这会把 registry 或旧 tarball 安装的版本替换为
-**v0.3.12**。
+**v0.4.0**。
 
 ## 截图
 
@@ -238,7 +238,7 @@ dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
 
 | 手机登录页 | 移动控制面板 | 手机添加工作区 |
 |---|---|---|
-| ![移动端登录](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-login.png) | ![移动面板](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-panel.png) | ![手机工作区](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile.png) |
+| ![移动端登录](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-login.png) | ![移动面板](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-panel.png) |
 
 ### 远程确认
 
@@ -328,7 +328,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.4.0.tgz
 ```
 
 git 安装会执行 `prepare` 构建，pnpm ≥ 10 需要放行：

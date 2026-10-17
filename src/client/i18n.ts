@@ -5,7 +5,7 @@
  * page follows the browser language. An explicit browser preference wins.
  */
 import { browserLanguage, createLanguageController, type LanguageController } from './language.ts'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context } from '@deepseek-ai/cordis'
 
 /**
  * Client-side dictionary for the reverse-proxy settings section.
@@ -101,6 +101,12 @@ export const zh = {
   'devices.renameCancel': '取消',
   'devices.renamed': '已更新设备名称。',
   'devices.renameFailed': '名称无效（需 1–64 个字符）。',
+  'meta.tls': 'TLS',
+  'meta.approval': '审批',
+  'meta.devices': '设备',
+  'meta.on': '已开启',
+  'meta.off': '已关闭',
+  'audit.detail': '查看原始事件',
   'audit.label': '审计日志',
   'audit.description': '查看最近的安全事件（仅本机控制面可读）。',
   'audit.load': '加载审计日志',
@@ -283,6 +289,12 @@ export const en: Record<keyof typeof zh, string> = {
   'devices.renameCancel': 'Cancel',
   'devices.renamed': 'Device name updated.',
   'devices.renameFailed': 'Invalid name (need 1–64 characters).',
+  'meta.tls': 'TLS',
+  'meta.approval': 'Approval',
+  'meta.devices': 'Devices',
+  'meta.on': 'On',
+  'meta.off': 'Off',
+  'audit.detail': 'Raw event',
   'audit.label': 'Audit log',
   'audit.description': 'View recent security events (readable from the local control surface only).',
   'audit.load': 'Load audit log',
@@ -394,7 +406,7 @@ export function translatorFor(dict: Record<keyof typeof zh, string>): ReversePro
 }
 
 /** Explicit preference wins over the optional host locale and browser fallback. */
-export function bindTranslate(ctx: ClientContext): {
+export function bindTranslate(ctx: Context): {
   t: ReverseProxyTranslate
   language: LanguageController
   dispose: () => void

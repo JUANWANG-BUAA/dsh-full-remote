@@ -14,7 +14,7 @@
 .section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   max-width: 720px;
   color: var(--dsw-alias-label-primary);
 }
@@ -525,6 +525,274 @@ button:disabled {
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ---------------------------------------------------------------- cards --
+   Every control block is one card: a tinted header row carrying an icon,
+   a title and its one-line description, then a body that owns the controls.
+   This replaces the previous flat run of headings, which made a 3k-pixel
+   column impossible to scan. */
+
+.pageHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pageHead > :first-child {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.pageHead .intro {
+  margin-top: 4px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 14px;
+  background: var(--dsw-alias-bg-layer-2);
+  overflow: hidden;
+}
+
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.cardIcon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 7px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.cardIcon[data-tone='success'] {
+  color: var(--dsw-alias-state-success-primary);
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 14%, transparent);
+}
+
+.cardIcon[data-tone='warn'] {
+  color: var(--dsw-alias-state-warn-label, #8a5a00);
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-label, #c48a00) 16%, transparent);
+}
+
+.cardHeading {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.cardTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.cardDesc {
+  margin: 1px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.cardAside {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.cardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+/* Group label inside a card that holds several related blocks. */
+.subHead {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Hero meta strip: the four facts worth reading at a glance. */
+.metaStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.meta > span {
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+}
+
+.meta > b {
+  font-family: var(--dsw-alias-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 22ch;
+}
+
+.meta[data-tone='on'] > b {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.meta[data-tone='off'] > b {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.meta[data-tone='warn'] > b {
+  color: var(--dsw-alias-state-warn-label, #8a5a00);
+}
+
+/* Self-check result rows, replacing a run of equally weighted paragraphs. */
+.checkList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checkRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.checkDot {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 22%, transparent);
+  color: var(--dsw-alias-state-success-primary);
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.checkRow[data-tone='warn'] .checkDot {
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-label, #c48a00) 22%, transparent);
+  color: var(--dsw-alias-state-warn-label, #8a5a00);
+}
+
+.checkRow[data-tone='warn'] {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Quiet note lines: same copy as before, less shouting than .warn. */
+.note {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--dsw-alias-border-l2);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.note[data-tone='warn'] {
+  border-left-color: color-mix(in srgb, var(--dsw-alias-state-warn-label, #c48a00) 70%, transparent);
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* Avatar chip for a connected device card. */
+.deviceAvatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.deviceCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-3);
+}
+
+.deviceCard[data-status='pending'] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-warn-label, #c48a00) 45%, var(--dsw-alias-border-l2));
+}
+
+.deviceTop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.deviceTop .deviceInfo {
+  flex: 1 1 auto;
+}
+
+.auditSummary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.auditSummary:hover {
   color: var(--dsw-alias-label-secondary);
 }
 

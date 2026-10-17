@@ -5,7 +5,7 @@
 import { createRoot } from 'react-dom/client'
 import type { ComponentProps } from 'react'
 import { RemoteSection } from '../../src/client/RemoteSection.tsx'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context } from '@deepseek-ai/cordis'
 import { bindTranslate } from '../../src/client/i18n.ts'
 import { qrToSvg } from '../../src/qr-svg.ts'
 import type { ProxyApi, ProxyStatus, SessionInfo } from '../../src/client/types.ts'
@@ -85,7 +85,7 @@ const chromeOn = params.get('chrome') !== '0'
 document.body.dataset.chrome = chromeOn ? 'on' : 'off'
 if (params.get('narrow') === '1') document.body.dataset.narrow = 'true'
 
-const translation = bindTranslate({ get: () => undefined } as unknown as ClientContext)
+const translation = bindTranslate({ get: () => undefined } as unknown as Context)
 if (!localStorage.getItem('dsh-full-remote.language')) translation.language.setPreference('zh')
 
 const props = {

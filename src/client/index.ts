@@ -10,12 +10,18 @@
  * browser can answer userQuestions and tool approvals that would otherwise
  * only appear in the host conversation composer.
  */
-import type { ClientContext, ISessions } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context } from '@deepseek-ai/cordis'
+import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { UiSession } from '@deepseek-ai/dsh-client-ui-session/client'
+import type { UiWorkspace } from '@deepseek-ai/dsh-client-ui-workspace/client'
+// Type-only: pulls the `ctx.slots` service merge (ui-renderer owns SlotRegistry in 0.2)
+// and the `settings.section` slot types.
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteSection } from './RemoteSection.tsx'
 import { InteractionOverlay } from './InteractionOverlay.tsx'
 import { createPendingSource } from './pending-source.ts'
 import { bindTranslate } from './i18n.ts'
-import { trustSettingsPersistence } from './trust-settings.ts'
 import type { AuditResult, InviteResult, ProxyApi, ProxyStatus, SelfCheckResult, SessionInfo } from './types.ts'
 import { CONTROL_HEADER, CONTROL_HEADER_VALUE, CONTROL_PREFIX } from '../control.ts'
 
@@ -29,7 +35,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   }
 }
 
-export const inject = ['slots']
+export const inject = ['slots', 'sessions', 'uiSession']
 
 /**
  * Map a control-surface HTTP failure to the Error `toastFromCaught` already
@@ -114,16 +120,13 @@ function createApi(): ProxyApi {
   }
 }
 
-export function apply(ctx: ClientContext): void {
-  // Backup: official locale / theme / models bind during their own apply,
-  // which is earlier than this plugin. The index-tap pin of
-  // connection.isLoopback is the path that reaches those consumers. If
-  // that pin already succeeded, trustSettingsPersistence does not assign
-  // through the settingsScope Service proxy (same class of bug as #9).
-  ctx.inject(['settingsScope'], (scope: ClientContext) => {
-    const binder = scope.get('settingsScope') as { bind: (spec: unknown) => unknown }
-    trustSettingsPersistence(binder, () => scope.get('connection') as { isLoopback?: boolean } | undefined)
-  })
+export function apply(ctx: Context): void {
+  // Remote settings persistence is decided inside `ui-settings` apply as
+  // `ctx.remote.$host.isLoopback ? 'host' : 'memory'`, and `$host.isLoopback`
+  // copies `connection.isLoopback` when Host facts are minted. The index tap in
+  // `page-bootstrap.ts` pins that flag before official plugins apply; Harness
+  // 0.2 removed the client `settingsScope` service, so there is no later
+  // binder to wrap here.
   const api = createApi()
   const { t, language, dispose } = bindTranslate(ctx)
   if (dispose !== undefined) ctx.effect(() => dispose)
@@ -134,10 +137,11 @@ export function apply(ctx: ClientContext): void {
     label: () => t('action.label'),
     inject: () => ({ api, t, language }),
   }, RemoteSection))
-  ctx.inject(['sessions'], (scope: ClientContext) => {
+  ctx.inject(['sessions', 'uiSession'], (scope: Context) => {
     const sessions = scope.get('sessions') as ISessions | undefined
-    if (sessions === undefined) return
-    const source = createPendingSource(sessions)
+    const uiSession = scope.get('uiSession') as UiSession | undefined
+    if (sessions === undefined || uiSession === undefined) return
+    const source = createPendingSource(sessions, uiSession)
     scope.effect(() => () => { source.dispose() }, 'reverse-proxy: pending overlay')
     scope.slots.inject('shell.overlay', () => scope.slots.register({
       name: 'shell.overlay',
@@ -146,7 +150,10 @@ export function apply(ctx: ClientContext): void {
       inject: () => ({
         t,
         language,
-        openSession: (id: string) => { sessions.open(id as Parameters<ISessions['open']>[0]) },
+        openSession: (id: string) => {
+          const workspace: UiWorkspace | undefined = scope.get('uiWorkspace')
+          workspace?.openSession(id as SessionId)
+        },
         answerApproval: (key: string, outcome: 'allowed-once' | 'rejected') => source.answerApproval(key, outcome),
         answerQuestion: source.answerQuestion,
         cancelQuestion: source.cancelQuestion,

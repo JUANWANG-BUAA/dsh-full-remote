@@ -4,12 +4,17 @@
  * `127.0.0.1` — tapIndex is not an authentication gate. The proxy
  * authenticates separately at its own listen port.
  *
- * Official settings / models / locale bind during their own apply,
- * which is earlier than any third-party client plugin. Wrapping
- * `settingsScope.bind` later cannot rewrite scopes that already chose
- * `persistence: 'memory'`. This IIFE wraps `__ModuleLoader__` so the
- * official connection plugin's `apply()` is followed by a pin of
- * `connection.isLoopback` on the handle (`ctx.get('connection', false)`).
+ * Official settings / models / locale plugins apply earlier than any
+ * third-party client plugin, so persistence is decided before a later plugin
+ * can react. Harness 0.2 removed the client `settingsScope` service:
+ * `ui-settings` resolves `ctx.remote.$host.isLoopback ? 'host' : 'memory'`
+ * once during its own apply, and `$host.isLoopback` copies
+ * `connection.isLoopback` when the Host-facts object is minted. This IIFE
+ * therefore wraps `__ModuleLoader__` so the official connection plugin's
+ * `apply()` is followed by a pin of `connection.isLoopback` on the handle
+ * (`ctx.get('connection', false)`) before any official consumer reads it.
+ * (0.1.x carried the same pin plus a `settingsScope.bind` backup; 0.2 has no
+ * later binder to wrap.)
  * Harness 0.1.0-rc.8 and later install a queue facade whose `create()` then
  * assigns `target.load = register` on the same object; wrapping `load`
  * once as a data property is overwritten. Trap `load` with an accessor

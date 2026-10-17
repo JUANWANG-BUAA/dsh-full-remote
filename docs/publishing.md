@@ -1,6 +1,21 @@
 # Publishing strategy
 
-## Registry reality (checked 2026-09-16)
+## Registry reality (checked 2026-10-17)
+
+- `@deepseek-ai/dsh` publishes `0.2.1-rc.2` on dist-tag `next` and
+  `0.2.0-rc.2` on `latest`; DeepSeek Harness Desktop 0.2.1 bundles the
+  `next` build. This plugin is verified against `0.2.1-rc.2`.
+- npm `latest` for `dsh-full-remote` is still `0.3.7`. Every publish since
+  `v0.3.8` failed at the final `npm publish` step with
+  `404 Not Found - PUT https://registry.npmjs.org/dsh-full-remote` — npm's
+  answer when the `NPM_TOKEN` secret is valid but not allowed to publish this
+  package (missing *read and write* permission, or 2FA not bypassed). The
+  token in the local `~/.npmrc` is a separate credential and currently returns
+  `401` on `npm whoami`, so a local `npm publish` cannot stand in for it.
+  Fix the repository secret before dispatching `Publish npm`, otherwise the
+  workflow will keep producing a green build and a red publish.
+
+## Older notes (2026-09-16)
 
 - `@deepseek-ai/dsh` publishes `0.1.1-rc.1` on dist-tags `latest` and
   `next`.
@@ -74,7 +89,7 @@ package is a different product.
 - [x] Tag `v0.3.5` (HTTP gzip + hashed-asset cache, coexist with `deepseek-harness-auth` browse rows).
 - [x] Tag `v0.3.6` (Harness 0.1.0-rc.8 ModuleLoader wrap + remote Models settings #13); published 2026-08-21.
 - [x] Tag `v0.3.7` (Harness 0.1.1-rc.1 vision body cap, timeouts, multiline overlay); published 2026-08-21.
-- [ ] Optionally publish `v0.3.12` to npm by manually running the `Publish npm`
+- [ ] Optionally publish `v0.4.0` to npm by manually running the `Publish npm`
   workflow for the tag; verify both `npm view dsh-full-remote version` and the
   provenance link. The GitHub release does not depend on this step.
 - [x] Deprecate `dsh-reverse-proxy@0.1.0`; verified with `npm view dsh-reverse-proxy deprecated` on 2026-08-18.

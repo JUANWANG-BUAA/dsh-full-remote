@@ -3,6 +3,101 @@
 All notable changes to dsh-full-remote (formerly dsh-reverse-proxy) are
 documented in this file.
 
+## 0.4.1 (2026-10-17)
+
+### Changed
+
+- **DeepSeek Harness 0.2.1-rc.2 alignment.** `@deepseek-ai/dsh-*` dev
+  dependencies move to `0.2.1-rc.2`, `@deepseek-ai/cordis` to `4.0.5` (the peer
+  range is now `~4.0.5`) and `@deepseek-ai/schemastery` to `~3.18.5`, matching
+  what the official 0.2.1 client packages ship. The CI harness checkout and
+  `scripts/bootstrap.mjs` pin `dsh-v0.2.1-rc.2`
+  (`687f282e8625c6b8d11ff58211a90524be2e4317`), the release DeepSeek Harness
+  Desktop 0.2.1 bundles.
+- **No source-level port was required.** The 0.2.1 client contract is additive
+  for everything this plugin consumes: `settings.section` / `shell.overlay`
+  kept their shapes, the session and pending-interaction APIs the overlay reads
+  are unchanged, and `@deepseek-ai/dsh-client-ui-renderer` dropped only its
+  internal `./invariant` entry point, which this plugin never imported.
+
+### Added
+
+- **Settings section rebuilt around cards.** Each control block is now one card
+  with an icon, title and one-line description instead of a flat run of
+  headings, so a full-height settings page can be scanned card by card.
+  - The status hero gained a fact strip (published endpoint, local TLS,
+    approval mode, connected device count) that answers "is it up, where, and
+    how open" without scrolling.
+  - Self-check results render as a ✓/! checklist; warnings stay in the
+    foreground instead of blending into an equally weighted paragraph run.
+  - The tunnel target and the recommended-setup guide became their own cards,
+    so the publish-address card now ends where the address form ends.
+  - Connected devices render as avatar cards; a pending device gets an amber
+    border and its approve/reject actions, and renaming expands to a full-width
+    field under the row rather than squeezing the action column.
+  - Audit events fold their raw JSON behind a disclosure instead of printing it
+    under every row.
+  - Section icons come from a new `SectionIcon` fill set in the same
+    `currentColor` / even-odd language as `ReverseProxyIcon`; every colour still
+    resolves through `--dsw-alias-*` tokens, so light and dark both follow the
+    host theme.
+
+### Fixed
+
+- `docs/screenshots/preview-mobile.png` was a stale capture of an unrelated
+  directory-picker dialog and is removed; both READMEs point at
+  `preview-mobile-panel.png`, which the screenshot script actually regenerates.
+- The mobile screenshot capture is capped at 1280 CSS pixels tall, so the phone
+  panel stays an openable image instead of a 9000-pixel strip.
+
+### Verification
+
+- `pnpm run lint`, `pnpm run typecheck`, `pnpm run test` (233 unit + 63 client
+  tests) and `pnpm run screenshots` all pass against the 0.2.1-rc.2 dev
+  dependencies.
+
+## 0.4.0 (2026-10-11, unreleased — first published together with 0.4.1)
+
+### Changed
+
+- **DeepSeek Harness 0.2 compatibility (breaking)**: the plugin now targets the
+  0.2 client services and the `uiSession` pending-interaction registry; 0.1.x
+  is no longer supported.
+  - `@deepseek-ai/dsh-client-runtime` is removed in 0.2. Type imports move to
+    `@deepseek-ai/cordis` (`Context`), `@deepseek-ai/dsh-api-session-controller`
+    (`ISessions`), `@deepseek-ai/dsh-client-ui-session` (`UiSession`,
+    `SessionStatusSnapshot`, `SessionPendingInteraction`),
+    `@deepseek-ai/dsh-client-ui-approval` (`PendingApproval`),
+    `@deepseek-ai/dsh-client-ui-user-questions` (`PendingQuestion`) and
+    `@deepseek-ai/dsh-client-ui-workspace` (`UiWorkspace`).
+  - The remote interaction overlay reads `uiSession.sessionStatus` and answers
+    the published `PendingApproval`/`PendingQuestion` objects (`answer`,
+    `dismiss`) instead of instantiating every Session and posting receipts to
+    `session.pending`. The old `ready`/`hint:` split is gone because 0.2
+    publishes only answerable interactions (one highest-precedence request per
+    Session). “Open session” now calls `ctx.uiWorkspace.openSession()`.
+  - `dsh.client.inject` lists the 0.2 client packages the plugin depends on;
+    peer dependencies shrink to `@deepseek-ai/cordis ~4.0.4`, the official 0.2
+    convention for client plugins.
+  - `@deepseek-ai/schemastery` moves to `~3.18.4` (what official 0.2 packages
+    use). Installing 3.18.1 and 3.18.4 side by side made every Config field
+    `string | Volatile<string> | …` and failed typecheck.
+  - `@deepseek-ai/dsh-invariants` and the obsolete client `settingsScope`
+    fallback are removed. Remote settings persistence still rides the
+    index-tap pin of `connection.isLoopback`, which 0.2's `ui-settings` reads
+    through `ctx.remote.$host.isLoopback` (`host` vs `memory` persistence).
+- Release artifacts and docs target v0.4.0.
+
+### Verification
+
+- `pnpm run check` (lint, typecheck, 233 unit tests, 63 client tests, build)
+  and `pnpm run test:composition` pass.
+- Real `dsh web` smoke on Harness **0.2.0-rc.2** (npm `latest`, the version
+  shipped by DeepSeek Harness Desktop): the profile accepts the plugin with no
+  peer-compatibility skip, its client factory appears in the `/plugins/??…`
+  boot graph, the browser shows zero page errors, `__DSH_FULL_REMOTE_TRUSTED__`
+  is set by the index tap, and Settings renders the Reverse proxy section.
+
 ## 0.3.12 (2026-09-16)
 
 ### Fixed

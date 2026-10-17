@@ -1,11 +1,42 @@
 # Compatibility and composition
 
 `dsh-full-remote` is a bundle, not a replacement web application. It expects
-the Harness `webServer` and Host `connection` services plus the published
-client runtime/UI-slots packages in the supported peer range (`0.1.1-rc.1`
-through `<0.2`). It is verified against DeepSeek Harness **0.1.2-rc.1** (the
-npm `next` dist-tag), with a compatibility path for **0.1.1-rc.1/rc.2**. It is
-not intended for a headless profile.
+the Harness `webServer` and Host `connection` services plus the 0.2 client
+packages it declares in `dsh.client.inject` (`dsh-api-session-controller`,
+`dsh-client-ui-session`, `dsh-client-ui-workspace`, `dsh-client-ui-approval`,
+`dsh-client-ui-user-questions`, `dsh-client-ui-settings`). Its only peer
+dependency is `@deepseek-ai/cordis ~4.0.5` — the official 0.2 convention for
+client plugins. It is verified against DeepSeek Harness **0.2.1-rc.2** (npm
+`next`, the version shipped by DeepSeek Harness Desktop 0.2.1); 0.1.x is no
+longer supported (0.2 removed `@deepseek-ai/dsh-client-runtime` and moved
+pending interactions into the `uiSession` registry). It is not intended for a
+headless profile.
+
+## DeepSeek Harness 0.2.1
+
+0.2.1 adds method-level Remote access control
+([`dsh-api-remote-access`](https://www.npmjs.com/package/@deepseek-ai/dsh-api-remote-access)).
+The Host Gateway now asks a per-Peer policy before it dispatches a non-owner
+Remote call or forwards an event, and the Client publishes the answers as
+`useRemoteAccess` / `useSessionAccess` / `useWorkspaceAccess` hooks. Three
+consequences for this plugin:
+
+1. **No policy to register.** A `Principal` is fixed when the Peer is created,
+   and the only principal kind the base composition declares is `owner`. A
+   browser that reaches Harness through this proxy is created as an owner Peer
+   — the same reason the index tap pins `connection.isLoopback` — so the
+   deny-by-default path never applies to remote devices. Bundles that register
+   a policy for a non-owner kind keep working beside this plugin.
+2. **Slots stay compatible.** `settings.section` and `shell.overlay` are
+   unchanged. 0.2.1 adds the optional `inline` slot flag and the
+   `(key, member)` form of keyed sources; neither changes a registration that
+   omits them.
+3. **`ui-workspace` moved its toast contract.** `RowToastProps` now renders
+   `workspace.toast` instead of taking the archived-filter store, and the
+   session menu gained a `session-id` row at `order: 450`. This plugin owns its
+   own toast (`PanelToast`) and registers no workspace row, so it is unaffected
+   — but a plugin that extended the shipped toast must port to the keyed
+   dispatcher.
 
 ## Installation order
 
@@ -56,13 +87,15 @@ After composing plugins, verify all of the following through the proxy:
 5. revoking the device closes its active streams;
 6. the host UI still opens its own directory picker when accessed locally;
 7. on a non-loopback hostname, Settings → Models shows the provider catalog
-   rather than `settings are unavailable in this browser` (Harness 0.1.0-rc.8
-   describe-mirror, still required on 0.1.1-rc.1/0.1.1-rc.2);
+   rather than `settings are unavailable in this browser` (0.2 resolves the
+   form persistence mode as `ctx.remote.$host.isLoopback ? 'host' : 'memory'`
+   during `ui-settings` apply; the index-tap pin of `connection.isLoopback` is
+   what keeps it `host` behind this proxy);
 8. on a non-loopback hostname, Settings → Models lists
    `DeepSeek-V4-Flash-Vision-Exp`, and a paste/drop of a JPEG/PNG/WebP/GIF
    under the Harness image limits is not 413'd by this proxy.
 
-Harness 0.1.2 protects the Web index and `/api` with a browser-session cookie.
+Harness 0.2 (since 0.1.2) protects the Web index and `/api` with a browser-session cookie.
 When the Host Connection service exposes `authenticatedUrl()`, this plugin
 performs the local process-token exchange at proxy start and keeps that cookie
 internal; the remote device cookie is never forwarded upstream.

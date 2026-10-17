@@ -3,7 +3,7 @@
  *
  * Dependencies install straight from npm. A sibling checkout is optional and
  * is useful only for upstream integration smoke and source-level debugging;
- * CI typechecks against the published client-runtime declarations.
+ * CI typechecks against the published 0.2 client declarations.
  *
  * Usage: pnpm run bootstrap
  */
@@ -13,9 +13,10 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HARNESS_REPO = 'https://github.com/deepseek-ai/deepseek-harness.git'
-// Verified against DeepSeek Harness 0.1.2-rc.1
-// (`packages/client/*` 0.1.2-rc.1, browser-session auth + queue ModuleLoader).
-const HARNESS_COMMIT = 'a66e4702047846cdaa10c66c9d3df3951f5ea70d'
+// Verified against DeepSeek Harness 0.2.1-rc.2
+// (`packages/client/*` 0.2.1-rc.2, browser-session auth + queue ModuleLoader,
+// uiSession pending-interaction registry, Remote access snapshots).
+const HARNESS_COMMIT = '687f282e8625c6b8d11ff58211a90524be2e4317'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const sibling = join(dirname(root), 'deepseek-harness')

@@ -1,14 +1,10 @@
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { Context } from '@deepseek-ai/cordis'
 import { LANGUAGE_STORAGE_KEY } from '../src/client/language.ts'
 import type { ComponentProps } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { errorFromControlResponse } from '../src/client/index.ts'
 import { RemoteSection } from '../src/client/RemoteSection.tsx'
-import {
-  pageNeedsHostSettingsPersistence,
-  trustSettingsPersistence,
-} from '../src/client/trust-settings.ts'
 import type { ProxyApi, ProxyStatus } from '../src/client/types.ts'
 import { bindTranslate, translatorFor, zh, en, type ReverseProxyTranslate } from '../src/client/i18n.ts'
 import { toastFromCaught, toastFromReason, toastFromStatus, toastFromTunnelDetail } from '../src/client/toast.ts'
@@ -152,48 +148,6 @@ describe('toast mapping', () => {
   })
 })
 
-describe('settings persistence trust', () => {
-  it('requires the index-tap flag and a non-loopback hostname', () => {
-    expect(pageNeedsHostSettingsPersistence('app.example', 1)).toBe(true)
-    expect(pageNeedsHostSettingsPersistence('127.0.0.1', 1)).toBe(false)
-    expect(pageNeedsHostSettingsPersistence('127.0.0.2', 1)).toBe(false)
-    expect(pageNeedsHostSettingsPersistence('localhost', 1)).toBe(false)
-    expect(pageNeedsHostSettingsPersistence('app.example', undefined)).toBe(false)
-    expect(pageNeedsHostSettingsPersistence('', 1)).toBe(false)
-  })
-
-  it('makes bind() see isLoopback and restores the handle afterwards', () => {
-    const connection = { isLoopback: false }
-    const seen: boolean[] = []
-    const binder = {
-      bind(spec: unknown) {
-        seen.push(connection.isLoopback)
-        return spec
-      },
-    }
-    trustSettingsPersistence(binder, () => connection, { hostname: 'tunnel.example', trusted: 1 })
-    expect(binder.bind({ namespace: 'ui-test' })).toEqual({ namespace: 'ui-test' })
-    expect(seen).toEqual([true])
-    expect(connection.isLoopback).toBe(false)
-  })
-
-  it('does not wrap bind on a loopback page', () => {
-    const connection = { isLoopback: false }
-    const binder = { bind: vi.fn((spec: unknown) => spec) }
-    const original = binder.bind
-    trustSettingsPersistence(binder, () => connection, { hostname: '127.0.0.1', trusted: 1 })
-    expect(binder.bind).toBe(original)
-  })
-
-  it('does not wrap bind when the handle is already pinned', () => {
-    const connection = { isLoopback: true }
-    const binder = { bind: vi.fn((spec: unknown) => spec) }
-    const original = binder.bind
-    trustSettingsPersistence(binder, () => connection, { hostname: 'tunnel.example', trusted: 1 })
-    expect(binder.bind).toBe(original)
-  })
-})
-
 describe('remote settings section', () => {
   it('renders as a settings page, not a dialog overlay', async () => {
     const service = api()
@@ -231,7 +185,8 @@ describe('remote settings section', () => {
     })
     render(<RemoteSection {...sectionProps(service)} />)
     expect(await screen.findByRole('alert')).toBeTruthy()
-    expect(screen.getByText(/0\.0\.0\.0:8000/)).toBeTruthy()
+    // The endpoint now also appears as a hero chip, so the endpoint is not unique.
+    expect(screen.getAllByText(/0\.0\.0\.0:8000/).length).toBeGreaterThan(0)
     expect(screen.getByText(/占用/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '启动代理' }))
     await waitFor(() => expect(service.start).toHaveBeenCalledOnce())
@@ -627,7 +582,7 @@ describe('remote settings section', () => {
 describe('browser language preference (#30)', () => {
   const bindings: ReturnType<typeof bindTranslate>[] = []
   function bind(locale?: unknown) {
-    const result = bindTranslate({ get: () => locale } as unknown as ClientContext)
+    const result = bindTranslate({ get: () => locale } as unknown as Context)
     bindings.push(result)
     return result
   }

@@ -3,17 +3,18 @@
  *
  * Official composers take over `conversation.composer`, which sits at the
  * bottom of the current session. On a phone that panel is easy to miss, and
- * waits on a session that is not current never appear at all. This source
- * instantiates every listed session that has a pending interaction (via
- * `sessions.binding`, which replays buffered mux frames) and exposes a
- * stable snapshot the overlay can answer from.
+ * waits on a session that is not current never appear at all. Harness 0.2
+ * publishes pending interactions through the `uiSession` registry and exposes
+ * the highest-precedence request per Session on `uiSession.sessionStatus`, so
+ * this source turns that registry into the stable snapshot the overlay can
+ * answer from — no session instantiation on this side.
  */
+import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { PendingApproval } from '@deepseek-ai/dsh-client-ui-approval/client'
 import type {
-  ISessions,
-  PendingInteraction,
-  PendingWait,
-  SessionId,
-} from '@deepseek-ai/dsh-client-runtime/client'
+  SessionPendingInteraction, SessionStatusSnapshot, UiSession,
+} from '@deepseek-ai/dsh-client-ui-session/client'
+import type { PendingQuestion } from '@deepseek-ai/dsh-client-ui-user-questions/client'
 import { isLoopbackHost } from '../hosts.ts'
 
 /** One option the asker offered. */
@@ -55,7 +56,6 @@ export type RemotePendingItem = {
   presentation: 'approval' | 'question' | 'plan-review'
   sessionId: string
   sessionTitle: string
-  current: boolean
   ready: boolean
   approval?: ApprovalView
   questions?: QuestionItemView[]
@@ -127,15 +127,14 @@ function fingerprint(state: RemotePendingState) {
   }).join('|')
 }
 
-function questionView(wait: PendingWait<'question'>): QuestionItemView[] {
-  const questions = wait.payload.questions
-  return questions.map((question: QuestionItemView) => ({
+function questionView(wait: PendingQuestion): QuestionItemView[] {
+  return wait.questions.map(question => ({
     id: question.id,
     question: question.question,
     ...(question.detail === undefined ? {} : { detail: question.detail }),
     ...(question.header === undefined ? {} : { header: question.header }),
     ...(question.options === undefined ? {} : {
-      options: question.options.map((option: QuestionOptionView) => ({
+      options: question.options.map((option) => ({
         label: option.label,
         ...(option.description === undefined ? {} : { description: option.description }),
       })),
@@ -147,43 +146,41 @@ function questionView(wait: PendingWait<'question'>): QuestionItemView[] {
   }))
 }
 
-function projectWait(
-  wait: PendingInteraction,
+/**
+ * Project one registry entry into the overlay view. Harness 0.2 only exposes
+ * answerable interactions here (the old list-row hint is gone), so every
+ * projected item is ready.
+ */
+function projectInteraction(
+  interaction: SessionPendingInteraction,
   sessionTitle: string,
-  current: boolean,
 ): RemotePendingItem {
-  if (wait.kind === 'question') {
-    const questions = questionView(wait as PendingWait<'question'>)
+  if (interaction.kind === 'approval') {
+    const approval = interaction as PendingApproval
     return {
-      key: wait.key,
-      kind: 'question',
-      presentation: planReviewOf(questions) === undefined ? 'question' : 'plan-review',
-      sessionId: wait.sessionId,
+      key: approval.key,
+      kind: 'approval',
+      presentation: 'approval',
+      sessionId: approval.sessionId,
       sessionTitle,
-      current,
       ready: true,
-      questions,
+      approval: {
+        toolName: approval.toolName,
+        ...(approval.reason === undefined ? {} : { reason: approval.reason }),
+      },
     }
   }
-  const approval = wait as PendingWait<'approval'>
+  const question = interaction as PendingQuestion
+  const questions = questionView(question)
   return {
-    key: approval.key,
-    kind: 'approval',
-    presentation: 'approval',
-    sessionId: approval.sessionId,
+    key: question.key,
+    kind: 'question',
+    presentation: planReviewOf(questions) === undefined ? 'question' : 'plan-review',
+    sessionId: question.sessionId,
     sessionTitle,
-    current,
     ready: true,
-    approval: {
-      toolName: approval.payload.toolName,
-      ...(approval.payload.reason === undefined ? {} : { reason: approval.payload.reason }),
-    },
+    questions,
   }
-}
-
-function receiptError(receipt: { accepted: boolean, reason?: string }, action: string) {
-  if (receipt.accepted) return
-  throw new Error(`${action} rejected: ${receipt.reason ?? 'unknown'}`)
 }
 
 /** Live pending-interaction source the overlay hook binds to. */
@@ -197,14 +194,14 @@ export type PendingSource = {
 }
 
 /**
- * Subscribe to the session list and every pending session's conversation
- * snapshot. `binding()` instantiates the session so buffered question/approval
- * frames become answerable waits without changing the current selection.
+ * Subscribe to the Session list and the `uiSession` pending-interaction
+ * registry. Titles come from the list snapshot; the interactions themselves
+ * arrive answerable, published by their owning domain (questions,
+ * approvals) — this source never instantiates a Session.
  */
-export function createPendingSource(sessions: ISessions): PendingSource {
+export function createPendingSource(sessions: ISessions, uiSession: UiSession): PendingSource {
   const listeners = new Set<() => void>()
-  const sessionUnsubs = new Map<SessionId, () => void>()
-  const waits = new Map<string, PendingInteraction>()
+  const waits = new Map<string, SessionPendingInteraction>()
   let snapshot = EMPTY_STATE
   let disposed = false
 
@@ -215,48 +212,20 @@ export function createPendingSource(sessions: ISessions): PendingSource {
   const collect = () => {
     if (disposed) return
     const list = sessions.list.getSnapshot()
+    const status: SessionStatusSnapshot = uiSession.sessionStatus.getSnapshot()
     const items: RemotePendingItem[] = []
-    const nextWaits = new Map<string, PendingInteraction>()
-    const pendingIds = new Set<SessionId>()
+    const nextWaits = new Map<string, SessionPendingInteraction>()
 
-    for (const id of list.ids) {
-      const row = list.byId[id]
-      if (row?.pendingInteraction === undefined) continue
-      pendingIds.add(id)
-      const binding = sessions.binding(id)
-      const pending = binding?.session.getSnapshot().pending ?? []
-      if (pending.length === 0) {
-        items.push({
-          key: `hint:${id}`,
-          kind: row.pendingInteraction === 'approval' ? 'approval' : 'question',
-          presentation: row.pendingInteraction,
-          sessionId: id,
-          sessionTitle: row.displayTitle,
-          current: list.current === id,
-          ready: false,
-        })
-        continue
-      }
-      for (const wait of pending) {
-        nextWaits.set(wait.key, wait)
-        items.push(projectWait(wait, row.displayTitle, list.current === id))
-      }
+    for (const [sessionId, row] of status) {
+      const interaction = row.pendingInteraction
+      if (interaction === undefined) continue
+      nextWaits.set(interaction.key, interaction)
+      const title = list.byId[sessionId]?.displayTitle ?? String(sessionId)
+      items.push(projectInteraction(interaction, title))
     }
 
     waits.clear()
     for (const [key, wait] of nextWaits) waits.set(key, wait)
-
-    for (const [id, unsub] of sessionUnsubs) {
-      if (pendingIds.has(id)) continue
-      unsub()
-      sessionUnsubs.delete(id)
-    }
-    for (const id of pendingIds) {
-      if (sessionUnsubs.has(id)) continue
-      const binding = sessions.binding(id)
-      if (binding === undefined) continue
-      sessionUnsubs.set(id, binding.session.subscribe(collect))
-    }
 
     const next = items.length === 0 ? EMPTY_STATE : { items }
     if (fingerprint(next) === fingerprint(snapshot)) return
@@ -265,6 +234,7 @@ export function createPendingSource(sessions: ISessions): PendingSource {
   }
 
   const listUnsub = sessions.list.subscribe(collect)
+  const statusUnsub = uiSession.sessionStatus.subscribe(collect)
   collect()
 
   return {
@@ -276,8 +246,7 @@ export function createPendingSource(sessions: ISessions): PendingSource {
     dispose: () => {
       disposed = true
       listUnsub()
-      for (const unsub of sessionUnsubs.values()) unsub()
-      sessionUnsubs.clear()
+      statusUnsub()
       waits.clear()
       listeners.clear()
       snapshot = EMPTY_STATE
@@ -287,41 +256,24 @@ export function createPendingSource(sessions: ISessions): PendingSource {
       if (wait === undefined || wait.kind !== 'approval') {
         throw new Error('approval is no longer pending')
       }
-      const receipt = await wait.respond({
-        ok: true,
-        value: {
-          sessionId: wait.sessionId,
-          approvalId: wait.payload.approvalId,
-          outcome,
-        },
-      })
-      receiptError(receipt, 'approval')
+      await (wait as PendingApproval).answer(outcome)
     },
     answerQuestion: async (key, answer) => {
       const wait = waits.get(key)
-      if (wait === undefined || wait.kind !== 'question') {
+      if (wait === undefined || wait.kind === 'approval') {
         throw new Error('question is no longer pending')
       }
-      const receipt = await wait.respond({
-        ok: true,
-        value: { sessionId: wait.sessionId, answer },
-      })
-      receiptError(receipt, 'question')
+      await (wait as PendingQuestion).answer(answer)
     },
     cancelQuestion: async (key) => {
       const wait = waits.get(key)
-      if (wait === undefined || wait.kind !== 'question') {
+      if (wait === undefined || wait.kind === 'approval') {
         throw new Error('question is no longer pending')
       }
-      const receipt = await wait.respond({
-        ok: false,
-        error: {
-          code: 'cancelled',
-          message: 'the user closed this question request',
-          details: {},
-        },
-      })
-      receiptError(receipt, 'question cancel')
+      // 0.2 semantics: a tool-call-keyed card only leaves the composer seat
+      // (the request stays answerable from its tool call row); an unnamed
+      // card ends the request. Both are the official dismiss behavior.
+      await (wait as PendingQuestion).dismiss()
     },
   }
 }

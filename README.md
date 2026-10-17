@@ -12,7 +12,7 @@
 
 **Listed in [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)** · DeepSeek Harness plugin
 
-**Current release: [v0.3.12](https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/tag/v0.3.12)** · Distributed through GitHub Releases
+**Current release: [v0.4.0](https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/tag/v0.4.0)** · Distributed through GitHub Releases
 
 **English** | [中文](./README.zh.md)
 
@@ -26,8 +26,8 @@ directory browsing remain available.
 ## 60-second quick start
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.3.12/dsh-full-remote-0.3.12.tgz
-dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.4.0.tgz
 dsh --profile web
 ```
 
@@ -44,7 +44,7 @@ to the Internet. For composition details, see
 
 | Desktop control panel | Mobile workspace |
 |---|---|
-| ![Desktop control panel](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-desktop.png) | ![Mobile workspace](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile.png) |
+| ![Desktop control panel](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-desktop.png) | ![Mobile control panel](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-panel.png) |
 
 | Phone confirmation sheet | Remote desktop confirmation |
 |---|---|
@@ -215,22 +215,28 @@ flowchart LR
 ## Requirements
 
 - Node.js `^22.19.0 || >=24`
-- A DeepSeek Harness **web** profile. The plugin depends on `webServer` and
-  Host `connection` services and is not intended for headless profiles.
-  Verified against **0.1.2-rc.1** (npm `next` dist-tag), with a compatibility
-  path for **0.1.1-rc.1/rc.2**.
+- A DeepSeek Harness **web** profile running **0.2** (`0.2.1-rc.2`, the npm
+  `next` dist-tag and the version shipped by DeepSeek Harness Desktop 0.2.1).
+  The plugin depends on the `webServer` and Host `connection` services plus the
+  0.2 client services (`uiSession`, `uiWorkspace`, `ui-approval`,
+  `ui-user-questions`) and is not intended for headless profiles. 0.1.x is no
+  longer supported: the 0.2 client removed `@deepseek-ai/dsh-client-runtime`
+  and moved pending interactions into the `uiSession` registry. 0.2.1 adds the
+  Remote access snapshot (`dsh-api-remote-access`); it does not restrict the
+  browsers this proxy serves — see
+  [compatibility](./docs/compatibility.md#deepseek-harness-021).
 
 ## Installation
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.3.12/dsh-full-remote-0.3.12.tgz
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.3.12/SHA256SUMS
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.0.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/SHA256SUMS
 shasum -a 256 -c SHA256SUMS
-dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.4.0.tgz
 dsh --profile web
 ```
 
-The current release is **v0.3.12**. npm publication is separate and currently
+The current release is **v0.4.0**. npm publication is separate and currently
 lags behind the GitHub release, so use the attached tarball above when
 installing or upgrading this version.
 
@@ -299,12 +305,12 @@ Download the current GitHub release and add its tarball to the existing web
 profile:
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.3.12/dsh-full-remote-0.3.12.tgz
-dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.4.0.tgz
 ```
 
 Then restart `dsh web`. This replaces an older registry-installed or tarball
-version with **v0.3.12**.
+version with **v0.4.0**.
 
 ### Language
 
@@ -332,7 +338,7 @@ one-time invite QR, access token, connected devices with source IPs
 
 | Login page | Control panel | Add workspace |
 |---|---|---|
-| ![Mobile login](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-login.png) | ![Mobile panel](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-panel.png) | ![Mobile workspace](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile.png) |
+| ![Mobile login](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-login.png) | ![Mobile panel](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-panel.png) |
 
 ### Remote confirmation
 
@@ -476,7 +482,7 @@ from the internet:
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.3.12.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.4.0.tgz
 ```
 
 Git installs run the `prepare` build. On pnpm ≥ 10 allow it:

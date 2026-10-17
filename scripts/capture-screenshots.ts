@@ -130,7 +130,7 @@ async function clickText(cdp: Cdp, label: string) {
   if (clicked !== true) throw new Error(`button not found: ${label}`)
 }
 
-async function screenshotClip(cdp: Cdp, selector: string, path: string, pad = 0) {
+async function screenshotClip(cdp: Cdp, selector: string, path: string, pad = 0, maxHeight = 0) {
   const box = await evalValue(cdp, `
     (() => {
       const el = document.querySelector(${JSON.stringify(selector)});
@@ -148,7 +148,9 @@ async function screenshotClip(cdp: Cdp, selector: string, path: string, pad = 0)
       x: Math.max(0, box.x - pad),
       y: Math.max(0, box.y - pad),
       width: Math.max(1, box.width + pad * 2),
-      height: Math.max(1, box.height + pad * 2),
+      // A phone-width settings page is thousands of CSS pixels tall; cap it so
+      // the README image stays readable instead of becoming an unopenable strip.
+      height: Math.max(1, (maxHeight > 0 ? Math.min(box.height, maxHeight) : box.height) + pad * 2),
       scale: 1,
     },
   }) as { data: string }
@@ -336,7 +338,7 @@ async function main() {
     await goto(cdp, `${ORIGIN}/?chrome=0&narrow=1`)
     await preparePanel(cdp)
     await fitSelector(cdp, '[data-shot="section"]', 390, 3, true)
-    await screenshotClip(cdp, '[data-shot="section"]', join(shots, 'preview-mobile-panel.png'), 8)
+    await screenshotClip(cdp, '[data-shot="section"]', join(shots, 'preview-mobile-panel.png'), 8, 1280)
 
     await setColorScheme(cdp, 'light')
     await setViewport(cdp, 720, 520, 2, false)

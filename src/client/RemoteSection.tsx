@@ -12,6 +12,7 @@ import type { ReverseProxyTranslate } from './i18n.ts'
 import { useLanguage, type LanguageController } from './language.ts'
 import { PanelToast } from './PanelToast.tsx'
 import { ReverseProxyIcon } from './ReverseProxyIcon.tsx'
+import { SectionIcon } from './SectionIcon.tsx'
 import { toastFromCaught, toastFromReason, toastFromStatus, toastFromTunnelDetail, type PanelToastModel, type ToastIntent } from './toast.ts'
 import { isLoopbackHost, isWildcardHost } from '../hosts.ts'
 import css from './remote.module.css'
@@ -461,23 +462,58 @@ export function RemoteSection({ api, t, language }: RemoteSectionProps) {
           : !running ? t('tunnel.hint.requiresProxy') : undefined
   const copyTarget = (url: string) => { void copy(url, t('tunnel.copy'), 'copied.target') }
 
+  // The hero strip answers "is it up, where, and how open" without scrolling.
+  const listenEndpoint = status?.listen === undefined
+    ? t('status.loading')
+    : `${status.listen.host}:${status.listen.port}`
+  const approvalLabel = status?.approvalMode === true ? t('meta.on') : t('meta.off')
+  const tlsLabel = status?.tls === true ? t('meta.on') : t('meta.off')
+  const checkTone = check === undefined ? undefined : check.fence.ok ? 'success' : 'warn'
+  const selfCheckRows: Array<{ tone: 'ok' | 'warn', text: string }> = []
+  if (check !== undefined) {
+    if (fenceDetail !== undefined) {
+      selfCheckRows.push({ tone: check.fence.ok ? 'ok' : 'warn', text: fenceDetail })
+    }
+    selfCheckRows.push({
+      tone: check.bootstrapFailed === true ? 'warn' : 'ok',
+      text: check.bootstrapFailed === true
+        ? t('check.bootstrapFail')
+        : check.trustBootstrap === true ? t('check.bootstrapOk') : t('check.bootstrapMissing'),
+    })
+    selfCheckRows.push({ tone: 'ok', text: check.tls ? t('check.tlsOn') : t('check.tlsOff') })
+    selfCheckRows.push({ tone: check.auditLog ? 'ok' : 'warn', text: check.auditLog ? t('check.auditOn') : t('check.auditOff') })
+    selfCheckRows.push({
+      tone: 'ok',
+      text: check.trustForwardedFor ? t('check.trustForwardedForOn') : t('check.trustForwardedForOff'),
+    })
+    selfCheckRows.push({
+      tone: 'ok',
+      text: check.allowTokenRead ? t('check.tokenReadOn') : t('check.tokenReadOff'),
+    })
+    if (proxyStoppedHint) selfCheckRows.push({ tone: 'warn', text: t('check.proxyStopped') })
+  }
+
   return (
     <div className={css.section} data-shot="section">
-      <h2 className={css.title}>{t('section.title')}</h2>
-      {language !== undefined && (
-        <label className={css.language}>
-          {t('language.label')}{' '}
-          <select value={language.getPreference()} onChange={event => {
-            const value = event.target.value
-            if (value === 'auto' || value === 'en' || value === 'zh') language.setPreference(value)
-          }}>
-            <option value="auto">{t('language.auto')}</option>
-            <option value="en">English</option>
-            <option value="zh">中文</option>
-          </select>
-        </label>
-      )}
-      <p className={css.intro}>{t('section.intro')}</p>
+      <div className={css.pageHead}>
+        <div>
+          <h2 className={css.title}>{t('section.title')}</h2>
+          <p className={css.intro}>{t('section.intro')}</p>
+        </div>
+        {language !== undefined && (
+          <label className={css.language}>
+            {t('language.label')}{' '}
+            <select value={language.getPreference()} onChange={event => {
+              const value = event.target.value
+              if (value === 'auto' || value === 'en' || value === 'zh') language.setPreference(value)
+            }}>
+              <option value="auto">{t('language.auto')}</option>
+              <option value="en">English</option>
+              <option value="zh">中文</option>
+            </select>
+          </label>
+        )}
+      </div>
 
       {toast !== undefined && (
         <PanelToast key={toast.id} toast={toast} t={t} onDismiss={dismissToast} />
@@ -513,189 +549,248 @@ export function RemoteSection({ api, t, language }: RemoteSectionProps) {
         </div>
       </div>
 
+      <div className={css.metaStrip}>
+        <span className={css.meta} data-tone={running ? 'on' : 'off'}>
+          <span>{t('listen.label')}</span><b>{listenEndpoint}</b>
+        </span>
+        <span className={css.meta} data-tone={status?.tls === true ? 'on' : 'off'}>
+          <span>{t('meta.tls')}</span><b>{tlsLabel}</b>
+        </span>
+        <span className={css.meta} data-tone={status?.approvalMode === true ? 'warn' : 'off'}>
+          <span>{t('meta.approval')}</span><b>{approvalLabel}</b>
+        </span>
+        <span className={css.meta}>
+          <span>{t('meta.devices')}</span><b>{String(sessions.length)}</b>
+        </span>
+      </div>
+
       {check !== undefined && (
-        <section className={css.group} data-shot="check">
-          <h3 className={css.groupHead}>{t('check.label')}</h3>
-          {fenceDetail !== undefined && (
-            <p className={check.fence.ok ? css.hint : css.warn}>{fenceDetail}</p>
-          )}
-          {check.bootstrapFailed === true ? (
-            <p className={css.warn}>{t('check.bootstrapFail')}</p>
-          ) : check.trustBootstrap === true ? (
-            <p className={css.hint}>{t('check.bootstrapOk')}</p>
-          ) : (
-            <p className={css.hint}>{t('check.bootstrapMissing')}</p>
-          )}
-          <p className={css.hint}>{check.tls ? t('check.tlsOn') : t('check.tlsOff')}</p>
-          <p className={css.hint}>{check.auditLog ? t('check.auditOn') : t('check.auditOff')}</p>
-          <p className={css.hint}>{check.trustForwardedFor ? t('check.trustForwardedForOn') : t('check.trustForwardedForOff')}</p>
-          <p className={css.hint}>{check.allowTokenRead ? t('check.tokenReadOn') : t('check.tokenReadOff')}</p>
-          {proxyStoppedHint && <p className={css.hint}>{t('check.proxyStopped')}</p>}
+        <section className={css.card} data-shot="check">
+          <header className={css.cardHead}>
+            <span className={css.cardIcon} data-tone={checkTone}>
+              <SectionIcon name="check" />
+            </span>
+            <div className={css.cardHeading}>
+              <h3 className={css.cardTitle}>{t('check.label')}</h3>
+            </div>
+          </header>
+          <div className={css.cardBody}>
+            <ul className={css.checkList}>
+              {selfCheckRows.map((row, index) => (
+                <li key={index} className={css.checkRow} data-tone={row.tone === 'warn' ? 'warn' : undefined}>
+                  <span className={css.checkDot} aria-hidden="true">{row.tone === 'warn' ? '!' : '✓'}</span>
+                  <span>{row.text}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </section>
       )}
 
-      <section className={css.group} data-shot="listen">
-        <h3 className={css.groupHead}>{t('listen.label')}</h3>
-        <p className={css.hint}>{t('listen.description')}</p>
-        <div className={css.listenRow}>
+      <section className={css.card} data-shot="connect">
+        <header className={css.cardHead}>
+          <span className={css.cardIcon}><SectionIcon name="publish" /></span>
+          <div className={css.cardHeading}>
+            <h3 className={css.cardTitle}>{t('listen.label')}</h3>
+            <p className={css.cardDesc}>{t('listen.description')}</p>
+          </div>
+        </header>
+        <div className={css.cardBody} data-shot="listen">
+          <div className={css.listenRow}>
+            <label className={css.field}>
+              <span>{t('listen.host')}</span>
+              <input
+                className={css.input}
+                value={listenHost}
+                onChange={event => { setListenHost(event.target.value) }}
+                placeholder="127.0.0.1"
+                inputMode="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+            </label>
+            <label className={css.field}>
+              <span>{t('listen.port')}</span>
+              <input
+                className={css.input}
+                value={listenPort}
+                onChange={event => { setListenPort(event.target.value.replace(/[^0-9]/g, '')) }}
+                placeholder="3081"
+                inputMode="numeric"
+              />
+            </label>
+            <button
+              className={css.secondaryButton}
+              type="button"
+              disabled={busy}
+              onClick={() => { void applyListen() }}
+            >{listenLabel}</button>
+          </div>
+          {wildcard && <p className={css.warn}>{t('listen.wildcard')}</p>}
+          {nonLoopback && <p className={css.warn}>{t('listen.warn')}</p>}
+        </div>
+      </section>
+
+      <section className={css.card} data-shot="tunnel">
+        <header className={css.cardHead}>
+          <span className={css.cardIcon}><SectionIcon name="tunnel" /></span>
+          <div className={css.cardHeading}>
+            <h3 className={css.cardTitle}>{t('tunnel.label')}</h3>
+            <p className={css.cardDesc}>{t('tunnel.description')}</p>
+          </div>
+        </header>
+        <div className={css.cardBody}>
+          <CopyField
+            value={status?.target ?? t('tunnel.loading')}
+            action={t('tunnel.copy')}
+            disabled={status === undefined}
+            onCopy={() => { if (status !== undefined) copyTarget(status.target) }}
+          />
+          {status?.wildcard === true && status.listen !== undefined && (
+            <p className={css.hint}>{t('tunnel.bound', { bind: `${status.listen.host}:${status.listen.port}` })}</p>
+          )}
+          {lanUrl !== undefined && (
+            <p className={css.hint}>{t('tunnel.target.recommended')}</p>
+          )}
+          {extraReachables.length > 0 && (
+            <>
+              <p className={css.hint}>{t('tunnel.reachables')}</p>
+              {extraReachables.map(url => (
+                <CopyField key={url} value={url} action={t('tunnel.copy')} onCopy={() => { copyTarget(url) }} />
+              ))}
+            </>
+          )}
+        </div>
+
+        <div className={css.cardBody} data-shot="guide">
+          <h4 className={css.subHead}>{t('guide.label')}</h4>
+          <p className={css.note}>{t('guide.description')}</p>
+          <p className={css.note}>
+            {lanUrl !== undefined ? t('guide.wifi', { url: lanUrl }) : t('guide.wifiNone')}
+          </p>
+          <p className={css.note}>{t('guide.outside')}</p>
+          <p className={css.note} data-tone="warn">{t('guide.quick')}</p>
+        </div>
+      </section>
+
+      <section className={css.card} data-shot="oneClick">
+        <header className={css.cardHead}>
+          <span className={css.cardIcon} data-tone={tunnelOn ? 'success' : undefined}>
+            <SectionIcon name="tunnel" />
+          </span>
+          <div className={css.cardHeading}>
+            <h3 className={css.cardTitle}>
+              {t('tunnel.oneClick.label')} <span className={css.badge}>{t('tunnel.oneClick.badge')}</span>
+            </h3>
+            <p className={css.cardDesc}>{t('tunnel.oneClick.description')}</p>
+          </div>
+        </header>
+        <div className={css.cardBody}>
+          <div className={css.tokenRow}>
+            <button
+              className={tunnelOn ? css.dangerButton : css.secondaryButton}
+              type="button"
+              disabled={busy || tlsBlocksTunnel}
+              onClick={() => { void (tunnelOn ? stopTunnel() : startTunnel()) }}
+            >
+              {tunnelStartLabel}
+            </button>
+            {tunnelState === 'online' && tunnelUrl !== undefined && (
+              <CopyField value={tunnelUrl} action={t('tunnel.copy')} onCopy={() => { copyTarget(tunnelUrl) }} />
+            )}
+          </div>
+          {tunnelHint !== undefined && (
+            <p className={tunnelState === 'error' || tlsBlocksTunnel ? css.warn : css.hint}>{tunnelHint}</p>
+          )}
+          {tunnelOn && status?.approvalMode === false && (
+            <p className={css.warn}>{t('tunnel.hint.publicNoApproval')}</p>
+          )}
+        </div>
+      </section>
+
+      <section className={css.card} data-shot="invite">
+        <header className={css.cardHead}>
+          <span className={css.cardIcon}><SectionIcon name="invite" /></span>
+          <div className={css.cardHeading}>
+            <h3 className={css.cardTitle}>{t('invite.label')}</h3>
+            <p className={css.cardDesc}>{t('invite.description')}</p>
+          </div>
+        </header>
+        <div className={css.cardBody}>
           <label className={css.field}>
-            <span>{t('listen.host')}</span>
+            <span>{t('invite.base')}</span>
             <input
               className={css.input}
-              value={listenHost}
-              onChange={event => { setListenHost(event.target.value) }}
-              placeholder="127.0.0.1"
+              value={inviteBase}
+              onChange={event => { setInviteBase(event.target.value) }}
+              placeholder={t('invite.placeholder')}
               inputMode="url"
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
             />
           </label>
-          <label className={css.field}>
-            <span>{t('listen.port')}</span>
-            <input
-              className={css.input}
-              value={listenPort}
-              onChange={event => { setListenPort(event.target.value.replace(/[^0-9]/g, '')) }}
-              placeholder="3081"
-              inputMode="numeric"
-            />
-          </label>
-          <button
-            className={css.secondaryButton}
-            type="button"
-            disabled={busy}
-            onClick={() => { void applyListen() }}
-          >{listenLabel}</button>
-        </div>
-        {wildcard && <p className={css.warn}>{t('listen.wildcard')}</p>}
-        {nonLoopback && <p className={css.warn}>{t('listen.warn')}</p>}
-      </section>
-
-      <section className={css.group} data-shot="guide">
-        <h3 className={css.groupHead}>{t('guide.label')}</h3>
-        <p className={css.hint}>{t('guide.description')}</p>
-        <p className={css.hint}>{lanUrl !== undefined ? t('guide.wifi', { url: lanUrl }) : t('guide.wifiNone')}</p>
-        <p className={css.hint}>{t('guide.outside')}</p>
-        <p className={css.warn}>{t('guide.quick')}</p>
-      </section>
-
-      <section className={css.group} data-shot="tunnel">
-        <h3 className={css.groupHead}>{t('tunnel.label')}</h3>
-        <CopyField
-          value={status?.target ?? t('tunnel.loading')}
-          action={t('tunnel.copy')}
-          disabled={status === undefined}
-          onCopy={() => { if (status !== undefined) copyTarget(status.target) }}
-        />
-        {status?.wildcard === true && status.listen !== undefined && (
-          <p className={css.hint}>{t('tunnel.bound', { bind: `${status.listen.host}:${status.listen.port}` })}</p>
-        )}
-        {lanUrl !== undefined && (
-          <p className={css.hint}>{t('tunnel.target.recommended')}</p>
-        )}
-        {extraReachables.length > 0 && (
-          <>
-            <p className={css.hint}>{t('tunnel.reachables')}</p>
-            {extraReachables.map(url => (
-              <CopyField key={url} value={url} action={t('tunnel.copy')} onCopy={() => { copyTarget(url) }} />
-            ))}
-          </>
-        )}
-      </section>
-
-      <section className={css.group} data-shot="oneClick">
-        <h3 className={css.groupHead}>{t('tunnel.oneClick.label')} <span className={css.badge}>{t('tunnel.oneClick.badge')}</span></h3>
-        <p className={css.hint}>{t('tunnel.oneClick.description')}</p>
-        <div className={css.tokenRow}>
-          <button
-            className={tunnelOn ? css.dangerButton : css.secondaryButton}
-            type="button"
-            disabled={busy || tlsBlocksTunnel}
-            onClick={() => { void (tunnelOn ? stopTunnel() : startTunnel()) }}
-          >
-            {tunnelStartLabel}
-          </button>
-          {tunnelState === 'online' && tunnelUrl !== undefined && (
-            <CopyField value={tunnelUrl} action={t('tunnel.copy')} onCopy={() => { copyTarget(tunnelUrl) }} />
-          )}
-        </div>
-        {tunnelHint !== undefined && (
-          <p className={tunnelState === 'error' || tlsBlocksTunnel ? css.warn : css.hint}>{tunnelHint}</p>
-        )}
-        {tunnelOn && status?.approvalMode === false && (
-          <p className={css.warn}>{t('tunnel.hint.publicNoApproval')}</p>
-        )}
-      </section>
-
-      <section className={css.group} data-shot="invite">
-        <h3 className={css.groupHead}>{t('invite.label')}</h3>
-        <p className={css.hint}>{t('invite.description')}</p>
-        <label className={css.field}>
-          <span>{t('invite.base')}</span>
-          <input
-            className={css.input}
-            value={inviteBase}
-            onChange={event => { setInviteBase(event.target.value) }}
-            placeholder={t('invite.placeholder')}
-            inputMode="url"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-        </label>
-        <div className={css.tokenRow}>
-          <button
-            className={css.secondaryButton}
-            type="button"
-            disabled={busy || (statusReady && !running)}
-            onClick={() => { void generateInvite() }}
-          >{inviteLabel}</button>
-          {invite !== undefined && (
-            <button className={css.secondaryButton} type="button" onClick={() => { void copy(invite.inviteUrl, t('invite.copy'), 'invite.copied') }}>{t('invite.copy')}</button>
-          )}
-        </div>
-        {statusReady && !running && (
-          <p className={css.hint}>{t('invite.requiresRunning')}</p>
-        )}
-        {tunnelState === 'online' && (
-          <p className={css.hint}>{t('tunnel.hint.inviteUsesTunnel')}</p>
-        )}
-        {tunnelState === 'off' && statusReady && running && (
-          <p className={css.hint}>{t('invite.lanHint')}</p>
-        )}
-        {qrSvg !== undefined && (
-          <div
-            className={css.qr}
-            // SVG is generated by our own qrToSvg / uqr — not user HTML.
-            dangerouslySetInnerHTML={{ __html: qrSvg }}
-          />
-        )}
-        {invite !== undefined && (
-          <p className={css.hint}><code className={css.inviteUrl}>{invite.inviteUrl}</code></p>
-        )}
-      </section>
-
-      <section className={css.group} data-shot="token">
-        <h3 className={css.groupHead}>{t('token.label')}</h3>
-        <p className={css.hint}>{t('token.description')}</p>
-        {accessToken === undefined ? (
-          <div className={css.tokenActions}>
-            <button className={css.secondaryButton} type="button" disabled={busy} onClick={() => { void revealToken() }}>
-              {busyKind === 'token' ? t('busy') : t('token.reveal')}
-            </button>
-            <button className={css.textButton} type="button" disabled={busy} onClick={() => { void rotate() }}>
-              {busyKind === 'token' ? t('busy') : t('token.rotate')}
-            </button>
-          </div>
-        ) : (
           <div className={css.tokenRow}>
-            <CopyField value={accessToken} action={t('tunnel.copy')} onCopy={() => { void copy(accessToken, t('token.copyLabel'), 'copied.token') }} />
-            <button className={css.textButton} type="button" disabled={busy} onClick={() => { void rotate() }}>
-              {busyKind === 'token' ? t('busy') : t('token.rotate')}
-            </button>
+            <button
+              className={css.secondaryButton}
+              type="button"
+              disabled={busy || (statusReady && !running)}
+              onClick={() => { void generateInvite() }}
+            >{inviteLabel}</button>
+            {invite !== undefined && (
+              <button className={css.secondaryButton} type="button" onClick={() => { void copy(invite.inviteUrl, t('invite.copy'), 'invite.copied') }}>{t('invite.copy')}</button>
+            )}
           </div>
-        )}
+          {statusReady && !running && (
+            <p className={css.hint}>{t('invite.requiresRunning')}</p>
+          )}
+          {tunnelState === 'online' && (
+            <p className={css.hint}>{t('tunnel.hint.inviteUsesTunnel')}</p>
+          )}
+          {tunnelState === 'off' && statusReady && running && (
+            <p className={css.hint}>{t('invite.lanHint')}</p>
+          )}
+          {qrSvg !== undefined && (
+            <div
+              className={css.qr}
+              // SVG is generated by our own qrToSvg / uqr — not user HTML.
+              dangerouslySetInnerHTML={{ __html: qrSvg }}
+            />
+          )}
+          {invite !== undefined && (
+            <p className={css.hint}><code className={css.inviteUrl}>{invite.inviteUrl}</code></p>
+          )}
+        </div>
+      </section>
+
+      <section className={css.card} data-shot="token">
+        <header className={css.cardHead}>
+          <span className={css.cardIcon}><SectionIcon name="token" /></span>
+          <div className={css.cardHeading}>
+            <h3 className={css.cardTitle}>{t('token.label')}</h3>
+            <p className={css.cardDesc}>{t('token.description')}</p>
+          </div>
+        </header>
+        <div className={css.cardBody}>
+          {accessToken === undefined ? (
+            <div className={css.tokenActions}>
+              <button className={css.secondaryButton} type="button" disabled={busy} onClick={() => { void revealToken() }}>
+                {busyKind === 'token' ? t('busy') : t('token.reveal')}
+              </button>
+              <button className={css.textButton} type="button" disabled={busy} onClick={() => { void rotate() }}>
+                {busyKind === 'token' ? t('busy') : t('token.rotate')}
+              </button>
+            </div>
+          ) : (
+            <div className={css.tokenRow}>
+              <CopyField value={accessToken} action={t('tunnel.copy')} onCopy={() => { void copy(accessToken, t('token.copyLabel'), 'copied.token') }} />
+              <button className={css.textButton} type="button" disabled={busy} onClick={() => { void rotate() }}>
+                {busyKind === 'token' ? t('busy') : t('token.rotate')}
+              </button>
+            </div>
+          )}
+        </div>
       </section>
 
       <DevicesSection
@@ -708,66 +803,76 @@ export function RemoteSection({ api, t, language }: RemoteSectionProps) {
         onRename={(id, label) => { void rename(id, label) }}
       />
 
-      <section className={css.group} data-shot="audit">
-        <h3 className={css.groupHead}>{t('audit.label')}</h3>
-        <p className={css.hint}>{t('audit.description')}</p>
-        <div className={css.auditRow}>
-          <label className={css.field}>
-            <span>{t('audit.filter')}</span>
-            <input
-              className={css.input}
-              value={auditFilter}
-              onChange={event => { setAuditFilter(event.target.value) }}
-              placeholder={t('audit.filterPlaceholder')}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-            />
-          </label>
-          <label className={css.field}>
-            <span>{t('audit.limit')}</span>
-            <input
-              className={css.input}
-              value={auditLimit}
-              onChange={event => { setAuditLimit(event.target.value.replace(/[^0-9]/g, '')) }}
-              inputMode="numeric"
-              placeholder="50"
-            />
-          </label>
+      <section className={css.card} data-shot="audit">
+        <header className={css.cardHead}>
+          <span className={css.cardIcon}><SectionIcon name="audit" /></span>
+          <div className={css.cardHeading}>
+            <h3 className={css.cardTitle}>{t('audit.label')}</h3>
+            <p className={css.cardDesc}>{t('audit.description')}</p>
+          </div>
+        </header>
+        <div className={css.cardBody}>
+          <div className={css.auditRow}>
+            <label className={css.field}>
+              <span>{t('audit.filter')}</span>
+              <input
+                className={css.input}
+                value={auditFilter}
+                onChange={event => { setAuditFilter(event.target.value) }}
+                placeholder={t('audit.filterPlaceholder')}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+            </label>
+            <label className={css.field}>
+              <span>{t('audit.limit')}</span>
+              <input
+                className={css.input}
+                value={auditLimit}
+                onChange={event => { setAuditLimit(event.target.value.replace(/[^0-9]/g, '')) }}
+                inputMode="numeric"
+                placeholder="50"
+              />
+            </label>
+          </div>
+          <div className={css.auditActions}>
+            <button
+              className={css.secondaryButton}
+              type="button"
+              disabled={busy || auditLoading}
+              onClick={() => { void loadAudit() }}
+            >
+              {auditLoading ? t('busy') : t('audit.load')}
+            </button>
+            <button
+              className={css.secondaryButton}
+              type="button"
+              disabled={busy || auditLoading}
+              onClick={() => { void exportAudit() }}
+            >
+              {t('audit.export')}
+            </button>
+          </div>
+          {audit !== undefined && !audit.enabled && <p className={css.warn}>{t('audit.disabled')}</p>}
+          {audit !== undefined && audit.enabled && audit.events.length === 0 && (
+            <p className={css.hint}>{t('audit.empty')}</p>
+          )}
+          {audit !== undefined && audit.events.length > 0 && (
+            <ul className={css.auditList}>
+              {audit.events.map((event, index) => (
+                <li key={`${event.ts}-${index}`} className={css.auditItem}>
+                  <code>{event.ts}</code>
+                  <strong>{event.event}</strong>
+                  <details>
+                    <summary className={css.auditSummary}>{t('audit.detail')}</summary>
+                    <pre className={css.auditDetail}>{JSON.stringify(event, null, 2)}</pre>
+                  </details>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-        <div className={css.auditActions}>
-          <button
-            className={css.secondaryButton}
-            type="button"
-            disabled={busy || auditLoading}
-            onClick={() => { void loadAudit() }}
-          >
-            {auditLoading ? t('busy') : t('audit.load')}
-          </button>
-          <button
-            className={css.secondaryButton}
-            type="button"
-            disabled={busy || auditLoading}
-            onClick={() => { void exportAudit() }}
-          >
-            {t('audit.export')}
-          </button>
-        </div>
-        {audit !== undefined && !audit.enabled && <p className={css.warn}>{t('audit.disabled')}</p>}
-        {audit !== undefined && audit.enabled && audit.events.length === 0 && (
-          <p className={css.hint}>{t('audit.empty')}</p>
-        )}
-        {audit !== undefined && audit.events.length > 0 && (
-          <ul className={css.auditList}>
-            {audit.events.map((event, index) => (
-              <li key={`${event.ts}-${index}`} className={css.auditItem}>
-                <code>{event.ts}</code>
-                <strong>{event.event}</strong>
-                <pre className={css.auditDetail}>{JSON.stringify(event, null, 2)}</pre>
-              </li>
-            ))}
-          </ul>
-        )}
       </section>
     </div>
   )
