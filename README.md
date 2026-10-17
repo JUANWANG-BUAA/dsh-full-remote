@@ -26,8 +26,8 @@ directory browsing remain available.
 ## 60-second quick start
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.0.tgz
-dsh plugin --profile web add ./dsh-full-remote-0.4.0.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.1.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
 dsh --profile web
 ```
 
@@ -229,10 +229,10 @@ flowchart LR
 ## Installation
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.0.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.1.tgz
 curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/SHA256SUMS
 shasum -a 256 -c SHA256SUMS
-dsh plugin --profile web add ./dsh-full-remote-0.4.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
 dsh --profile web
 ```
 
@@ -305,8 +305,8 @@ Download the current GitHub release and add its tarball to the existing web
 profile:
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.0.tgz
-dsh plugin --profile web add ./dsh-full-remote-0.4.0.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.1.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
 ```
 
 Then restart `dsh web`. This replaces an older registry-installed or tarball
@@ -482,7 +482,7 @@ from the internet:
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.4.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
 ```
 
 Git installs run the `prepare` build. On pnpm ≥ 10 allow it:

@@ -21,8 +21,8 @@
 ## 60 秒快速开始
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.0.tgz
-dsh plugin --profile web add ./dsh-full-remote-0.4.0.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.1.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
 dsh --profile web
 ```
 
@@ -148,10 +148,10 @@ flowchart LR
 ## 安装
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.0.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.1.tgz
 curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/SHA256SUMS
 shasum -a 256 -c SHA256SUMS
-dsh plugin --profile web add ./dsh-full-remote-0.4.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
 dsh --profile web
 ```
 
@@ -210,8 +210,8 @@ ngrok http 3081
 下载当前 GitHub Release，并把 tarball 添加到现有 web profile：
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.0.tgz
-dsh plugin --profile web add ./dsh-full-remote-0.4.0.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.1.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
 ```
 
 然后重启 `dsh web`。这会把 registry 或旧 tarball 安装的版本替换为
@@ -328,7 +328,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.4.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
 ```
 
 git 安装会执行 `prepare` 构建，pnpm ≥ 10 需要放行：
