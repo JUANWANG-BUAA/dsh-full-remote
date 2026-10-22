@@ -3,6 +3,76 @@
 All notable changes to dsh-full-remote (formerly dsh-reverse-proxy) are
 documented in this file.
 
+## 0.5.0 (2026-10-22)
+
+### Transport performance
+
+- Negotiate Brotli/gzip by strict client weights; honor no-transform, ranges and
+  representation validators while preserving SSE/WebSocket streaming.
+- Add authenticated per-device encoded static LRU, private browser policy,
+  conditional 304, bounded captures and upstream-aware freshness/Age handling.
+- Own and bound upstream keep-alive sockets; destroy the pool on proxy shutdown.
+- Count real HTTP/WS activity for idle sessions, throttle persistence notices,
+  enforce quiet credential leases and close detached upstream WebSockets.
+- Pause hidden settings polling and coalesce reconnect/foreground refreshes;
+  no write replay, new carrier, absolute-TTL extension or dynamic API cache.
+
+### Added
+
+- **Phone-first Task cockpit.** A minimizable shell entry replaces the automatic
+  first-item confirmation sheet on remote/phone browsers. A selectable inbox
+  reuses existing approval, question and plan-review flows across sessions;
+  a Sessions tab shows official running/unknown state and navigation.
+- Phone bottom panel / wider-screen right panel with safe-area padding, 44px
+  touch targets, host light/dark tokens, keyboard navigation and long-content
+  scrolling. Drafts and in-flight locks survive switching/minimizing within the
+  mounted page; they are intentionally not persisted across reloads.
+- Existing connection observation, manual reconnect/refresh and foreground
+  refresh with single-flight deduplication and bounded busy presentation.
+  All state is labelled last-known; connected does not imply synchronized.
+- Submission locking and uncertain-outcome messaging, stale-wait fencing, and
+  regression coverage for multiple sessions, disposal, hidden forms, offline
+  safety, true Cordis/SlotRegistry lifecycle and browser viewport layouts.
+
+### Changed
+
+- Session/pending projections now include title, membership, running facts,
+  unread stopped activity and first-list arrival changes. No per-session retain
+  is introduced and no completed-success status is inferred.
+- Original chat, host authorization and loopback-only proxy controls remain
+  unchanged. No new public management route, background push or scoped sharing.
+
+### Benchmark and validation
+
+- Add reproducible baseline-vs-working-source HTTP, React/RPC polling and SSE
+  activity benchmarks, with raw results and source/asset SHA-256 identities.
+- Against the existing gzip baseline, 15 measured loopback rounds show cold
+  entry-resource bodies 415,637 → 415,534 B (−0.025%); cumulative HTTP download
+  time 42.08 → 25.61 ms. Forty hot static reads drop 424.68 → 28.15 ms and
+  upstream requests 40 → 0, not client traffic → 0.
+- Hidden settings RPC calls drop 50 → 0 per simulated minute; 5-second slow
+  calls drop 48 → 20 and peak in-flight requests 5 → 2. Visible cadence stays
+  unchanged. These are real-component/fake-clock measurements, not battery tests.
+- Disclose negative controls: both versions already return bodyless 304s;
+  40 cached conditional responses grow HTTP metadata 6,360 → 9,800 B. A
+  synthetic uncached JSON workload grows local HTTP time 8.82 → 10.25 ms.
+- Full method, sample p95, same-codec controls and limitations are documented
+  in [English](docs/performance-benchmark.md) and
+  [中文](docs/performance-benchmark.zh.md). No mobile LCP or overall speed claim.
+- Local release checks cover 303 server/unit tests and 127 client tests, both
+  TypeScript configurations, lint and build. Earlier cockpit acceptance also
+  exercised the real Harness 0.2.1-rc.2 boot graph and phone viewport. Server
+  coverage is 96.07% lines / 89.93% branches / 93.41% functions; client coverage
+  is 87.27% lines / 77.94% branches / 80.49% functions (84.39% statements).
+
+### Upgrade and security
+
+- Keep the Harness 0.2.1-rc.2 integration baseline and existing configuration
+  switches. Version 0.5.0 adds a cockpit, not a new chat app, public control
+  surface, user/RBAC model, PWA, background push or cross-reload draft storage.
+- Static assets previously downloaded into browser-private caches cannot be
+  remotely erased on revocation. New network access remains authenticated.
+
 ## 0.4.1 (2026-10-17)
 
 ### Changed

@@ -12,7 +12,7 @@
 
 **Listed in [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)** · DeepSeek Harness plugin
 
-**Current release: [v0.4.0](https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/tag/v0.4.0)** · Distributed through GitHub Releases
+**Current release: [v0.5.0](https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/tag/v0.5.0)** · Distributed through GitHub Releases
 
 **English** | [中文](./README.zh.md)
 
@@ -23,11 +23,37 @@ so the Web UI can be used through a public tunnel or from a device on the
 local network while privileged APIs such as settings, credentials, and
 directory browsing remain available.
 
+## New in 0.5.0
+
+- A selectable cross-session **Task cockpit** for approvals, questions, plan review
+  and session navigation; page-lifetime drafts, offline guards and no write replay.
+- Negotiated Brotli/gzip, device-isolated encoded static caching, an owned upstream
+  connection pool, activity-aware expiry and visibility-aware, non-overlapping polling.
+- Keeps DeepSeek Harness **0.2.1-rc.2** compatibility and the existing authentication
+  and loopback-only proxy-management boundary.
+
+### Measured gains — and trade-offs
+
+Fifteen paired local HTTP rounds against the previous **already-gzipped** version;
+these are cumulative request times, **not LCP or real mobile page-load measurements**.
+
+| Scenario | Baseline → 0.5.0 candidate | Meaning |
+|---|---|---|
+| Cold HTML + 4 entry assets | 42.08 → 25.61 ms; 415,637 → 415,534 B | −39.1% HTTP time, only **0.025% fewer body bytes** |
+| 40 warm static requests | 424.68 → 28.15 ms; upstream requests 40 → 0 | −93.4% HTTP time, not 100% less downstream traffic |
+| 40 conditional requests | Body 0 → 0 B; headers 6,360 → 9,800 B | Both already return 304; candidate avoids upstream but adds metadata |
+| 10 synthetic dynamic JSON requests | 8.82 → 10.25 ms | **16.2% slower** locally; no API caching |
+| Real React components, simulated 60 s | Hidden RPCs 50 → 0; slow visible RPCs 48 → 20 | Normal visible RPCs stay 50; not a battery-life claim |
+
+Full method, same-encoding controls, limits and reproduction:
+[English benchmark](./docs/performance-benchmark.md) ·
+[中文完整报告](./docs/performance-benchmark.zh.md).
+
 ## 60-second quick start
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.1.tgz
-dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.5.0/dsh-full-remote-0.5.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.5.0.tgz
 dsh --profile web
 ```
 
@@ -46,9 +72,9 @@ to the Internet. For composition details, see
 |---|---|
 | ![Desktop control panel](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-desktop.png) | ![Mobile control panel](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-panel.png) |
 
-| Phone confirmation sheet | Remote desktop confirmation |
+| Task cockpit inbox | Cockpit question form |
 |---|---|
-| ![Phone confirmation sheet](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-remote-confirm-mobile.png) | ![Remote desktop confirmation](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-remote-confirm-desktop.png) |
+| ![Task cockpit inbox](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/cockpit-phone-light.png) | ![Cockpit question form](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/cockpit-phone-question.png) |
 
 ## Problem
 
@@ -78,7 +104,7 @@ server. The proxy:
 - requires an access token or a valid device session before any request is
   forwarded;
 - forwards HTTP, SSE, and WebSocket traffic; compressible HTTP responses
-  may be gzipped (not SSE or WebSocket);
+  negotiate Brotli/gzip when eligible (not SSE or WebSocket);
 - provides a settings page (**Settings → Reverse proxy**) for starting and
   stopping the proxy, changing the listen address, rotating the token, and
   managing device sessions.
@@ -108,9 +134,11 @@ flowchart LR
 3. The proxy rewrites `Host`/`Origin` to loopback, removes untrusted
    headers, and forwards the request to the Harness Web server at
    `127.0.0.1:3080`. Compressible HTTP responses (HTML/JS/CSS/JSON/SVG,
-   ≥1 KB) may be gzipped; SSE and WebSocket are not. Hashed `/assets/*`
-   files may receive a long-cache header. See
-   [HTTP gzip](./docs/http-gzip.md).
+   ≥1 KB) may use Brotli/gzip; SSE and WebSocket are not compressed. Eligible
+   hashed `/assets/*` files receive private immutable caching and bounded
+   device-isolated server variants. HTML/API are not stored in that static cache.
+   See [HTTP transport](./docs/http-gzip.md) and the
+   [benchmark](./docs/performance-benchmark.md).
 
 ## Features
 
@@ -158,14 +186,10 @@ flowchart LR
   per remote IP
 - Stream-level request body limit; hop-by-hop and spoofable headers are
   stripped; upstream `set-cookie` is removed
-- Gzip for compressible HTTP responses (JS/CSS/HTML/JSON/SVG) when the
-  client advertises gzip; SSE, WebSocket, fonts, gate pages, and bodies
-  under 1 KB are skipped. Measured first-load of the Harness shell:
-  **−72.7%** (1.29 MB → 351 KB). `vendor-*.js` −75.7%. Tiny JSON grows,
-  so it is not compressed. Issue #11's "95%+" is not a general result.
-  Off: `compressResponses: false`. Details: [HTTP gzip](./docs/http-gzip.md)
-- Long-cache `Cache-Control` on hashed `/assets/*` (not `index.html` or
-  `/api`). Off: `cacheHashedAssets: false`
+- Negotiate Brotli quality 4 / gzip by client q values; respect no-transform and skip SSE, WebSocket, ranges, pre-encoded and tiny bodies.
+- Admitted hashed `/assets/*` use private immutable browser caching and a device-scoped encoded LRU (8 MiB / 128 entries / at most five minutes). ETag hits can return 304; authentication/CIDR precede hits. The server-side static cache excludes API, HTML, Set-Cookie and unknown Vary responses; browser caching still respects upstream policy.
+- An owned upstream keep-alive pool reduces repeat connections. Actual bytes maintain device activity without extending absolute TTL; revoked or expired quiet streams close both peers. Background polling pauses and recovery refreshes coalesce.
+- Disable via `compressResponses: false` / `cacheHashedAssets: false`. See [HTTP transport](./docs/http-gzip.md) for the contract and the [benchmark](./docs/performance-benchmark.md) for measured gains and regressions.
 
 ### One-click public tunnel (Cloudflare quick tunnel)
 
@@ -198,12 +222,25 @@ flowchart LR
 - Settings edits persist when the page is opened through a tunnel hostname
 - Add workspace uses the in-app directory browser; no native dialog
   appears on the host display
-- Tool approvals, `ask_user_question` option lists, and plan reviews
-  appear as a confirmation sheet on the remote page: a bottom drawer
-  on a phone, a centered card on a wider remote window. You can choose
-  and submit there; you do not have to go back to the host. Custom
-  answers wrap; `Shift+Enter` inserts a newline. The official composer
-  still only sits on the current session
+- A minimizable **Task cockpit** appears on phone-width viewports (≤720 CSS px)
+  or remote hostnames. Phones get a full-width bottom panel; wider remote windows
+  get a compact right-side panel. Colors follow the Harness light/dark theme.
+- **Needs you** lists the highest-priority interaction per session: tool approval,
+  questions, or plan review. Choose any pending item, return to the inbox, or
+  minimize without cancelling. Drafts survive switching/minimizing within the
+  mounted page; reload, unload, or a session-service rebuild clears them.
+- **Sessions** shows official running/unknown state, stopped activity to review,
+  session navigation, and the last session opened during this page lifetime.
+  Unknown is not interpreted as completed; first-load lists are not called empty.
+- Disconnected submissions are disabled. Connection/foreground recovery requests
+  a refresh, but channel connectivity is not proof of session synchronization:
+  the UI labels values as last known. Sent actions stay locked while awaiting
+  registry updates and never replay automatically. If the outcome is uncertain,
+  refresh and review the item or use the original session.
+- Custom answers wrap; Shift+Enter inserts a newline. The cockpit reuses official
+  interactions/navigation, not a second chat client or a public proxy-management
+  API. PWA, background push, reload-persistent drafts and scoped sharing are not
+  included.
 - Image paste/drop for `deepseek-v4-flash-vision-exp` (and other
   image-capable routes) goes through the same authenticated `/api`
   path. The default body cap is 160 MiB, matching Harness. Raster
@@ -211,6 +248,9 @@ flowchart LR
 - For a phone-friendly layout (full-width session area, directory drawer,
   adapted dialogs), pair it with a mobile-layout plugin such as
   [dsh-web-mobile](https://github.com/mexiaosqwq/dsh-web-mobile)
+
+See [cockpit validation](./docs/cockpit-validation.md) for scope, tested viewports
+and repeatable checks.
 
 ## Requirements
 
@@ -229,14 +269,14 @@ flowchart LR
 ## Installation
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.1.tgz
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/SHA256SUMS
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.5.0/dsh-full-remote-0.5.0.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.5.0/SHA256SUMS
 shasum -a 256 -c SHA256SUMS
-dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.5.0.tgz
 dsh --profile web
 ```
 
-The current release is **v0.4.0**. npm publication is separate and currently
+The current release is **v0.5.0**. npm publication is separate and currently
 lags behind the GitHub release, so use the attached tarball above when
 installing or upgrading this version.
 
@@ -305,12 +345,12 @@ Download the current GitHub release and add its tarball to the existing web
 profile:
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.1.tgz
-dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.5.0/dsh-full-remote-0.5.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.5.0.tgz
 ```
 
 Then restart `dsh web`. This replaces an older registry-installed or tarball
-version with **v0.4.0**.
+version with **v0.5.0**.
 
 ### Language
 
@@ -336,19 +376,19 @@ one-time invite QR, access token, connected devices with source IPs
 
 ### Mobile
 
-| Login page | Control panel | Add workspace |
-|---|---|---|
+| Login page | Control panel |
+|---|---|
 | ![Mobile login](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-login.png) | ![Mobile panel](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-panel.png) |
 
 ### Remote confirmation
 
-When the model asks a question, requests a tool approval, or presents a
-plan review, the remote browser shows its own sheet. You do not have to
-look at the host display.
+Use the Task cockpit entry to choose a question, tool approval, or plan
+review across sessions. These captured fixtures show the selectable 0.5.0 cockpit;
+real-host acceptance provenance and limitations are in [cockpit validation](./docs/cockpit-validation.md).
 
-| Phone bottom sheet | Remote desktop card |
+| Task cockpit inbox | Cockpit question form |
 |---|---|
-| ![Phone confirmation sheet](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-remote-confirm-mobile.png) | ![Remote desktop confirmation](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-remote-confirm-desktop.png) |
+| ![Task cockpit inbox](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/cockpit-phone-light.png) | ![Cockpit question form](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/cockpit-phone-question.png) |
 
 ### Gate pages
 
@@ -386,8 +426,8 @@ Common options:
     cloudflaredPath: ""          # optional path to cloudflared for the one-click tunnel
     tlsCertFile: ""              # optional local HTTPS
     tlsKeyFile: ""
-    compressResponses: true      # gzip JS/CSS/JSON/HTML ≥1KB; skip SSE/WebSocket/fonts/gate pages
-    cacheHashedAssets: true      # immutable Cache-Control on hashed /assets/* only
+    compressResponses: true      # negotiate br/gzip; skip SSE/WS/ranges/fonts/gate pages
+    cacheHashedAssets: true      # private browser cache + bounded per-device static variants
 ```
 
 The complete option list, with defaults and validation, is defined in the
@@ -470,11 +510,12 @@ from the internet:
   platform; Windows ARM64 has no official build — install it yourself
   and set `cloudflaredPath`). For a stable daily entry, bring your own
   frp / ngrok / named tunnel.
-- Gzip at the proxy helps LAN and SSH/frp. A Cloudflare quick tunnel
-  already compresses HTML/JS/CSS/JSON at the edge, so that path sees
-  little extra saving. Live model output uses WebSocket and is not gzipped.
-  Plugin login/wait/home pages are not gzipped (about 1 KB of potential
-  saving). Full contract: [HTTP gzip](./docs/http-gzip.md).
+- Proxy-side Brotli/gzip can help LAN and SSH/frp; a Cloudflare quick tunnel
+  may already compress at the edge, so do not assume the same byte savings
+  there. Static proxy-cache hits can still avoid upstream work. Live model
+  WebSocket output, SSE and plugin login/wait/home pages are not compressed
+  by this HTTP path. Full contract: [HTTP transport](./docs/http-gzip.md);
+  measured gains and costs: [benchmark](./docs/performance-benchmark.md).
 
 ## Development
 
@@ -482,7 +523,7 @@ from the internet:
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.5.0.tgz
 ```
 
 Git installs run the `prepare` build. On pnpm ≥ 10 allow it:

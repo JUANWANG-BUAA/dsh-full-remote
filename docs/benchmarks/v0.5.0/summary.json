@@ -1,0 +1,643 @@
+{
+  "schemaVersion": 1,
+  "baselineRevision": "0d4b48c8837ac4b11f3c477b1c04bde46c75f5d6",
+  "node": "v26.12.0",
+  "environment": {
+    "platform": "darwin",
+    "release": "27.0.0",
+    "arch": "arm64",
+    "cpu": "Apple M5 Pro"
+  },
+  "measuredRounds": 15,
+  "assetRepeatsPerRound": 10,
+  "artifactSha256": {
+    "transport": "abd96d2545718ad301ec3bebdd918858fe98613989d336d78cbdff8baa0b1bec",
+    "polling": "c2eb464283c2b82703814e3bfc6ffa8c2aac1613c72edebaea18b074ae957848",
+    "session": "c6cbf0819a329c6777fd06ab1fdc61b75a57544be1a182a257dbe929f0384cb3"
+  },
+  "httpMeasurement": "per paired round; networkMs sums sequential request issue-to-response-end times; excludes decode/assert, browser rendering and TCP/IP/TLS framing",
+  "http": {
+    "cold": {
+      "baseline": {
+        "requests": 5,
+        "bodyBytes": 415637,
+        "responseHttpBytes": 417406,
+        "requestHttpBytes": 945,
+        "upstreamRequests": 5,
+        "upstreamBodyBytes": 1480308,
+        "networkMs": {
+          "median": 42.083416000003126,
+          "p95": 45.60116800000014,
+          "min": 38.45274900000095,
+          "max": 45.60116800000014
+        },
+        "wallMs": {
+          "median": 44.19929200000115,
+          "p95": 47.887957999999344,
+          "min": 40.627958000000035,
+          "max": 47.887957999999344
+        }
+      },
+      "current": {
+        "requests": 5,
+        "bodyBytes": 415534,
+        "responseHttpBytes": 417175,
+        "requestHttpBytes": 945,
+        "upstreamRequests": 5,
+        "upstreamBodyBytes": 1480308,
+        "networkMs": {
+          "median": 25.614709000000403,
+          "p95": 27.289248999999472,
+          "min": 23.08570899999995,
+          "max": 27.289248999999472
+        },
+        "wallMs": {
+          "median": 29.03487499999983,
+          "p95": 30.638332999999875,
+          "min": 26.23629200000005,
+          "max": 30.638332999999875
+        }
+      },
+      "gzipControl": {
+        "requests": 5,
+        "bodyBytes": 415637,
+        "responseHttpBytes": 417418,
+        "requestHttpBytes": 880,
+        "upstreamRequests": 5,
+        "upstreamBodyBytes": 1480308,
+        "networkMs": {
+          "median": 44.202040000001944,
+          "p95": 49.83008299999892,
+          "min": 41.312457999996695,
+          "max": 49.83008299999892
+        },
+        "wallMs": {
+          "median": 46.61808299999939,
+          "p95": 52.158957999999984,
+          "min": 43.445041999999376,
+          "max": 52.158957999999984
+        }
+      },
+      "improvementPct": {
+        "body": 0.02478123939880783,
+        "downstreamHttp": 0.05534180150740253,
+        "networkMedian": 39.133484316010616,
+        "wallMedian": 34.30918531455419
+      }
+    },
+    "warm": {
+      "baseline": {
+        "requests": 40,
+        "bodyBytes": 4148120,
+        "responseHttpBytes": 4163860,
+        "requestHttpBytes": 7680,
+        "upstreamRequests": 40,
+        "upstreamBodyBytes": 14794830,
+        "networkMs": {
+          "median": 424.68183399999816,
+          "p95": 446.872628000001,
+          "min": 413.0835829999978,
+          "max": 446.872628000001
+        },
+        "wallMs": {
+          "median": 447.30533299999934,
+          "p95": 471.58170800000016,
+          "min": 434.9367919999995,
+          "max": 471.58170800000016
+        }
+      },
+      "current": {
+        "requests": 40,
+        "bodyBytes": 4147090,
+        "responseHttpBytes": 4159400,
+        "requestHttpBytes": 7680,
+        "upstreamRequests": 0,
+        "upstreamBodyBytes": 0,
+        "networkMs": {
+          "median": 28.147917000002053,
+          "p95": 33.037248000001455,
+          "min": 24.350665000001754,
+          "max": 33.037248000001455
+        },
+        "wallMs": {
+          "median": 60.02062500000011,
+          "p95": 66.12625000000025,
+          "min": 55.79979099999946,
+          "max": 66.12625000000025
+        }
+      },
+      "gzipControl": {
+        "requests": 40,
+        "bodyBytes": 4148120,
+        "responseHttpBytes": 4160510,
+        "requestHttpBytes": 7160,
+        "upstreamRequests": 0,
+        "upstreamBodyBytes": 0,
+        "networkMs": {
+          "median": 27.88091899999972,
+          "p95": 31.8799199999994,
+          "min": 25.826248999999734,
+          "max": 31.8799199999994
+        },
+        "wallMs": {
+          "median": 48.532832999999755,
+          "p95": 53.480625000000146,
+          "min": 46.425083000000086,
+          "max": 53.480625000000146
+        }
+      },
+      "improvementPct": {
+        "body": 0.024830525635710643,
+        "downstreamHttp": 0.10711215074473701,
+        "networkMedian": 93.37199881264472,
+        "wallMedian": 86.58173275121668
+      }
+    },
+    "conditional": {
+      "baseline": {
+        "requests": 40,
+        "bodyBytes": 0,
+        "responseHttpBytes": 6360,
+        "requestHttpBytes": 11000,
+        "upstreamRequests": 40,
+        "upstreamBodyBytes": 0,
+        "networkMs": {
+          "median": 24.095163999996657,
+          "p95": 29.45466500000066,
+          "min": 21.221628999999666,
+          "max": 29.45466500000066
+        },
+        "wallMs": {
+          "median": 24.418958999998722,
+          "p95": 29.864292000000205,
+          "min": 21.515625,
+          "max": 29.864292000000205
+        }
+      },
+      "current": {
+        "requests": 40,
+        "bodyBytes": 0,
+        "responseHttpBytes": 9800,
+        "requestHttpBytes": 11080,
+        "upstreamRequests": 0,
+        "upstreamBodyBytes": 0,
+        "networkMs": {
+          "median": 17.512877999997727,
+          "p95": 21.29241399999819,
+          "min": 11.928329000001213,
+          "max": 21.29241399999819
+        },
+        "wallMs": {
+          "median": 17.817832999999155,
+          "p95": 21.62470899999971,
+          "min": 12.14733299999989,
+          "max": 21.62470899999971
+        }
+      },
+      "gzipControl": {
+        "requests": 40,
+        "bodyBytes": 0,
+        "responseHttpBytes": 9800,
+        "requestHttpBytes": 10560,
+        "upstreamRequests": 0,
+        "upstreamBodyBytes": 0,
+        "networkMs": {
+          "median": 17.625662999998895,
+          "p95": 19.8955449999994,
+          "min": 12.529915999999503,
+          "max": 19.8955449999994
+        },
+        "wallMs": {
+          "median": 17.915125000000444,
+          "p95": 20.216957999999977,
+          "min": 12.728916999998546,
+          "max": 20.216957999999977
+        }
+      },
+      "improvementPct": {
+        "body": null,
+        "downstreamHttp": -54.08805031446542,
+        "networkMedian": 27.31787175218996,
+        "wallMedian": 27.032790382259584
+      }
+    },
+    "dynamic": {
+      "baseline": {
+        "requests": 10,
+        "bodyBytes": 6960,
+        "responseHttpBytes": 9690,
+        "requestHttpBytes": 1850,
+        "upstreamRequests": 10,
+        "upstreamBodyBytes": 73140,
+        "networkMs": {
+          "median": 8.815498000000844,
+          "p95": 11.096498999999312,
+          "min": 6.224500000002081,
+          "max": 11.096498999999312
+        },
+        "wallMs": {
+          "median": 9.272500000000036,
+          "p95": 11.780958000000282,
+          "min": 6.521791000000121,
+          "max": 11.780958000000282
+        }
+      },
+      "current": {
+        "requests": 10,
+        "bodyBytes": 4050,
+        "responseHttpBytes": 6730,
+        "requestHttpBytes": 1850,
+        "upstreamRequests": 10,
+        "upstreamBodyBytes": 73140,
+        "networkMs": {
+          "median": 10.245249999999942,
+          "p95": 12.529791000000387,
+          "min": 8.472792000000481,
+          "max": 12.529791000000387
+        },
+        "wallMs": {
+          "median": 10.709790999999313,
+          "p95": 13.182332999999744,
+          "min": 8.966666999999688,
+          "max": 13.182332999999744
+        }
+      },
+      "gzipControl": {
+        "requests": 10,
+        "bodyBytes": 6960,
+        "responseHttpBytes": 9710,
+        "requestHttpBytes": 1720,
+        "upstreamRequests": 10,
+        "upstreamBodyBytes": 73140,
+        "networkMs": {
+          "median": 9.92450000000008,
+          "p95": 11.499039999998786,
+          "min": 7.640416999996887,
+          "max": 11.499039999998786
+        },
+        "wallMs": {
+          "median": 10.468499999999949,
+          "p95": 11.973625000000538,
+          "min": 8.046875,
+          "max": 11.973625000000538
+        }
+      },
+      "improvementPct": {
+        "body": 41.810344827586206,
+        "downstreamHttp": 30.54695562435501,
+        "networkMedian": -16.218618619151883,
+        "wallMedian": -15.500576974918001
+      }
+    }
+  },
+  "compression": [
+    {
+      "path": "/assets/index-5SrrfWpU.js",
+      "rawBytes": 633282,
+      "gzipBytes": 213609,
+      "brBytes": 212891,
+      "gzipMs": {
+        "median": 16.236417000000074,
+        "p95": 17.15820800000074,
+        "min": 14.843792000001486,
+        "max": 17.420374999999694
+      },
+      "brMs": {
+        "median": 6.945666999999958,
+        "p95": 7.302958000000217,
+        "min": 6.477541999998721,
+        "max": 7.399666999999681
+      }
+    },
+    {
+      "path": "/assets/vendor-CCJJTK99.js",
+      "rawBytes": 740575,
+      "gzipBytes": 178527,
+      "brBytes": 178714,
+      "gzipMs": {
+        "median": 13.1217089999991,
+        "p95": 13.992583000001105,
+        "min": 12.143415999998979,
+        "max": 14.404749999999694
+      },
+      "brMs": {
+        "median": 5.9581249999992,
+        "p95": 6.5069579999999405,
+        "min": 5.374249999998938,
+        "max": 6.550874999998996
+      }
+    },
+    {
+      "path": "/assets/vendor-BNsW4eBh.css",
+      "rawBytes": 29288,
+      "gzipBytes": 8066,
+      "brBytes": 7680,
+      "gzipMs": {
+        "median": 0.2014999999992142,
+        "p95": 0.2774170000011509,
+        "min": 0.16254200000003038,
+        "max": 0.3395829999990383
+      },
+      "brMs": {
+        "median": 0.13175000000046566,
+        "p95": 0.2482079999990674,
+        "min": 0.11666600000171456,
+        "max": 0.2952500000010332
+      }
+    },
+    {
+      "path": "/assets/index-BPHePDI_.css",
+      "rawBytes": 76338,
+      "gzipBytes": 14610,
+      "brBytes": 15424,
+      "gzipMs": {
+        "median": 0.8722080000006827,
+        "p95": 1.1681660000012926,
+        "min": 0.721917000000758,
+        "max": 1.1820830000015121
+      },
+      "brMs": {
+        "median": 0.49779099999977916,
+        "p95": 0.6309579999997368,
+        "min": 0.40870800000084273,
+        "max": 0.6913750000003347
+      }
+    },
+    {
+      "path": "/api/benchmark.json",
+      "rawBytes": 7314,
+      "gzipBytes": 696,
+      "brBytes": 405,
+      "gzipMs": {
+        "median": 0.03262499999982538,
+        "p95": 0.06266599999980826,
+        "min": 0.03045899999960966,
+        "max": 0.0656249999992724
+      },
+      "brMs": {
+        "median": 0.030375000000276486,
+        "p95": 0.05720800000017334,
+        "min": 0.027417000001150882,
+        "max": 0.07066699999995762
+      }
+    }
+  ],
+  "pollingMeasurement": "simulated-clock real React component / mocked RPC benchmark",
+  "polling": {
+    "visible60s": {
+      "baseline": {
+        "count": 50,
+        "maxInFlight": 2,
+        "inFlightAtStart": 0,
+        "inFlightAtEnd": 0
+      },
+      "current": {
+        "count": 50,
+        "maxInFlight": 1,
+        "inFlightAtStart": 0,
+        "inFlightAtEnd": 0
+      },
+      "requestReductionPct": 0,
+      "baselinePerMethod": {
+        "status": {
+          "count": 30,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "sessions": {
+          "count": 20,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        }
+      },
+      "currentPerMethod": {
+        "status": {
+          "count": 30,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "sessions": {
+          "count": 20,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        }
+      }
+    },
+    "hidden60s": {
+      "baseline": {
+        "count": 50,
+        "maxInFlight": 1,
+        "inFlightAtStart": 0,
+        "inFlightAtEnd": 0
+      },
+      "current": {
+        "count": 0,
+        "maxInFlight": 0,
+        "inFlightAtStart": 0,
+        "inFlightAtEnd": 0
+      },
+      "requestReductionPct": 100,
+      "baselinePerMethod": {
+        "status": {
+          "count": 30,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "sessions": {
+          "count": 20,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        }
+      },
+      "currentPerMethod": {
+        "status": {
+          "count": 0,
+          "maxInFlight": 0,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "sessions": {
+          "count": 0,
+          "maxInFlight": 0,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        }
+      }
+    },
+    "visibleAgain60s": {
+      "baseline": {
+        "count": 50,
+        "maxInFlight": 1,
+        "inFlightAtStart": 0,
+        "inFlightAtEnd": 0
+      },
+      "current": {
+        "count": 50,
+        "maxInFlight": 2,
+        "inFlightAtStart": 0,
+        "inFlightAtEnd": 0
+      },
+      "requestReductionPct": 0,
+      "baselinePerMethod": {
+        "status": {
+          "count": 30,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "sessions": {
+          "count": 20,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        }
+      },
+      "currentPerMethod": {
+        "status": {
+          "count": 30,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "sessions": {
+          "count": 20,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        }
+      }
+    },
+    "slowRpc60s": {
+      "baseline": {
+        "count": 48,
+        "maxInFlight": 5,
+        "inFlightAtStart": 0,
+        "inFlightAtEnd": 4
+      },
+      "current": {
+        "count": 20,
+        "maxInFlight": 2,
+        "inFlightAtStart": 0,
+        "inFlightAtEnd": 1
+      },
+      "requestReductionPct": 58.33333333333333,
+      "baselinePerMethod": {
+        "status": {
+          "count": 28,
+          "maxInFlight": 3,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 3
+        },
+        "sessions": {
+          "count": 20,
+          "maxInFlight": 2,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 1
+        }
+      },
+      "currentPerMethod": {
+        "status": {
+          "count": 10,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 1
+        },
+        "sessions": {
+          "count": 10,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        }
+      }
+    }
+  },
+  "sessionMeasurement": "Real loopback HTTP/SSE bytes, deterministic store clock advanced by 800ms only after preceding event received. serialize after each event models persistence sweep. Five paired repetitions. Not wall-clock endurance, mobile reconnect or event-resume benchmark.",
+  "session": {
+    "continuous-80s/baseline": {
+      "repetitions": 5,
+      "result": {
+        "scenario": "continuous-80s",
+        "variant": "baseline",
+        "maxAgeSeconds": 600,
+        "idleSeconds": 1,
+        "stepsRequested": 100,
+        "eventIntervalMs": 800,
+        "simulatedDurationMs": 80000,
+        "deliveredEvents": 101,
+        "firstMissingAtMs": 1600,
+        "firstClosedAtMs": null,
+        "probeStatus": 303,
+        "sessionRetained": false,
+        "streamStillOpen": true
+      }
+    },
+    "absolute-ttl-2s/baseline": {
+      "repetitions": 5,
+      "result": {
+        "scenario": "absolute-ttl-2s",
+        "variant": "baseline",
+        "maxAgeSeconds": 2,
+        "idleSeconds": 0,
+        "stepsRequested": 5,
+        "eventIntervalMs": 800,
+        "simulatedDurationMs": 4000,
+        "deliveredEvents": 6,
+        "firstMissingAtMs": 2400,
+        "firstClosedAtMs": null,
+        "probeStatus": 303,
+        "sessionRetained": false,
+        "streamStillOpen": true
+      }
+    },
+    "continuous-80s/current": {
+      "repetitions": 5,
+      "result": {
+        "scenario": "continuous-80s",
+        "variant": "current",
+        "maxAgeSeconds": 600,
+        "idleSeconds": 1,
+        "stepsRequested": 100,
+        "eventIntervalMs": 800,
+        "simulatedDurationMs": 80000,
+        "deliveredEvents": 101,
+        "firstMissingAtMs": null,
+        "firstClosedAtMs": null,
+        "probeStatus": 200,
+        "sessionRetained": true,
+        "streamStillOpen": true
+      }
+    },
+    "absolute-ttl-2s/current": {
+      "repetitions": 5,
+      "result": {
+        "scenario": "absolute-ttl-2s",
+        "variant": "current",
+        "maxAgeSeconds": 2,
+        "idleSeconds": 0,
+        "stepsRequested": 5,
+        "eventIntervalMs": 800,
+        "simulatedDurationMs": 2400,
+        "deliveredEvents": 3,
+        "firstMissingAtMs": 2400,
+        "firstClosedAtMs": 2400,
+        "probeStatus": 303,
+        "sessionRetained": false,
+        "streamStillOpen": false
+      }
+    }
+  },
+  "limitations": [
+    "Loopback HTTP/1.1, not mobile or tunnel LCP.",
+    "Browser cache intentionally bypassed: both versions already support immutable browser caching.",
+    "Old version already supports gzip, ETag 304 and Node-default keep-alive.",
+    "Sample p95 from only 15 rounds equals sample maximum.",
+    "API JSON is synthetic; per-file coding time uses sync quality-4 Brotli versus level-6 gzip.",
+    "Polling and session clocks are simulated; no battery or wall-clock endurance claim."
+  ]
+}

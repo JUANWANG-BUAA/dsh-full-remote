@@ -1,6 +1,8 @@
 # dsh-full-remote · 分析与改进计划
 
-内部工作文档，不随 npm tarball 分发（`package.json` 的 `files` 逐个具名列出 `docs/rp-demo-*.png`，不是 glob，因此本文不进包）。
+历史内部工作文档，不随 npm tarball 分发。以下分析保留原调研时间与当时结论，不是现行产品承诺。
+
+> **0.5.0（2026-10-22）更新**：已加入手机优先任务控制台、设备隔离静态缓存、Brotli/gzip 协商、流式活动保持与后台轮询节流。现行范围见 [README](../README.zh.md)、[控制台验证](./cockpit-validation.md) 和 [benchmark 报告](./performance-benchmark.zh.md)；下文旧版本/源码行号/竞品状态仅供历史参考。
 
 > 状态（2026-08-15 夜间）：0.2.1 已把「设置落盘」「手机加工作区」「控制面迁入设置页」做成产品行为。下文是当日上午的分析原文，未逐条改写成完成记录。
 >
@@ -529,4 +531,4 @@ P0-2（通配地址）与上面三条无依赖，可随时插入。
 
 > 本文保留早期 0.x 审计记录，里面的 star、topics、版本号、源码行号和
 > “待修复”清单均可能过时。当前可执行优先级以根目录 README、CHANGELOG
-> 的 `Unreleased`、`SECURITY.md` 和 `docs/compatibility.md` 为准。
+> 的最新版本记录、`SECURITY.md` 和 `docs/compatibility.md` 为准。

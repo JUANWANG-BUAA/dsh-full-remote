@@ -1,0 +1,5015 @@
+{
+  "schemaVersion": 1,
+  "kind": "simulated-clock real React component / mocked RPC benchmark",
+  "baselineRevision": "0d4b48c8837ac4b11f3c477b1c04bde46c75f5d6",
+  "command": "pnpm exec vitest run --config scripts/bench-polling/vitest.config.ts",
+  "environment": {
+    "node": "v26.12.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "vitest": "4.1.10",
+    "react": "18.3.1",
+    "dom": "jsdom",
+    "strictMode": false,
+    "fakeClockStepMs": 100
+  },
+  "sourceSha256": {
+    "baselineRemoteSection": "1e4230484592c9264bb67d664310e4ae0768c0e33be2f59436829df23199d82d",
+    "currentRemoteSection": "3d1206a742ae7438cc479c78b8f5d01afa873749cce16f2df1014cd1658e96fa",
+    "currentVisibilityPolling": "4b828a31dd17110a6cf8ed3a6f226684bb5f24f0c22f3593cef10423d9c7ad6b",
+    "benchmark": "6e3021b53db128994c14f09c47c083bc179e15d8cc48c39119c5aa2c25932168",
+    "config": "835220894b342d7f33bbfe7504fe47e8cd1abf1eb409d2202484669deaa823da"
+  },
+  "baselineArchiveSha256": "b5b369d9986625ba4a2d4ddcdf17bcf8443f3728f06f9897573090495241a077",
+  "methodology": {
+    "component": "Unmodified real baseline and working-tree RemoteSection, with real relative dependencies; only ProxyApi is mocked.",
+    "response": "Same online tunnel and one active device for every request in both variants; no user actions or failures.",
+    "fastRpcDelayMs": 0,
+    "slowRpcDelayMs": 5000,
+    "durationMs": 60000,
+    "boundary": "All windows are half-open [start,end): visible/slow [0,60000), hidden [60000,120000), recovered visible [120000,180000). Visibility transitions are registered before mount, so they execute before polling timers at the same timestamp. Requests at 60000 belong only to hidden; at 120000 only to recovered visible; at 180000 excluded. Bootstrap at 0 included.",
+    "initialization": "Both mount status and sessions immediately at t=0. Tunnel interval starts only after initial status resolves: first poll at t=2000 fast / t=7000 slow. Sessions cadence is 3000ms; tunnel cadence is 2000ms. Current immediate:false preserves delayed first tunnel poll, but visible recovery polls immediately.",
+    "concurrency": "maxInFlight counts outstanding mock RPC promises from recorded start/end events, including combined total and per-method maxima; current single-flight is per polling loop, not global.",
+    "clock": "Advance and flush React act every 100ms, not one giant act. All scheduled deadlines in these scenarios align to this grid. Hidden timers are intentionally not browser-throttled, isolating application visibility behavior.",
+    "isolation": "Visible -> hidden -> visible is one continuous mounted run per variant. Slow RPC is a separate fresh visible mount with BOTH methods delayed 5000ms including bootstrap. No remount on visibility changes.",
+    "limitations": "Not a real browser/mobile-network/battery benchmark. Does not measure HTTP bytes, server CPU, radio wakeups, wall-clock UX, browser background throttling, or cancellation of already in-flight requests."
+  },
+  "scenarios": {
+    "visible60s": {
+      "baseline": {
+        "fromMs": 0,
+        "toMs": 60000,
+        "total": {
+          "count": 50,
+          "maxInFlight": 2,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "status": {
+          "count": 30,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "sessions": {
+          "count": 20,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "requestStartsMs": {
+          "status": [
+            0,
+            2000,
+            4000,
+            6000,
+            8000,
+            10000,
+            12000,
+            14000,
+            16000,
+            18000,
+            20000,
+            22000,
+            24000,
+            26000,
+            28000,
+            30000,
+            32000,
+            34000,
+            36000,
+            38000,
+            40000,
+            42000,
+            44000,
+            46000,
+            48000,
+            50000,
+            52000,
+            54000,
+            56000,
+            58000
+          ],
+          "sessions": [
+            0,
+            3000,
+            6000,
+            9000,
+            12000,
+            15000,
+            18000,
+            21000,
+            24000,
+            27000,
+            30000,
+            33000,
+            36000,
+            39000,
+            42000,
+            45000,
+            48000,
+            51000,
+            54000,
+            57000
+          ]
+        }
+      },
+      "current": {
+        "fromMs": 0,
+        "toMs": 60000,
+        "total": {
+          "count": 50,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "status": {
+          "count": 30,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "sessions": {
+          "count": 20,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "requestStartsMs": {
+          "status": [
+            0,
+            2000,
+            4000,
+            6000,
+            8000,
+            10000,
+            12000,
+            14000,
+            16000,
+            18000,
+            20000,
+            22000,
+            24000,
+            26000,
+            28000,
+            30000,
+            32000,
+            34000,
+            36000,
+            38000,
+            40000,
+            42000,
+            44000,
+            46000,
+            48000,
+            50000,
+            52000,
+            54000,
+            56000,
+            58000
+          ],
+          "sessions": [
+            0,
+            3000,
+            6000,
+            9000,
+            12000,
+            15000,
+            18000,
+            21000,
+            24000,
+            27000,
+            30000,
+            33000,
+            36000,
+            39000,
+            42000,
+            45000,
+            48000,
+            51000,
+            54000,
+            57000
+          ]
+        }
+      }
+    },
+    "hidden60s": {
+      "baseline": {
+        "fromMs": 60000,
+        "toMs": 120000,
+        "total": {
+          "count": 50,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "status": {
+          "count": 30,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "sessions": {
+          "count": 20,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "requestStartsMs": {
+          "status": [
+            60000,
+            62000,
+            64000,
+            66000,
+            68000,
+            70000,
+            72000,
+            74000,
+            76000,
+            78000,
+            80000,
+            82000,
+            84000,
+            86000,
+            88000,
+            90000,
+            92000,
+            94000,
+            96000,
+            98000,
+            100000,
+            102000,
+            104000,
+            106000,
+            108000,
+            110000,
+            112000,
+            114000,
+            116000,
+            118000
+          ],
+          "sessions": [
+            60000,
+            63000,
+            66000,
+            69000,
+            72000,
+            75000,
+            78000,
+            81000,
+            84000,
+            87000,
+            90000,
+            93000,
+            96000,
+            99000,
+            102000,
+            105000,
+            108000,
+            111000,
+            114000,
+            117000
+          ]
+        }
+      },
+      "current": {
+        "fromMs": 60000,
+        "toMs": 120000,
+        "total": {
+          "count": 0,
+          "maxInFlight": 0,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "status": {
+          "count": 0,
+          "maxInFlight": 0,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "sessions": {
+          "count": 0,
+          "maxInFlight": 0,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "requestStartsMs": {
+          "status": [],
+          "sessions": []
+        }
+      }
+    },
+    "visibleAgain60s": {
+      "baseline": {
+        "fromMs": 120000,
+        "toMs": 180000,
+        "total": {
+          "count": 50,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "status": {
+          "count": 30,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "sessions": {
+          "count": 20,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "requestStartsMs": {
+          "status": [
+            120000,
+            122000,
+            124000,
+            126000,
+            128000,
+            130000,
+            132000,
+            134000,
+            136000,
+            138000,
+            140000,
+            142000,
+            144000,
+            146000,
+            148000,
+            150000,
+            152000,
+            154000,
+            156000,
+            158000,
+            160000,
+            162000,
+            164000,
+            166000,
+            168000,
+            170000,
+            172000,
+            174000,
+            176000,
+            178000
+          ],
+          "sessions": [
+            120000,
+            123000,
+            126000,
+            129000,
+            132000,
+            135000,
+            138000,
+            141000,
+            144000,
+            147000,
+            150000,
+            153000,
+            156000,
+            159000,
+            162000,
+            165000,
+            168000,
+            171000,
+            174000,
+            177000
+          ]
+        }
+      },
+      "current": {
+        "fromMs": 120000,
+        "toMs": 180000,
+        "total": {
+          "count": 50,
+          "maxInFlight": 2,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "status": {
+          "count": 30,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "sessions": {
+          "count": 20,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "requestStartsMs": {
+          "status": [
+            120000,
+            122000,
+            124000,
+            126000,
+            128000,
+            130000,
+            132000,
+            134000,
+            136000,
+            138000,
+            140000,
+            142000,
+            144000,
+            146000,
+            148000,
+            150000,
+            152000,
+            154000,
+            156000,
+            158000,
+            160000,
+            162000,
+            164000,
+            166000,
+            168000,
+            170000,
+            172000,
+            174000,
+            176000,
+            178000
+          ],
+          "sessions": [
+            120000,
+            123000,
+            126000,
+            129000,
+            132000,
+            135000,
+            138000,
+            141000,
+            144000,
+            147000,
+            150000,
+            153000,
+            156000,
+            159000,
+            162000,
+            165000,
+            168000,
+            171000,
+            174000,
+            177000
+          ]
+        }
+      }
+    },
+    "slowRpc60s": {
+      "baseline": {
+        "fromMs": 0,
+        "toMs": 60000,
+        "total": {
+          "count": 48,
+          "maxInFlight": 5,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 4
+        },
+        "status": {
+          "count": 28,
+          "maxInFlight": 3,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 3
+        },
+        "sessions": {
+          "count": 20,
+          "maxInFlight": 2,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 1
+        },
+        "requestStartsMs": {
+          "status": [
+            0,
+            7000,
+            9000,
+            11000,
+            13000,
+            15000,
+            17000,
+            19000,
+            21000,
+            23000,
+            25000,
+            27000,
+            29000,
+            31000,
+            33000,
+            35000,
+            37000,
+            39000,
+            41000,
+            43000,
+            45000,
+            47000,
+            49000,
+            51000,
+            53000,
+            55000,
+            57000,
+            59000
+          ],
+          "sessions": [
+            0,
+            3000,
+            6000,
+            9000,
+            12000,
+            15000,
+            18000,
+            21000,
+            24000,
+            27000,
+            30000,
+            33000,
+            36000,
+            39000,
+            42000,
+            45000,
+            48000,
+            51000,
+            54000,
+            57000
+          ]
+        }
+      },
+      "current": {
+        "fromMs": 0,
+        "toMs": 60000,
+        "total": {
+          "count": 20,
+          "maxInFlight": 2,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 1
+        },
+        "status": {
+          "count": 10,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 1
+        },
+        "sessions": {
+          "count": 10,
+          "maxInFlight": 1,
+          "inFlightAtStart": 0,
+          "inFlightAtEnd": 0
+        },
+        "requestStartsMs": {
+          "status": [
+            0,
+            7000,
+            13000,
+            19000,
+            25000,
+            31000,
+            37000,
+            43000,
+            49000,
+            55000
+          ],
+          "sessions": [
+            0,
+            6000,
+            12000,
+            18000,
+            24000,
+            30000,
+            36000,
+            42000,
+            48000,
+            54000
+          ]
+        }
+      }
+    }
+  },
+  "traces": {
+    "baseline": [
+      {
+        "scenarios": {
+          "visible60s": {
+            "fromMs": 0,
+            "toMs": 60000,
+            "total": {
+              "count": 50,
+              "maxInFlight": 2,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "status": {
+              "count": 30,
+              "maxInFlight": 1,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "sessions": {
+              "count": 20,
+              "maxInFlight": 1,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "requestStartsMs": {
+              "status": [
+                0,
+                2000,
+                4000,
+                6000,
+                8000,
+                10000,
+                12000,
+                14000,
+                16000,
+                18000,
+                20000,
+                22000,
+                24000,
+                26000,
+                28000,
+                30000,
+                32000,
+                34000,
+                36000,
+                38000,
+                40000,
+                42000,
+                44000,
+                46000,
+                48000,
+                50000,
+                52000,
+                54000,
+                56000,
+                58000
+              ],
+              "sessions": [
+                0,
+                3000,
+                6000,
+                9000,
+                12000,
+                15000,
+                18000,
+                21000,
+                24000,
+                27000,
+                30000,
+                33000,
+                36000,
+                39000,
+                42000,
+                45000,
+                48000,
+                51000,
+                54000,
+                57000
+              ]
+            }
+          },
+          "hidden60s": {
+            "fromMs": 60000,
+            "toMs": 120000,
+            "total": {
+              "count": 50,
+              "maxInFlight": 1,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "status": {
+              "count": 30,
+              "maxInFlight": 1,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "sessions": {
+              "count": 20,
+              "maxInFlight": 1,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "requestStartsMs": {
+              "status": [
+                60000,
+                62000,
+                64000,
+                66000,
+                68000,
+                70000,
+                72000,
+                74000,
+                76000,
+                78000,
+                80000,
+                82000,
+                84000,
+                86000,
+                88000,
+                90000,
+                92000,
+                94000,
+                96000,
+                98000,
+                100000,
+                102000,
+                104000,
+                106000,
+                108000,
+                110000,
+                112000,
+                114000,
+                116000,
+                118000
+              ],
+              "sessions": [
+                60000,
+                63000,
+                66000,
+                69000,
+                72000,
+                75000,
+                78000,
+                81000,
+                84000,
+                87000,
+                90000,
+                93000,
+                96000,
+                99000,
+                102000,
+                105000,
+                108000,
+                111000,
+                114000,
+                117000
+              ]
+            }
+          },
+          "visibleAgain60s": {
+            "fromMs": 120000,
+            "toMs": 180000,
+            "total": {
+              "count": 50,
+              "maxInFlight": 1,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "status": {
+              "count": 30,
+              "maxInFlight": 1,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "sessions": {
+              "count": 20,
+              "maxInFlight": 1,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "requestStartsMs": {
+              "status": [
+                120000,
+                122000,
+                124000,
+                126000,
+                128000,
+                130000,
+                132000,
+                134000,
+                136000,
+                138000,
+                140000,
+                142000,
+                144000,
+                146000,
+                148000,
+                150000,
+                152000,
+                154000,
+                156000,
+                158000,
+                160000,
+                162000,
+                164000,
+                166000,
+                168000,
+                170000,
+                172000,
+                174000,
+                176000,
+                178000
+              ],
+              "sessions": [
+                120000,
+                123000,
+                126000,
+                129000,
+                132000,
+                135000,
+                138000,
+                141000,
+                144000,
+                147000,
+                150000,
+                153000,
+                156000,
+                159000,
+                162000,
+                165000,
+                168000,
+                171000,
+                174000,
+                177000
+              ]
+            }
+          }
+        },
+        "rpcTrace": [
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 0,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 0,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 0,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 0,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 2000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 2000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 3000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 3000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 4000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 4000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 6000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 6000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 6000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 6000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 8000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 8000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 9000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 9000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 10000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 10000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 12000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 12000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 12000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 12000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 14000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 14000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 15000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 15000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 16000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 16000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 18000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 18000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 18000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 18000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 20000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 20000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 21000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 21000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 22000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 22000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 24000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 24000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 24000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 24000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 26000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 26000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 27000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 27000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 28000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 28000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 30000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 30000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 30000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 30000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 32000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 32000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 33000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 33000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 34000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 34000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 36000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 36000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 36000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 36000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 38000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 38000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 39000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 39000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 40000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 40000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 42000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 42000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 42000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 42000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 44000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 44000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 45000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 45000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 46000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 46000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 48000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 48000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 48000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 48000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 50000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 50000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 51000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 51000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 52000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 52000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 54000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 54000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 54000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 54000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 56000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 56000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 57000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 57000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 58000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 58000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 60000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 60000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 60000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 60000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 62000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 62000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 63000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 63000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 64000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 64000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 66000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 66000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 66000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 66000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 68000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 68000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 69000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 69000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 70000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 70000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 72000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 72000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 72000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 72000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 74000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 74000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 75000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 75000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 76000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 76000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 78000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 78000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 78000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 78000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 80000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 80000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 81000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 81000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 82000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 82000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 84000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 84000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 84000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 84000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 86000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 86000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 87000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 87000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 88000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 88000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 90000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 90000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 90000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 90000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 92000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 92000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 93000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 93000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 94000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 94000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 96000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 96000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 96000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 96000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 98000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 98000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 99000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 99000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 100000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 100000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 102000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 102000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 102000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 102000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 104000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 104000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 105000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 105000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 106000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 106000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 108000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 108000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 108000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 108000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 110000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 110000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 111000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 111000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 112000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 112000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 114000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 114000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 114000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 114000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 116000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 116000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 117000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 117000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 118000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 118000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 120000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 120000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 120000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 120000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 122000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 122000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 123000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 123000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 124000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 124000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 126000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 126000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 126000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 126000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 128000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 128000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 129000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 129000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 130000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 130000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 132000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 132000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 132000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 132000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 134000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 134000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 135000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 135000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 136000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 136000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 138000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 138000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 138000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 138000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 140000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 140000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 141000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 141000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 142000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 142000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 144000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 144000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 144000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 144000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 146000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 146000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 147000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 147000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 148000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 148000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 150000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 150000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 150000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 150000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 152000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 152000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 153000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 153000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 154000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 154000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 156000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 156000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 156000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 156000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 158000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 158000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 159000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 159000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 160000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 160000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 162000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 162000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 162000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 162000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 164000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 164000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 165000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 165000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 166000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 166000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 168000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 168000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 168000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 168000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 170000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 170000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 171000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 171000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 172000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 172000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 174000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 174000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 174000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 174000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 176000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 176000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 177000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 177000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 178000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 178000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 180000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 180000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 180000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 180000,
+            "inFlight": 0
+          }
+        ]
+      },
+      {
+        "scenarios": {
+          "slowRpc60s": {
+            "fromMs": 0,
+            "toMs": 60000,
+            "total": {
+              "count": 48,
+              "maxInFlight": 5,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 4
+            },
+            "status": {
+              "count": 28,
+              "maxInFlight": 3,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 3
+            },
+            "sessions": {
+              "count": 20,
+              "maxInFlight": 2,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 1
+            },
+            "requestStartsMs": {
+              "status": [
+                0,
+                7000,
+                9000,
+                11000,
+                13000,
+                15000,
+                17000,
+                19000,
+                21000,
+                23000,
+                25000,
+                27000,
+                29000,
+                31000,
+                33000,
+                35000,
+                37000,
+                39000,
+                41000,
+                43000,
+                45000,
+                47000,
+                49000,
+                51000,
+                53000,
+                55000,
+                57000,
+                59000
+              ],
+              "sessions": [
+                0,
+                3000,
+                6000,
+                9000,
+                12000,
+                15000,
+                18000,
+                21000,
+                24000,
+                27000,
+                30000,
+                33000,
+                36000,
+                39000,
+                42000,
+                45000,
+                48000,
+                51000,
+                54000,
+                57000
+              ]
+            }
+          }
+        },
+        "rpcTrace": [
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 0,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 0,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 3000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 5000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 5000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 6000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 7000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 8000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 9000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 9000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 11000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 11000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 12000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 12000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 13000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 14000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 14000,
+            "inFlight": 2
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 15000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 15000,
+            "inFlight": 3
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 16000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 17000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 17000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 18000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 18000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 19000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 20000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 20000,
+            "inFlight": 2
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 21000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 21000,
+            "inFlight": 3
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 22000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 23000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 23000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 24000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 24000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 25000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 26000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 26000,
+            "inFlight": 2
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 27000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 27000,
+            "inFlight": 3
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 28000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 29000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 29000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 30000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 30000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 31000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 32000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 32000,
+            "inFlight": 2
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 33000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 33000,
+            "inFlight": 3
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 34000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 35000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 35000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 36000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 36000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 37000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 38000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 38000,
+            "inFlight": 2
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 39000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 39000,
+            "inFlight": 3
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 40000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 41000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 41000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 42000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 42000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 43000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 44000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 44000,
+            "inFlight": 2
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 45000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 45000,
+            "inFlight": 3
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 46000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 47000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 47000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 48000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 48000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 49000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 50000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 50000,
+            "inFlight": 2
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 51000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 51000,
+            "inFlight": 3
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 52000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 53000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 53000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 54000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 54000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 55000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 56000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 56000,
+            "inFlight": 2
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 57000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 57000,
+            "inFlight": 3
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 58000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 59000,
+            "inFlight": 3
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 59000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 60000,
+            "inFlight": 2
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 60000,
+            "inFlight": 2
+          }
+        ]
+      }
+    ],
+    "current": [
+      {
+        "scenarios": {
+          "visible60s": {
+            "fromMs": 0,
+            "toMs": 60000,
+            "total": {
+              "count": 50,
+              "maxInFlight": 1,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "status": {
+              "count": 30,
+              "maxInFlight": 1,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "sessions": {
+              "count": 20,
+              "maxInFlight": 1,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "requestStartsMs": {
+              "status": [
+                0,
+                2000,
+                4000,
+                6000,
+                8000,
+                10000,
+                12000,
+                14000,
+                16000,
+                18000,
+                20000,
+                22000,
+                24000,
+                26000,
+                28000,
+                30000,
+                32000,
+                34000,
+                36000,
+                38000,
+                40000,
+                42000,
+                44000,
+                46000,
+                48000,
+                50000,
+                52000,
+                54000,
+                56000,
+                58000
+              ],
+              "sessions": [
+                0,
+                3000,
+                6000,
+                9000,
+                12000,
+                15000,
+                18000,
+                21000,
+                24000,
+                27000,
+                30000,
+                33000,
+                36000,
+                39000,
+                42000,
+                45000,
+                48000,
+                51000,
+                54000,
+                57000
+              ]
+            }
+          },
+          "hidden60s": {
+            "fromMs": 60000,
+            "toMs": 120000,
+            "total": {
+              "count": 0,
+              "maxInFlight": 0,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "status": {
+              "count": 0,
+              "maxInFlight": 0,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "sessions": {
+              "count": 0,
+              "maxInFlight": 0,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "requestStartsMs": {
+              "status": [],
+              "sessions": []
+            }
+          },
+          "visibleAgain60s": {
+            "fromMs": 120000,
+            "toMs": 180000,
+            "total": {
+              "count": 50,
+              "maxInFlight": 2,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "status": {
+              "count": 30,
+              "maxInFlight": 1,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "sessions": {
+              "count": 20,
+              "maxInFlight": 1,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "requestStartsMs": {
+              "status": [
+                120000,
+                122000,
+                124000,
+                126000,
+                128000,
+                130000,
+                132000,
+                134000,
+                136000,
+                138000,
+                140000,
+                142000,
+                144000,
+                146000,
+                148000,
+                150000,
+                152000,
+                154000,
+                156000,
+                158000,
+                160000,
+                162000,
+                164000,
+                166000,
+                168000,
+                170000,
+                172000,
+                174000,
+                176000,
+                178000
+              ],
+              "sessions": [
+                120000,
+                123000,
+                126000,
+                129000,
+                132000,
+                135000,
+                138000,
+                141000,
+                144000,
+                147000,
+                150000,
+                153000,
+                156000,
+                159000,
+                162000,
+                165000,
+                168000,
+                171000,
+                174000,
+                177000
+              ]
+            }
+          }
+        },
+        "rpcTrace": [
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 0,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 0,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 0,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 0,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 2000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 2000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 3000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 3000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 4000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 4000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 6000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 6000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 6000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 6000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 8000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 8000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 9000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 9000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 10000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 10000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 12000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 12000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 12000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 12000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 14000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 14000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 15000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 15000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 16000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 16000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 18000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 18000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 18000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 18000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 20000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 20000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 21000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 21000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 22000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 22000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 24000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 24000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 24000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 24000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 26000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 26000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 27000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 27000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 28000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 28000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 30000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 30000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 30000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 30000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 32000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 32000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 33000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 33000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 34000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 34000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 36000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 36000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 36000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 36000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 38000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 38000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 39000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 39000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 40000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 40000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 42000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 42000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 42000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 42000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 44000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 44000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 45000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 45000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 46000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 46000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 48000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 48000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 48000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 48000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 50000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 50000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 51000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 51000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 52000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 52000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 54000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 54000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 54000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 54000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 56000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 56000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 57000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 57000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 58000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 58000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 120000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 120000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 120000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 120000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 122000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 122000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 123000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 123000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 124000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 124000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 126000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 126000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 126000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 126000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 128000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 128000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 129000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 129000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 130000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 130000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 132000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 132000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 132000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 132000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 134000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 134000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 135000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 135000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 136000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 136000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 138000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 138000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 138000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 138000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 140000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 140000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 141000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 141000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 142000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 142000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 144000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 144000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 144000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 144000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 146000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 146000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 147000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 147000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 148000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 148000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 150000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 150000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 150000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 150000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 152000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 152000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 153000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 153000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 154000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 154000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 156000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 156000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 156000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 156000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 158000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 158000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 159000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 159000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 160000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 160000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 162000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 162000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 162000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 162000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 164000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 164000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 165000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 165000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 166000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 166000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 168000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 168000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 168000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 168000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 170000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 170000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 171000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 171000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 172000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 172000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 174000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 174000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 174000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 174000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 176000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 176000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 177000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 177000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 178000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 178000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 180000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 180000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 180000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 180000,
+            "inFlight": 0
+          }
+        ]
+      },
+      {
+        "scenarios": {
+          "slowRpc60s": {
+            "fromMs": 0,
+            "toMs": 60000,
+            "total": {
+              "count": 20,
+              "maxInFlight": 2,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 1
+            },
+            "status": {
+              "count": 10,
+              "maxInFlight": 1,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 1
+            },
+            "sessions": {
+              "count": 10,
+              "maxInFlight": 1,
+              "inFlightAtStart": 0,
+              "inFlightAtEnd": 0
+            },
+            "requestStartsMs": {
+              "status": [
+                0,
+                7000,
+                13000,
+                19000,
+                25000,
+                31000,
+                37000,
+                43000,
+                49000,
+                55000
+              ],
+              "sessions": [
+                0,
+                6000,
+                12000,
+                18000,
+                24000,
+                30000,
+                36000,
+                42000,
+                48000,
+                54000
+              ]
+            }
+          }
+        },
+        "rpcTrace": [
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 0,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 0,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 5000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 5000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 6000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 7000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 11000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 12000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 12000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 13000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 17000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 18000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 18000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 19000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 23000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 24000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 24000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 25000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 29000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 30000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 30000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 31000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 35000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 36000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 36000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 37000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 41000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 42000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 42000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 43000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 47000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 48000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 48000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 49000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 53000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 54000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 54000,
+            "inFlight": 0
+          },
+          {
+            "method": "status",
+            "action": "start",
+            "atMs": 55000,
+            "inFlight": 1
+          },
+          {
+            "method": "sessions",
+            "action": "end",
+            "atMs": 59000,
+            "inFlight": 0
+          },
+          {
+            "method": "sessions",
+            "action": "start",
+            "atMs": 60000,
+            "inFlight": 1
+          },
+          {
+            "method": "status",
+            "action": "end",
+            "atMs": 60000,
+            "inFlight": 0
+          }
+        ]
+      }
+    ]
+  }
+}

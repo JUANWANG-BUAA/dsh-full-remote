@@ -119,6 +119,122 @@ describe('session store', () => {
     assert.equal(store.validate(cookie), undefined)
   })
 
+  it('records stream bytes across idle windows but never extends absolute lifetime', () => {
+    let at = 0
+    const store = createSessionStore({ maxAgeSeconds: 3, idleSeconds: 1, now: () => at })
+    const session = store.login({ userAgent: 'Chrome/126' })
+    const cookie = encodeSessionCookie(session.id, session.secret)
+    const activity = store.trackActivity(cookie)
+    for (const next of [500, 1000, 1500, 2000, 2500, 3000]) {
+      at = next
+      assert.equal(activity(), true)
+      assert.equal(store.serialize()[0].lastSeenAt, at)
+      assert.equal(store.list()[0].createdAt, 0)
+    }
+    at = 3001
+    assert.equal(activity(), false)
+    assert.equal(store.isActive(cookie), false)
+    assert.equal(store.list().length, 0)
+  })
+
+  it('does not renew idle state by checking credentials or creating a stream tracker', () => {
+    let at = 0
+    let changes = 0
+    const store = createSessionStore({ maxAgeSeconds: 60, idleSeconds: 1, now: () => at, onChange: () => { changes++ } })
+    const session = store.login({ userAgent: 'Chrome/126' })
+    const cookie = encodeSessionCookie(session.id, session.secret)
+    at = 999
+    const activity = store.trackActivity(cookie)
+    assert.equal(store.isActive(cookie), true)
+    assert.equal(store.list()[0].lastSeenAt, 0)
+    assert.equal(changes, 1)
+    at = 1000
+    assert.equal(store.isActive(cookie), true)
+    at = 1001
+    assert.equal(store.isActive(cookie), false)
+    assert.equal(activity(), false)
+    assert.equal(changes, 2)
+    assert.equal(activity(), false)
+    assert.equal(changes, 2)
+    assert.equal(store.validate(cookie), undefined)
+  })
+
+  it('invalidates stream trackers on rotation, revocation, hydration, clearing and eviction', () => {
+    for (const invalidate of ['reissue', 'revoke', 'hydrate', 'clear', 'evict'] as const) {
+      let at = 0
+      const store = createSessionStore({ maxSessions: 1, now: () => at })
+      const session = store.login({ userAgent: 'Chrome/126' })
+      const cookie = encodeSessionCookie(session.id, session.secret)
+      const activity = store.trackActivity(cookie)
+      assert.equal(activity(), true)
+      at = 100
+      if (invalidate === 'reissue') store.reissue(session.id)
+      else if (invalidate === 'revoke') store.revoke(session.id)
+      else if (invalidate === 'hydrate') store.hydrate(store.serialize())
+      else if (invalidate === 'clear') store.clear()
+      else store.login({ userAgent: 'Safari/604' })
+      at = 200
+      assert.equal(activity(), false, invalidate)
+      if (invalidate === 'hydrate') {
+        assert.equal(store.isActive(cookie), true)
+        assert.equal(store.list()[0].lastSeenAt, 0)
+        assert.equal(store.trackActivity(cookie)(), true)
+      } else if (invalidate === 'reissue') {
+        assert.equal(store.isActive(cookie), false)
+        assert.equal(store.list()[0].lastSeenAt, 100)
+      }
+    }
+  })
+
+  it('never turns an invalid or pending stream tracker into an active credential', () => {
+    const store = createSessionStore({ approvalRequired: true })
+    const session = store.login({ userAgent: 'Chrome/126' })
+    const cookie = encodeSessionCookie(session.id, session.secret)
+    const pending = store.trackActivity(cookie)
+    for (const value of [undefined, 'malformed', encodeSessionCookie(session.id, 'wrong')]) {
+      assert.equal(store.isActive(value), false)
+      assert.equal(store.trackActivity(value)(), false)
+    }
+    assert.equal(store.isActive(cookie), false)
+    assert.equal(pending(), false)
+    store.approve(session.id)
+    assert.equal(pending(), false)
+    assert.equal(store.isActive(cookie), true)
+    assert.equal(store.trackActivity(cookie)(), true)
+  })
+
+  it('throttles only stream persistence notifications while retaining every activity timestamp', () => {
+    let at = 0
+    let changes = 0
+    const store = createSessionStore({ now: () => at, onChange: () => { changes++ } })
+    const session = store.login({ userAgent: 'Chrome/126', ip: '203.0.113.9' })
+    const cookie = encodeSessionCookie(session.id, session.secret)
+    const activity = store.trackActivity(cookie)
+    assert.equal(changes, 1)
+    assert.equal(activity(), true)
+    assert.equal(changes, 2)
+    for (const next of [1, 500, 999]) {
+      at = next
+      assert.equal(activity(), true)
+      assert.equal(store.serialize()[0].lastSeenAt, at)
+      assert.equal(changes, 2)
+    }
+    at = 1000
+    assert.equal(activity(), true)
+    assert.equal(changes, 3)
+    at = 1001
+    assert.equal(activity(), true)
+    assert.equal(changes, 3)
+    assert.equal(store.validate(cookie)?.lastSeenAt, at)
+    assert.equal(changes, 4)
+    at = 1002
+    assert.equal(store.validate(cookie, '198.51.100.2')?.lastSeenIp, '198.51.100.2')
+    assert.equal(changes, 6)
+    at = 2000
+    assert.equal(activity(), true)
+    assert.equal(changes, 7)
+  })
+
   it('hydrates persisted data and drops malformed entries', () => {
     const store = createSessionStore({ maxSessions: 4 })
     const good = store.login({ userAgent: 'Chrome/126' })

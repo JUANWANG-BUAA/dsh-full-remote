@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { LANGUAGE_STORAGE_KEY } from '../src/client/language.ts'
 import type { ComponentProps } from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { errorFromControlResponse } from '../src/client/index.ts'
 import { RemoteSection } from '../src/client/RemoteSection.tsx'
@@ -9,7 +9,7 @@ import type { ProxyApi, ProxyStatus } from '../src/client/types.ts'
 import { bindTranslate, translatorFor, zh, en, type ReverseProxyTranslate } from '../src/client/i18n.ts'
 import { toastFromCaught, toastFromReason, toastFromStatus, toastFromTunnelDetail } from '../src/client/toast.ts'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); vi.useRealTimers() })
 
 const stopped: ProxyStatus = {
   enabled: false,
@@ -69,6 +69,70 @@ function sectionProps(
     useWorkspaces: vi.fn(),
   } as unknown as ComponentProps<typeof RemoteSection>
 }
+
+describe('RemoteSection visibility polling', () => {
+  it('pauses device/tunnel requests in the background and resumes once immediately', async () => {
+    vi.useFakeTimers()
+    let visibility: DocumentVisibilityState = 'visible'
+    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
+    const online: ProxyStatus = { ...stopped, tunnel: { state: 'online', publicUrl: 'https://test.trycloudflare.com' } }
+    const service = api({ status: vi.fn().mockResolvedValue(online) })
+    const view = render(<RemoteSection {...sectionProps(service)} />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(service.status).toHaveBeenCalledTimes(1)
+    expect(service.sessions).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1999) })
+    expect(service.status).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(service.status).toHaveBeenCalledTimes(2)
+    visibility = 'hidden'
+    act(() => { document.dispatchEvent(new Event('visibilitychange')) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    expect(service.status).toHaveBeenCalledTimes(2)
+    expect(service.sessions).toHaveBeenCalledTimes(1)
+    visibility = 'visible'
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(service.status).toHaveBeenCalledTimes(3)
+    expect(service.sessions).toHaveBeenCalledTimes(2)
+    view.unmount()
+    expect(vi.getTimerCount()).toBe(0)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(service.status).toHaveBeenCalledTimes(3)
+    expect(service.sessions).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not overlap slow device/tunnel polls or apply a disposed tunnel result', async () => {
+    vi.useFakeTimers()
+    const online: ProxyStatus = { ...stopped, tunnel: { state: 'online', publicUrl: 'https://test.trycloudflare.com' } }
+    let resolveStatus!: (status: ProxyStatus) => void
+    let resolveSessions!: (sessions: []) => void
+    const pendingStatus = new Promise<ProxyStatus>(resolve => { resolveStatus = resolve })
+    const pendingSessions = new Promise<[]>(resolve => { resolveSessions = resolve })
+    const service = api({
+      status: vi.fn().mockResolvedValueOnce(online).mockReturnValue(pendingStatus),
+      sessions: vi.fn().mockReturnValue(pendingSessions),
+    })
+    const view = render(<RemoteSection {...sectionProps(service)} />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
+    expect(service.status).toHaveBeenCalledTimes(2)
+    expect(service.sessions).toHaveBeenCalledTimes(1)
+    view.unmount()
+    await act(async () => {
+      resolveStatus({ ...online, tunnel: { state: 'error', detail: 'integrity-failed' } })
+      resolveSessions([])
+      await vi.advanceTimersByTimeAsync(60_000)
+    })
+    expect(view.container.textContent).toBe('')
+    expect(service.status).toHaveBeenCalledTimes(2)
+    expect(service.sessions).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+})
 
 describe('i18n dictionaries', () => {
   it('covers the same keys in both locales', () => {

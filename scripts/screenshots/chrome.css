@@ -5,6 +5,9 @@
   --dsw-alias-label-secondary: #c5ccd6;
   --dsw-alias-label-tertiary: #8b95a3;
   --dsw-alias-label-dimmed: #6d7682;
+  --dsw-alias-bg-base: #111317;
+  --dsw-alias-interactive-primary: #6aa8d8;
+  --dsw-alias-label-on-primary: #111317;
   --dsw-alias-bg-layer-1: #111317;
   --dsw-alias-bg-layer-2: #171a1f;
   --dsw-alias-bg-layer-3: #1e2229;
@@ -119,3 +122,36 @@ body[data-narrow='true'] .toolbar {
 body[data-narrow='true'] .body {
   padding: 16px;
 }
+
+/* Fixture-only light roles; production components continue to inherit host tokens. */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --dsw-alias-label-primary: #1f2937;
+  --dsw-alias-label-secondary: #4b5563;
+  --dsw-alias-label-tertiary: #64748b;
+  --dsw-alias-label-dimmed: #6b7280;
+  --dsw-alias-label-on-primary: #fff;
+  --dsw-alias-bg-base: #f7f8fa;
+  --dsw-alias-bg-layer-1: #f7f8fa;
+  --dsw-alias-bg-layer-2: #fff;
+  --dsw-alias-bg-layer-3: #fff;
+  --dsw-alias-border-l2: #d9dee7;
+  --dsw-alias-interactive-bg-hover: #edf1f6;
+  --dsw-alias-interactive-primary: #356b9a;
+  --dsw-alias-brand-primary: #356b9a;
+  --dsw-alias-state-success-primary: #168051;
+  --dsw-alias-state-error-primary: #b63a42;
+  --dsw-alias-state-warn-label: #8a5a00;
+}
+
+body[data-demo='cockpit'] { padding: 0; overflow: hidden; }
+.cockpit-demo { position: relative; height: 100dvh; overflow: hidden; background: var(--dsw-alias-bg-base); }
+.cockpit-demo-background { height: 100%; overflow: auto; padding: 84px 20px 32px; }
+.cockpit-demo-background h1 { margin: 12px 0 32px; font-size: 28px; }
+.cockpit-demo-background h2 { font-size: 18px; line-height: 1.5; overflow-wrap: anywhere; }
+.cockpit-demo-background p { max-width: 52ch; font-size: 14px; line-height: 1.7; color: var(--dsw-alias-label-secondary); }
+.cockpit-demo-background .cockpit-demo-eyebrow { font-size: 11px; letter-spacing: .06em; }
+.cockpit-demo-background .cockpit-demo-caption { margin-top: 32px; font-size: 12px; }
+.cockpit-demo-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+.cockpit-demo-controls button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; cursor: pointer; }
+.cockpit-demo-controls button:focus-visible { outline: 2px solid var(--dsw-alias-interactive-primary); outline-offset: 2px; }

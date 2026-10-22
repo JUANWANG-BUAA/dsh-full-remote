@@ -269,6 +269,41 @@ export function createSessionStore(options: {
       return publicShape(session)
     },
 
+    /** Check the current credential without recording activity or renewing idle expiry. */
+    isActive(cookieValue: string | undefined): boolean {
+      const session = find(cookieValue)
+      return session !== undefined && session.status === 'active' && !expired(session)
+    },
+
+    /**
+     * Bind stream activity to one authenticated record and credential generation.
+     * Each callback checks live membership, status and expiry without hashing the
+     * cookie again. Neither rotation nor hydration can reuse an old callback.
+     */
+    trackActivity(cookieValue: string | undefined): () => boolean {
+      const session = find(cookieValue)
+      if (session === undefined || session.status !== 'active' || expired(session)) return () => false
+      const secretHash = session.secretHash
+      let lastNotifiedAt: number | undefined
+      return () => {
+        if (sessions.get(session.id) !== session || session.secretHash !== secretHash || session.status !== 'active') return false
+        const at = now()
+        if (expired(session, at)) {
+          sessions.delete(session.id)
+          changed()
+          return false
+        }
+        // Every byte-bearing callback advances idle state in memory. Only this
+        // high-frequency path throttles persistence; validate/IP changes do not.
+        session.lastSeenAt = at
+        if (lastNotifiedAt === undefined || at - lastNotifiedAt >= 1000) {
+          lastNotifiedAt = at
+          changed()
+        }
+        return true
+      }
+    },
+
     /** Resolve a session regardless of status (wait-page status endpoint). */
     pending(cookieValue: string | undefined, id: string) {
       const decoded = decodeSessionCookie(cookieValue)

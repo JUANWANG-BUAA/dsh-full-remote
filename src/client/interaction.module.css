@@ -1,51 +1,8 @@
-/* Remote confirmation sheet. Tokens only; phone-first, then a centered card. */
-
-.layer {
-  position: absolute;
-  inset: 0;
-  z-index: 40;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  pointer-events: auto;
-}
-
-.backdrop {
-  position: absolute;
-  inset: 0;
-  background: color-mix(in srgb, var(--dsw-alias-bg-base, #111) 55%, transparent);
-}
-
-.sheet {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  width: min(100%, 440px);
-  max-height: min(88dvh, 720px);
-  padding: 8px 16px calc(16px + env(safe-area-inset-bottom, 0px));
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 20px 20px 0 0;
-  background: var(--dsw-alias-bg-layer-3, var(--dsw-alias-bg-base));
-  color: var(--dsw-alias-label-primary);
-}
-
-.handle {
-  display: block;
-  width: 36px;
-  height: 4px;
-  margin: 4px auto 10px;
-  border-radius: 999px;
-  background: var(--dsw-alias-border-l3, var(--dsw-alias-border-l2));
-}
-
-.queue {
-  margin: 0 0 8px;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--dsw-alias-label-tertiary);
-}
+/* Confirmation forms inside the responsive cockpit; inherit Harness tokens. */
 
 .card {
+  min-width: 0;
+  overflow-wrap: anywhere;
   display: flex;
   min-height: 0;
   flex: 1;
@@ -91,6 +48,7 @@
 }
 
 .session {
+  overflow-wrap: anywhere;
   margin: -4px 0 0;
   font-size: 12px;
   line-height: 1.4;
@@ -228,7 +186,7 @@
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.45;
   outline: none;
   white-space: pre-wrap;
@@ -313,8 +271,8 @@
 
 .icon {
   flex: none;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border-radius: 8px;
   font-size: 18px;
@@ -344,21 +302,4 @@
   font-size: 13px;
   line-height: 1.4;
   color: var(--dsw-alias-state-error-primary, #c0392b);
-}
-
-@media (min-width: 640px) {
-  .layer {
-    align-items: center;
-    padding: 24px;
-  }
-
-  .sheet {
-    max-height: min(80vh, 640px);
-    border-radius: 16px;
-    padding: 16px 20px 20px;
-  }
-
-  .handle {
-    display: none;
-  }
 }

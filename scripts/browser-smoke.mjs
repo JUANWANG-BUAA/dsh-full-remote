@@ -8,6 +8,7 @@
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
+import { runCockpitSmoke } from './cockpit-browser-smoke.mjs'
 
 const require = createRequire(import.meta.url)
 const viteEntry = require.resolve('vite', { paths: [require.resolve('vitest')] })
@@ -19,7 +20,10 @@ const server = await createServer({
   appType: 'spa',
   server: { host: '127.0.0.1', port: 4177, strictPort: true },
 })
-const browser = await chromium.launch({ headless: true })
+// Local validation can attach to an isolated system browser; CI owns a headless one.
+const browser = process.env.DSH_BROWSER_CDP
+  ? await chromium.connectOverCDP(process.env.DSH_BROWSER_CDP)
+  : await chromium.launch({ headless: true })
 
 try {
   await server.listen()
@@ -44,6 +48,8 @@ try {
   }
   if (errors.length > 0) throw new Error(`browser page errors:\n${errors.join('\n')}`)
   console.log('browser smoke passed: Chromium rendered, self-check and invite flows completed')
+  await page.close()
+  await runCockpitSmoke(browser, 'http://127.0.0.1:4177')
 } finally {
   await browser.close()
   await server.close()

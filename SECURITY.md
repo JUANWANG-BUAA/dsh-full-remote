@@ -7,8 +7,8 @@ Web UI. Please take security issues seriously.
 
 | Version | Supported |
 |---|---|
-| 0.3.x | ✅ |
-| ≤ 0.2.x | ❌ |
+| 0.5.x | ✅ |
+| ≤ 0.4.x | ❌ — upgrade to 0.5.x |
 
 ## Reporting a vulnerability
 
@@ -63,10 +63,24 @@ Web UI. Please take security issues seriously.
 - Spoofable forwarding and hop-by-hop headers are stripped; the proxy's own
   session cookie never reaches the backend; request bodies are size-limited
   on the stream.
-- Response gzip (when enabled) runs only on authenticated proxied HTTP
-  responses, never on WebSocket upgrades or SSE. Hashed-asset
-  `Cache-Control: immutable` is applied only to Vite content-hashed
-  `/assets/*` 200s; `index.html` and `/api` are never given that header.
+- Brotli/gzip transformation runs only on authenticated eligible HTTP responses,
+  respects no-transform and never buffers SSE or WebSocket upgrades.
+- Generated hashed-asset cache policy is private immutable, never public. The
+  bounded in-memory static cache is keyed by device, full URL and encoding; every
+  lookup follows authentication/CIDR checks. HTML/API, Set-Cookie, range and
+  unknown Vary responses are excluded from this server-side static cache; browser
+  caching still follows upstream policy. Revocation/stop clear retained variants.
+  Previously downloaded browser assets cannot be remotely erased.
+- Actual HTTP/WS bytes update idle activity, not absolute lifetime. Credential
+  reissue/revocation cannot reuse an old activity lease; quiet active connections
+  are checked each second and invalid streams closed at both ends.
+
+The 0.5.0 task cockpit does not create scoped sharing or a separate authorization
+model: an authenticated remote device still has owner-level Harness access.
+It reuses official session interactions, disables disconnected submissions and
+does not automatically replay writes on recovery. “Connected” is not proof of
+synchronization; uncertain actions must be reviewed in the official session.
+Proxy-management routes remain loopback-only.
 
 Keep the token secret and always terminate TLS on the public side of your
 tunnel. See `README.md` for the full model and configuration notes.

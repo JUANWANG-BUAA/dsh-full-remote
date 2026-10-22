@@ -12,17 +12,37 @@
 
 **已收录进 [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)** · DeepSeek Harness 插件
 
-**当前版本：[v0.4.0](https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/tag/v0.4.0)** · 通过 GitHub Releases 分发
+**当前版本：[v0.5.0](https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/tag/v0.5.0)** · 通过 GitHub Releases 分发
 
 [English](./README.md) | **中文**
 
 `dsh-full-remote` 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的一个插件：它在 Harness Web 服务前放置一层带鉴权的反向代理，使 Web 界面可以通过公网隧道或局域网设备访问，同时保持设置、凭据、目录浏览等特权接口可用。
 
+## 0.5.0 新增
+
+- 跨会话可选择式「**任务控制台**」：审批、问答、计划评审和会话导航；当前页面内保留草稿、断线禁提交、不自动重放写操作。
+- Brotli/gzip 协商、设备隔离的已编码静态缓存、自有上游连接池、按真实活动识别失效，以及后台暂停、同类慢请求不重叠的轮询。
+- 保持 DeepSeek Harness **0.2.1-rc.2** 兼容性，以及既有鉴权与仅限回环的代理管理边界。
+
+### 实测收益与代价
+
+对比**已经使用 gzip 的旧版**，15 个配对本机 HTTP 轮次；时间是请求累计耗时，**不是 LCP 或真实手机页面加载时间**。
+
+| 场景 | 基线 → 0.5.0 候选实现 | 含义 |
+|---|---|---|
+| 冷 HTML + 4 个入口资源 | 42.08 → 25.61 ms；415,637 → 415,534 B | HTTP 耗时 −39.1%，主体字节仅少 **0.025%** |
+| 40 次热静态请求 | 424.68 → 28.15 ms；回源 40 → 0 次 | HTTP 耗时 −93.4%，不是下行流量减少 100% |
+| 40 次条件请求 | 主体 0 → 0 B；头部 6,360 → 9,800 B | 两版原本都返回 304；新版免回源但增加元数据 |
+| 10 次合成动态 JSON 请求 | 8.82 → 10.25 ms | 本机**慢 16.2%**，没有缓存 API |
+| 真实 React 组件，模拟 60 秒 | 隐藏 RPC 50 → 0；可见慢 RPC 48 → 20 | 正常可见仍为 50 次，不是耗电实测 |
+
+完整方法、同编码对照、局限与复现：[中文报告](./docs/performance-benchmark.zh.md) · [English benchmark](./docs/performance-benchmark.md)。
+
 ## 60 秒快速开始
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.1.tgz
-dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.5.0/dsh-full-remote-0.5.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.5.0.tgz
 dsh --profile web
 ```
 
@@ -37,9 +57,9 @@ dsh --profile web
 |---|---|
 | ![桌面控制面板](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-desktop.png) | ![手机控制面板](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-panel.png) |
 
-| 手机端选项确认 | 远程桌面确认卡片 |
+| 任务控制台待办 | 控制台问答表单 |
 |---|---|
-| ![手机确认浮层](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-remote-confirm-mobile.png) | ![远程桌面确认](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-remote-confirm-desktop.png) |
+| ![任务控制台待办](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/cockpit-phone-light.png) | ![控制台问答表单](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/cockpit-phone-question.png) |
 
 ## 问题
 
@@ -61,7 +81,7 @@ DeepSeek Harness 的 Web 服务只绑定回环地址，且仅当请求的 `Host`
 
 - 转发前将 `Host`、`Origin` 改写为 `127.0.0.1`，使特权接口通过 Harness 的信任校验；
 - 任何请求都须先通过访问令牌或设备会话校验；
-- 转发 HTTP、SSE、WebSocket 流量；可压缩的 HTTP 响应可能再做 gzip（SSE / WebSocket 不压）；
+- 转发 HTTP、SSE、WebSocket 流量；符合条件的可压缩 HTTP 响应协商 Brotli/gzip（SSE / WebSocket 不压）；
 - 提供设置页（**设置 → 反向代理**），用于启停代理、修改监听地址、轮换令牌、管理设备会话。
 
 改写使 Harness 原本对远程客户端的信任校验失效，因此插件提供自己的访问控制层作为替代，见[安全模型](#安全模型)。
@@ -79,7 +99,7 @@ flowchart LR
 
 1. 远程浏览器连接公网隧道，流量转发到插件的监听地址（默认 `127.0.0.1:3081`）。
 2. 请求只有携带访问令牌、有效的一次性邀请或已有的设备会话才会被接受；未通过鉴权的请求不会到达后端。
-3. 代理将 `Host`/`Origin` 改写为回环地址，移除不可信头部，再转发到 `127.0.0.1:3080` 上的 Harness Web 服务。可压缩的 HTTP 响应（HTML/JS/CSS/JSON/SVG，≥1 KB）可能做 gzip；SSE 与 WebSocket 不压。带内容 hash 的 `/assets/*` 可能加上长期缓存头。详见 [HTTP gzip](./docs/http-gzip.zh.md)。
+3. 代理将 `Host`/`Origin` 改写为回环地址，移除不可信头部，再转发到 `127.0.0.1:3080` 上的 Harness Web 服务。符合条件的可压缩 HTTP 响应（HTML/JS/CSS/JSON/SVG，≥1 KB）可协商 Brotli/gzip；SSE 与 WebSocket 不压。严格准入的带 hash `/assets/*` 使用 private immutable 浏览器缓存和有界设备隔离服务端 variant；HTML/API 不进入该静态缓存。详见 [HTTP 传输](./docs/http-gzip.zh.md)与[性能报告](./docs/performance-benchmark.zh.md)。
 
 ## 功能
 
@@ -123,22 +143,24 @@ flowchart LR
 - 健康检查接口 `/_dsh_reverse_proxy/healthz`
 - WebSocket 升级限流：同一远程 IP 反复升级失败后会进入锁定
 - 请求体大小在流层面受限；剥离逐跳与可伪造头部；清除上游 `set-cookie`
-- 对可压缩的 HTTP 响应做 gzip（JS/CSS/HTML/JSON/SVG），客户端需声明
-  `Accept-Encoding: gzip`；SSE、WebSocket、字体、登录栅栏页、不足 1 KB
-  的响应不压。实测 Harness 首屏（`index.html` + 带 hash 的 index/vendor
-  JS/CSS）**−72.7%**（1.29 MB → 351 KB）；`vendor-*.js` −75.7%。过小 JSON
-  会变大所以跳过。issue #11 的「95%+」不是通用结果。关闭：
-  `compressResponses: false`。详见 [HTTP gzip](./docs/http-gzip.zh.md)
-- 带内容 hash 的 `/assets/*` 加上长期 `Cache-Control`（不含 `index.html` 与
-  `/api`）。关闭：`cacheHashedAssets: false`
+- 对可压 HTTP 按客户端 q 值协商 Brotli（quality 4）/gzip；遵守 no-transform，跳过 SSE、WebSocket、Range、已编码和过小响应。
+- 严格准入的 hashed `/assets/*` 使用浏览器 private immutable 与设备隔离的内存 variant LRU（8 MiB / 128 项 / 最多 5 分钟）；命中支持 ETag 304，认证/CIDR 始终先检查；服务端静态缓存排除 API、HTML、Set-Cookie 或未知 Vary 响应，浏览器缓存仍遵从上游策略。
+- 自有 upstream keep-alive 池减少重复连接，真实流量维持设备活跃但不延长绝对 TTL；撤销及静默失效会关闭流两端。后台暂停轮询、恢复合并刷新，减少无意义数据请求。
+- 关闭压缩／静态缓存：`compressResponses: false` / `cacheHashedAssets: false`。协议边界见 [HTTP 传输](./docs/http-gzip.zh.md)，本轮收益与退化见[性能报告](./docs/performance-benchmark.zh.md)。
 
 ### 移动端
 
 - 通过隧道域名打开设置页时，改动正常持久化；**设置 → 模型** 能加载提供方目录（Harness `0.1.0-rc.8` 起依赖页面引导在官方 `create()` 之后仍钉住 `isLoopback`），其中包含 `DeepSeek-V4-Flash-Vision-Exp`
 - 「添加工作区」使用应用内目录浏览，不会在宿主机显示器上弹出系统对话框
-- 工具审批、`ask_user_question` 选项确认、计划评审会在远程页面弹出确认浮层：手机为底部抽屉，较宽屏为居中卡片。可直接点选提交，不必回到宿主机。自定义答案可换行，`Shift+Enter` 插入换行。官方输入框接管仍只出现在当前会话底部
+- 手机窄屏（≤720 CSS px）或远程主机名页面会显示可收起的「任务控制台」入口：手机展开为全宽底部面板，宽屏展开为右侧紧凑面板，配色和明暗主题跟随 Harness。
+- 「待我处理」按会话列出当前最高优先级的工具审批、问答和计划评审；可选择任意待办、返回列表或稍后处理，不再强制只看第一条。切换/收起时保留当前页面内的答案草稿；刷新、卸载或会话服务重建会清空草稿。
+- 「会话」展示官方列表中的运行状态、待查看的停止动态与会话入口，并标记本次页面最近打开的会话；未知状态不会标成已完成，列表首次加载也不会误报为空。
+- 连接断开时禁止提交；恢复连接或回到前台会请求刷新。通道连通不等于会话已同步，界面始终注明是最近已知状态。已发送操作保持锁定并显示确认中/结果不确定，不自动重发审批或消息；必要时刷新核对或进入原会话处理。
+- 自定义答案可换行，`Shift+Enter` 插入换行。控制台复用官方交互方法和会话导航，不替代聊天、不开放本机代理管理接口；尚不包含 PWA、后台推送、跨刷新草稿或分级授权。
 - 远程粘贴/拖入图片走同一条已认证的 `/api`（`deepseek-v4-flash-vision-exp` 等图像路由）。默认请求体上限 160 MiB，与 Harness `/api` 桥一致；点阵图响应不做 gzip
 - 想要手机友好的布局（会话区全宽、目录改抽屉、弹窗适配），建议搭配移动端布局插件使用，例如 [dsh-web-mobile](https://github.com/mexiaosqwq/dsh-web-mobile)
+
+实现范围、已验证的尺寸与复现命令见 [控制台验证说明](./docs/cockpit-validation.md)。
 
 ## 环境要求
 
@@ -148,14 +170,14 @@ flowchart LR
 ## 安装
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.1.tgz
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/SHA256SUMS
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.5.0/dsh-full-remote-0.5.0.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.5.0/SHA256SUMS
 shasum -a 256 -c SHA256SUMS
-dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.5.0.tgz
 dsh --profile web
 ```
 
-当前版本为 **v0.4.0**。npm 发布与 GitHub Release 相互独立，目前 registry
+当前版本为 **v0.5.0**。npm 发布与 GitHub Release 相互独立，目前 registry
 版本落后；安装或升级本版本时请使用上面的 GitHub 附件。
 
 1. 打开 `http://127.0.0.1:3080`。
@@ -210,12 +232,12 @@ ngrok http 3081
 下载当前 GitHub Release，并把 tarball 添加到现有 web profile：
 
 ```sh
-curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.4.0/dsh-full-remote-0.4.1.tgz
-dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
+curl -fLO https://github.com/JUANWANG-BUAA/dsh-full-remote/releases/download/v0.5.0/dsh-full-remote-0.5.0.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.5.0.tgz
 ```
 
 然后重启 `dsh web`。这会把 registry 或旧 tarball 安装的版本替换为
-**v0.4.0**。
+**v0.5.0**。
 
 ## 截图
 
@@ -236,17 +258,17 @@ dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
 
 ### 移动端
 
-| 手机登录页 | 移动控制面板 | 手机添加工作区 |
-|---|---|---|
+| 手机登录页 | 移动控制面板 |
+|---|---|
 | ![移动端登录](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-login.png) | ![移动面板](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-mobile-panel.png) |
 
 ### 远程确认
 
-模型发起选项确认、工具审批或计划评审时，远程浏览器自己弹出浮层，无需回到宿主机显示器。
+通过「任务控制台」入口选择跨会话的选项确认、工具审批或计划评审，无需回到宿主机显示器。下图为 0.5.0 可选择式控制台的已留存 fixture 截图；真实宿主验收的来源与局限见[控制台验证](./docs/cockpit-validation.md)。
 
-| 手机底部抽屉 | 远程桌面居中卡片 |
+| 任务控制台待办 | 控制台问答表单 |
 |---|---|
-| ![手机确认浮层](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-remote-confirm-mobile.png) | ![远程桌面确认](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/preview-remote-confirm-desktop.png) |
+| ![任务控制台待办](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/cockpit-phone-light.png) | ![控制台问答表单](https://raw.githubusercontent.com/JUANWANG-BUAA/dsh-full-remote/main/docs/screenshots/cockpit-phone-question.png) |
 
 ### 门面页
 
@@ -281,8 +303,8 @@ dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
     cloudflaredPath: ""          # 可选：一键隧道用的 cloudflared 路径
     tlsCertFile: ""              # 可选本地 HTTPS
     tlsKeyFile: ""
-    compressResponses: true      # ≥1KB 的 JS/CSS/JSON/HTML 做 gzip；跳过 SSE/WebSocket/字体/栅栏页
-    cacheHashedAssets: true      # 仅给带 hash 的 /assets/* 加长期 Cache-Control
+    compressResponses: true      # 协商 br/gzip；跳过 SSE/WS/Range/字体/栅栏页
+    cacheHashedAssets: true      # 私有浏览器缓存 + 有界设备隔离静态 variant 缓存
 ```
 
 完整选项、默认值与校验规则定义在包内 `Config` schema（`src/config.ts`）及
@@ -320,7 +342,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 - 默认情况下，运行在本机的隧道会让所有远程客户端在代理看来都是 `127.0.0.1`。因此 `allowedCidrs` 与按 IP 登录锁定只对“隧道整体”生效；如需按真实客户端 IP 生效，请在可信本地边缘后设置 `trustForwardedFor: true`。
 - 插件以自身的访问控制层替代 Harness 的远程信任校验，该层若存在缺陷，影响严重。若 Harness 未来提供官方远程访问能力，应重新评估本插件的定位。
 - 一键快速隧道：URL 每次启动随机变化（旧邀请与登录失效）、官方定位是临时/测试用途，非 HTML 大流量内容受 Cloudflare 条款限制；首次使用需按需下载 cloudflared（18–52 MB，取决于平台），Windows ARM64 没有官方构建（可自行安装后填 `cloudflaredPath`）。日常稳定入口仍建议自备 frp / ngrok / 命名隧道。
-- 代理侧 gzip 主要惠及局域网与 SSH/frp。Cloudflare 快速隧道边缘通常已经压缩 HTML/JS/CSS/JSON，这条路径增量很小。对话流式输出走 WebSocket，不会被 HTTP gzip 覆盖。插件自己的登录/等待/主页也不压（潜在节省约 1 KB）。完整约定：[HTTP gzip](./docs/http-gzip.zh.md)。
+- 代理侧 Brotli/gzip 可帮助局域网与 SSH/frp；Cloudflare 快速隧道边缘可能已压缩，不能假设仍有相同字节收益，但命中的代理静态缓存仍可减少上游工作。对话 WebSocket 流、SSE 与插件自己的登录/等待/主页不走该 HTTP 压缩路径。完整约定：[HTTP 传输](./docs/http-gzip.zh.md)；实测收益与代价：[性能报告](./docs/performance-benchmark.zh.md)。
 
 ## 开发
 
@@ -328,7 +350,7 @@ Host/Origin 改写恢复了特权接口，同时也使 Harness 对远程客户�
 
 ```sh
 pnpm pack
-dsh plugin --profile web add ./dsh-full-remote-0.4.1.tgz
+dsh plugin --profile web add ./dsh-full-remote-0.5.0.tgz
 ```
 
 git 安装会执行 `prepare` 构建，pnpm ≥ 10 需要放行：

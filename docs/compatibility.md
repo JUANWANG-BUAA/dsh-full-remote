@@ -12,6 +12,23 @@ longer supported (0.2 removed `@deepseek-ai/dsh-client-runtime` and moved
 pending interactions into the `uiSession` registry). It is not intended for a
 headless profile.
 
+## 0.5.0 scope
+
+The 0.5.0 release adds the selectable cross-session task cockpit and transport
+optimizations without changing the Harness **0.2.1-rc.2** target or introducing
+a second host connection. The cockpit reuses official pending forms and session
+navigation; connected is not proof of synchronization, drafts/locks are page-local,
+and reconnect does not replay writes. See [validation and retained host evidence](./cockpit-validation.md).
+
+Eligible HTTP responses negotiate Brotli/gzip; SSE/WebSocket remain streaming and
+uncompressed. The bounded server static cache is device-isolated and only admits
+eligible hashed assets after authentication/CIDR checks; HTML/API, Set-Cookie, range
+and unknown Vary responses are excluded from that cache. Browser caching follows
+upstream policy. Revocation/stop clear retained variants, and active bytes update
+idle activity without extending absolute TTL. An owned upstream keep-alive pool
+does not change session ownership or grant remote management access.
+[Benchmark (English)](./performance-benchmark.md) · [中文报告](./performance-benchmark.zh.md).
+
 ## DeepSeek Harness 0.2.1
 
 0.2.1 adds method-level Remote access control
@@ -70,7 +87,7 @@ Include trees, not only the loader root store.
 | `deepseek-harness-auth` (or another bundle that inserts `directory-picker-browse`) | Both need the in-app picker; a second insert of the same row id fails boot | This plugin does not insert those ids; it pins browse at runtime only when they are absent from the whole loader tree |
 | Another reverse proxy/auth gateway | A second gateway can rewrite `Host`/`Origin` or cookies twice | Put this plugin directly in front of Harness Web, or disable the duplicate rewrite/auth layer |
 | TLS terminator / tunnel | Forwarded headers are trusted only when explicitly configured | Set `trustForwardedFor` only behind a loopback edge that strips/rebuilds those headers; set `trustCloudflareConnectingIp` only for a real Cloudflare edge |
-| Cloudflare (or other) edge compression | The edge may already gzip/brotli HTML/JS/CSS/JSON | Proxy-side gzip still helps LAN/SSH/frp; do not expect a second large saving on a Cloudflare quick tunnel. See [HTTP gzip](./http-gzip.md) |
+| Cloudflare (or other) edge compression | The edge may already gzip/brotli HTML/JS/CSS/JSON | Proxy-side Brotli/gzip can help LAN/SSH/frp; do not expect a second large byte saving at a compressing edge. Proxy cache hits still avoid upstream work. See [HTTP transport](./http-gzip.md) and [benchmark](./performance-benchmark.md) |
 | Plugin that changes Harness trust/bootstrap globals | The browser bootstrap is a compatibility seam | Test `settings.describe`, `credentials.describe`, directory browsing, SSE, and WebSocket after installing both |
 
 ## Runtime acceptance checks
@@ -82,7 +99,7 @@ After composing plugins, verify all of the following through the proxy:
    Harness loopback 403);
 3. authenticated credentials and directory operations work;
 4. a long-running SSE response and WebSocket upgrade survive normally
-   (the proxy does not gzip SSE or WebSocket; a delayed second SSE event
+   (the proxy does not compress SSE or WebSocket; a delayed second SSE event
    must still arrive);
 5. revoking the device closes its active streams;
 6. the host UI still opens its own directory picker when accessed locally;
@@ -135,7 +152,8 @@ applies the command window only to command-shaped prompts, so ordinary
 prompts keep the short hung-backend window.
 
 Raster image responses (`image/png`, `image/jpeg`, `image/webp`,
-`image/gif`) are never gzipped. JSON RPC envelopes still may be.
+`image/gif`) are never Brotli/gzip transformed. JSON RPC envelopes may be compressed, but
+are not admitted to the server static cache.
 
 The CI real-Harness smoke installs the packed tarball and exercises the first,
 second, and session-control paths. `test:composition` checks the effective

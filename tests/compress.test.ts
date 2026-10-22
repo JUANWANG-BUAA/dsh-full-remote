@@ -295,7 +295,7 @@ describe('authenticated proxy gzip and hashed-asset cache', () => {
     if (saved < 0.10) {
       assert.fail(`proxy gzip saved only ${formatPct(saved)} on JS; do not keep compressResponses default true`)
     }
-    assert.equal(res.headers['cache-control'], 'public, max-age=31536000, immutable')
+    assert.equal(res.headers['cache-control'], 'private, max-age=31536000, immutable')
   })
 
   it('does not gzip when the client omits Accept-Encoding', async () => {
@@ -372,7 +372,7 @@ describe('authenticated proxy gzip and hashed-asset cache', () => {
     })
     assert.equal(fontRes.headers['content-encoding'], undefined)
     assert.equal(Buffer.compare(fontRes.body, font), 0)
-    assert.equal(fontRes.headers['cache-control'], 'public, max-age=31536000, immutable')
+    assert.equal(fontRes.headers['cache-control'], 'private, max-age=31536000, immutable')
 
     const jsonRes = await httpRaw({
       port: proxy.port,

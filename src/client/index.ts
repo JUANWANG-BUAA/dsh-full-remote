@@ -21,6 +21,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteSection } from './RemoteSection.tsx'
 import { InteractionOverlay } from './InteractionOverlay.tsx'
 import { createPendingSource } from './pending-source.ts'
+import { createCockpitConnection, type ConnectionSourceHandle } from './cockpit-connection.ts'
 import { bindTranslate } from './i18n.ts'
 import type { AuditResult, InviteResult, ProxyApi, ProxyStatus, SelfCheckResult, SessionInfo } from './types.ts'
 import { CONTROL_HEADER, CONTROL_HEADER_VALUE, CONTROL_PREFIX } from '../control.ts'
@@ -137,12 +138,20 @@ export function apply(ctx: Context): void {
     label: () => t('action.label'),
     inject: () => ({ api, t, language }),
   }, RemoteSection))
-  ctx.inject(['sessions', 'uiSession'], (scope: Context) => {
+  ctx.inject(['sessions', 'uiSession', 'connection', 'uiWorkspace'], (scope: Context) => {
     const sessions = scope.get('sessions') as ISessions | undefined
     const uiSession = scope.get('uiSession') as UiSession | undefined
     if (sessions === undefined || uiSession === undefined) return
     const source = createPendingSource(sessions, uiSession)
-    scope.effect(() => () => { source.dispose() }, 'reverse-proxy: pending overlay')
+    // Structural public face keeps this bundle independent of connection internals.
+    const handle = scope.get('connection') as ConnectionSourceHandle | undefined
+    const workspace = scope.get('uiWorkspace') as UiWorkspace | undefined
+    const connection = createCockpitConnection(handle, async () => {
+      await sessions.refresh()
+      // refresh() can resolve without a fresh baseline: this is only a projection.
+      source.refresh()
+    })
+    scope.effect(() => () => { connection.dispose(); source.dispose() }, 'reverse-proxy: cockpit')
     scope.slots.inject('shell.overlay', () => scope.slots.register({
       name: 'shell.overlay',
       id: 'reverse-proxy-interact',
@@ -150,10 +159,9 @@ export function apply(ctx: Context): void {
       inject: () => ({
         t,
         language,
-        openSession: (id: string) => {
-          const workspace: UiWorkspace | undefined = scope.get('uiWorkspace')
-          workspace?.openSession(id as SessionId)
-        },
+        connection,
+        canOpenSession: workspace !== undefined,
+        openSession: (id: string) => { workspace?.openSession(id as SessionId) },
         answerApproval: (key: string, outcome: 'allowed-once' | 'rejected') => source.answerApproval(key, outcome),
         answerQuestion: source.answerQuestion,
         cancelQuestion: source.cancelQuestion,

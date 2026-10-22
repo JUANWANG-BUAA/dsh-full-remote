@@ -9,10 +9,10 @@
  * this source turns that registry into the stable snapshot the overlay can
  * answer from — no session instantiation on this side.
  */
-import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { ISessions, SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { PendingApproval } from '@deepseek-ai/dsh-client-ui-approval/client'
 import type {
-  SessionPendingInteraction, SessionStatusSnapshot, UiSession,
+  SessionPendingInteraction, SessionStatus, SessionStatusSnapshot, UiSession,
 } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { PendingQuestion } from '@deepseek-ai/dsh-client-ui-user-questions/client'
 import { isLoopbackHost } from '../hosts.ts'
@@ -61,9 +61,24 @@ export type RemotePendingItem = {
   questions?: QuestionItemView[]
 }
 
-/** Snapshot the overlay subscribes to. */
+/** Independent official facts, not an inferred "completed" lifecycle. */
+export type RemoteSessionView = {
+  id: string
+  title: string
+  /** Undefined until an official status or catalog baseline establishes running. */
+  running: SessionStatus['running']
+  pendingKey?: string
+  /** An observed stop outside the main view still needs acknowledgement. */
+  completionUnread: boolean
+}
+
+/** Snapshot shared by the overlay and phone cockpit; optional additions keep old fixtures valid. */
 export type RemotePendingState = {
   items: RemotePendingItem[]
+  sessions?: RemoteSessionView[]
+  /** Official arrival lifecycle: pending until the first successful list, then ready.
+   * This is neither connection health nor the list pull's loading/error state. */
+  phase?: SessionListState['phase']
 }
 
 const EMPTY_STATE: RemotePendingState = { items: [] }
@@ -120,11 +135,9 @@ export function parseRecommendedLabel(label: string): { label: string, recommend
 }
 
 function fingerprint(state: RemotePendingState) {
-  return state.items.map(item => {
-    const q = item.questions?.map(question => JSON.stringify(question)).join(',') ?? ''
-    const approval = item.approval === undefined ? '' : JSON.stringify(item.approval)
-    return `${item.key}:${item.ready}:${item.presentation}:${q}:${approval}`
-  }).join('|')
+  // Projected data only: include titles, identity, status and arrival changes,
+  // without delimiter collisions or retaining domain action callbacks.
+  return JSON.stringify(state)
 }
 
 function questionView(wait: PendingQuestion): QuestionItemView[] {
@@ -188,6 +201,8 @@ export type PendingSource = {
   getSnapshot: () => RemotePendingState
   subscribe: (fn: () => void) => () => void
   dispose: () => void
+  /** Re-read local official snapshots only; does not reconnect or retry an answer. */
+  refresh: () => void
   answerApproval: (key: string, outcome: 'allowed-once' | 'rejected') => Promise<void>
   answerQuestion: (key: string, answer: QuestionAnswer) => Promise<void>
   cancelQuestion: (key: string) => Promise<void>
@@ -214,20 +229,35 @@ export function createPendingSource(sessions: ISessions, uiSession: UiSession): 
     const list = sessions.list.getSnapshot()
     const status: SessionStatusSnapshot = uiSession.sessionStatus.getSnapshot()
     const items: RemotePendingItem[] = []
+    const views: RemoteSessionView[] = []
     const nextWaits = new Map<string, SessionPendingInteraction>()
-
+    // Only ids describes Host-list membership; byId also has retained fallbacks.
+    // Keep published waits outside that catalog answerable, after the listed rows.
+    const ids = new Set(list.ids)
     for (const [sessionId, row] of status) {
-      const interaction = row.pendingInteraction
+      if (row.pendingInteraction !== undefined) ids.add(sessionId)
+    }
+    for (const sessionId of ids) {
+      const summary = list.byId[sessionId]
+      const row = status.get(sessionId)
+      const interaction = row?.pendingInteraction
+      const title = summary?.displayTitle ?? String(sessionId)
+      views.push({
+        id: sessionId,
+        title,
+        running: row?.running ?? summary?.running,
+        completionUnread: row?.completionUnread ?? false,
+        ...(interaction === undefined ? {} : { pendingKey: interaction.key }),
+      })
       if (interaction === undefined) continue
       nextWaits.set(interaction.key, interaction)
-      const title = list.byId[sessionId]?.displayTitle ?? String(sessionId)
       items.push(projectInteraction(interaction, title))
     }
 
     waits.clear()
     for (const [key, wait] of nextWaits) waits.set(key, wait)
 
-    const next = items.length === 0 ? EMPTY_STATE : { items }
+    const next: RemotePendingState = { items, sessions: views, phase: list.phase }
     if (fingerprint(next) === fingerprint(snapshot)) return
     snapshot = next
     notify()
@@ -239,11 +269,14 @@ export function createPendingSource(sessions: ISessions, uiSession: UiSession): 
 
   return {
     getSnapshot: () => snapshot,
+    refresh: collect,
     subscribe: (fn) => {
+      if (disposed) return () => {}
       listeners.add(fn)
       return () => { listeners.delete(fn) }
     },
     dispose: () => {
+      if (disposed) return
       disposed = true
       listUnsub()
       statusUnsub()
@@ -252,6 +285,8 @@ export function createPendingSource(sessions: ISessions, uiSession: UiSession): 
       snapshot = EMPTY_STATE
     },
     answerApproval: async (key, outcome) => {
+      // Fence stale device UI against the latest local registry; never replay.
+      collect()
       const wait = waits.get(key)
       if (wait === undefined || wait.kind !== 'approval') {
         throw new Error('approval is no longer pending')
@@ -259,6 +294,8 @@ export function createPendingSource(sessions: ISessions, uiSession: UiSession): 
       await (wait as PendingApproval).answer(outcome)
     },
     answerQuestion: async (key, answer) => {
+      // Fence stale device UI against the latest local registry; never replay.
+      collect()
       const wait = waits.get(key)
       if (wait === undefined || wait.kind === 'approval') {
         throw new Error('question is no longer pending')
@@ -266,6 +303,8 @@ export function createPendingSource(sessions: ISessions, uiSession: UiSession): 
       await (wait as PendingQuestion).answer(answer)
     },
     cancelQuestion: async (key) => {
+      // Fence stale device UI against the latest local registry; never replay.
+      collect()
       const wait = waits.get(key)
       if (wait === undefined || wait.kind === 'approval') {
         throw new Error('question is no longer pending')

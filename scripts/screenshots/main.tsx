@@ -5,6 +5,7 @@
 import { createRoot } from 'react-dom/client'
 import type { ComponentProps } from 'react'
 import { RemoteSection } from '../../src/client/RemoteSection.tsx'
+import { CockpitDemo } from './CockpitDemo.tsx'
 import type { Context } from '@deepseek-ai/cordis'
 import { bindTranslate } from '../../src/client/i18n.ts'
 import { qrToSvg } from '../../src/qr-svg.ts'
@@ -81,12 +82,19 @@ const api: ProxyApi = {
 }
 
 const params = new URLSearchParams(location.search)
-const chromeOn = params.get('chrome') !== '0'
+const cockpitDemo = params.get('demo') === 'cockpit'
+const chromeOn = !cockpitDemo && params.get('chrome') !== '0'
+if (cockpitDemo) document.body.dataset.demo = 'cockpit'
+const theme = params.get('theme')
+if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme
 document.body.dataset.chrome = chromeOn ? 'on' : 'off'
 if (params.get('narrow') === '1') document.body.dataset.narrow = 'true'
 
 const translation = bindTranslate({ get: () => undefined } as unknown as Context)
-if (!localStorage.getItem('dsh-full-remote.language')) translation.language.setPreference('zh')
+const language = params.get('lang')
+if (language === 'en' || language === 'zh') translation.language.setPreference(language)
+else if (!localStorage.getItem('dsh-full-remote.language')) translation.language.setPreference('zh')
+document.documentElement.lang = translation.language.getPreference() === 'en' ? 'en' : 'zh-CN'
 
 const props = {
   api,
@@ -101,7 +109,9 @@ const panel = <RemoteSection {...props} />
 const root = document.getElementById('app')
 if (root === null) throw new Error('missing #app')
 
-if (chromeOn) {
+if (cockpitDemo) {
+  createRoot(root).render(<CockpitDemo t={translation.t} language={translation.language} params={params} />)
+} else if (chromeOn) {
   createRoot(root).render(
     <div className="settings">
       <nav className="nav">

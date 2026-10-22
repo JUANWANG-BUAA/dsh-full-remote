@@ -51,8 +51,8 @@ export const Config = Schema.object({
   trustForwardedProto: Schema.boolean().default(false).description('When true, trust inbound X-Forwarded-Proto from a reverse-edge for Secure cookies and upstream proto. Leave false unless a trusted TLS terminator sits in front.'),
   trustForwardedFor: Schema.boolean().default(false).description('When true and the direct peer is loopback, derive the remote client IP for CIDR / rate limiting / audit from the rightmost X-Forwarded-For value (loopback and malformed values are never trusted). Only enable behind a trusted local tunnel/edge that appends this header; do not enable for LAN direct access.'),
   trustCloudflareConnectingIp: Schema.boolean().default(false).description('When true and the direct peer is loopback, also trust Cloudflare\'s CF-Connecting-IP header. Enable only for a local Cloudflare connector; other tunnels can relay a client-supplied CF header unchanged.'),
-  compressResponses: Schema.boolean().default(true).description('When true, gzip compressible HTTP responses (HTML/JS/CSS/JSON/SVG) for clients that send Accept-Encoding: gzip. SSE, WebSocket, fonts, already-encoded bodies, and responses under 1 KB are not compressed.'),
-  cacheHashedAssets: Schema.boolean().default(true).description('When true, add Cache-Control: public, max-age=31536000, immutable on successful hashed /assets/* responses that have no upstream cache header. index.html and /api are never cached.'),
+  compressResponses: Schema.boolean().default(true).description('When true, negotiate Brotli (quality 4) or gzip for compressible HTTP responses. Respects encoding quality and no-transform. SSE, WebSocket, fonts, already-encoded bodies, ranges, and responses under 1 KB are not compressed.'),
+  cacheHashedAssets: Schema.boolean().default(true).description('When true, add private immutable browser caching on eligible hashed /assets/* and reuse a device-scoped bounded in-memory representation cache (8 MiB, 128 entries, 5 minute maximum). Respects upstream directives; HTML, /api, Set-Cookie and unsafe variants are not stored.'),
 })
 
 /** Validated plugin config: every field carries its Schema default. */

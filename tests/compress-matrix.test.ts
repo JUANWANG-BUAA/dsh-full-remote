@@ -176,7 +176,7 @@ async function measurePath(
   const res = await httpRaw({
     port: proxyPort,
     path: pathname,
-    headers: { cookie, 'accept-encoding': 'gzip, deflate, br' },
+    headers: { cookie, 'accept-encoding': 'gzip' },
   })
   assert.equal(res.status, 200)
   const gzipApplied = res.headers['content-encoding'] === 'gzip'

@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { AuditResult, InviteResult, ProxyApi, ProxyStatus, SelfCheckResult, SessionInfo, TunnelStatus } from './types.ts'
 import { DevicesSection } from './DevicesSection.tsx'
+import { createVisibilityPolling } from './visibility-polling.ts'
 import type { ReverseProxyTranslate } from './i18n.ts'
 import { useLanguage, type LanguageController } from './language.ts'
 import { PanelToast } from './PanelToast.tsx'
@@ -114,27 +115,26 @@ export function RemoteSection({ api, t, language }: RemoteSectionProps) {
       },
       reason => { if (active) showToast(toastFromCaught(reason, t)) },
     )
-    const poll = () => {
-      const epoch = sessionsEpoch.current
-      void api.sessions().then(
-        list => {
-          if (!active) return
-          pollFailed = false
-          applySessions(list, epoch)
-        },
-        () => {
-          if (!active || pollFailed) return
-          pollFailed = true
-          showToast({ kind: 'warn', text: t('error.sessionsPoll') })
-        },
-      )
-    }
-    poll()
-    const sessionTimer = setInterval(poll, 3000)
+    const stopSessions = createVisibilityPolling({
+      intervalMs: 3000,
+      request: async () => {
+        const epoch = sessionsEpoch.current
+        return { list: await api.sessions(), epoch }
+      },
+      onValue: ({ list, epoch }) => {
+        pollFailed = false
+        applySessions(list, epoch)
+      },
+      onError: () => {
+        if (pollFailed) return
+        pollFailed = true
+        showToast({ kind: 'warn', text: t('error.sessionsPoll') })
+      },
+    })
     return () => {
       active = false
       mounted.current = false
-      clearInterval(sessionTimer)
+      stopSessions()
     }
   }, [api, t])
 
@@ -143,27 +143,23 @@ export function RemoteSection({ api, t, language }: RemoteSectionProps) {
   useEffect(() => {
     const state = status?.tunnel?.state
     if (state !== 'starting' && state !== 'online') return
-    const timer = setInterval(() => {
-      void api.status().then(
-        next => {
-          if (!mounted.current) return
-          const prev = prevTunnelRef.current
-          applyTunnelStatus(next)
-          const tunnel = next.tunnel
-          if (tunnel === undefined) return
-          if (tunnel.state === 'error' && prev?.state !== 'error') {
-            const model = tunnel.detail === undefined ? undefined : toastFromTunnelDetail(tunnel.detail, t)
-            showToast(model ?? { kind: 'error', text: t('tunnel.state.error') })
-          } else if (tunnel.state === 'online' && prev?.state !== 'online' && tunnel.publicUrl !== undefined) {
-            showToast({ kind: 'success', text: t('tunnel.toast.online', { url: tunnel.publicUrl }) })
-          }
-        },
-        () => {
-          // transient poll failure: keep the interval while starting
-        },
-      )
-    }, 2000)
-    return () => { clearInterval(timer) }
+    return createVisibilityPolling({
+      intervalMs: 2000,
+      immediate: false,
+      request: () => api.status(),
+      onValue: next => {
+        const prev = prevTunnelRef.current
+        applyTunnelStatus(next)
+        const tunnel = next.tunnel
+        if (tunnel === undefined) return
+        if (tunnel.state === 'error' && prev?.state !== 'error') {
+          const model = tunnel.detail === undefined ? undefined : toastFromTunnelDetail(tunnel.detail, t)
+          showToast(model ?? { kind: 'error', text: t('tunnel.state.error') })
+        } else if (tunnel.state === 'online' && prev?.state !== 'online' && tunnel.publicUrl !== undefined) {
+          showToast({ kind: 'success', text: t('tunnel.toast.online', { url: tunnel.publicUrl }) })
+        }
+      },
+    })
   }, [status?.tunnel?.state, api, t])
 
   const applyResult = (next: ProxyStatus, intent: ToastIntent) => {

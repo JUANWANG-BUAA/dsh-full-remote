@@ -54,6 +54,22 @@ id list (or `HARNESS_DIR`) and then
 `tests/fixtures/deepseek-harness-auth.cordis.patch.yml`. Duplicate insert
 ids fail the check.
 
+## Performance and release evidence
+
+For transport/cache/polling changes, retain an unchanged historical baseline and
+report regressions as well as gains. See the reproducible
+[English benchmark](./docs/performance-benchmark.md) /
+[中文报告](./docs/performance-benchmark.zh.md), including the final fifteen paired
+rounds and [retained summary](./docs/benchmarks/v0.5.0/summary.json).
+Do not present loopback HTTP timings as mobile page speed, LCP or battery savings.
+Keep compression, device-isolated caching, authentication-before-hit and
+stream/absolute-expiry boundaries covered by tests.
+
+For cockpit changes, run the fixture/browser checks in
+[cockpit validation](./docs/cockpit-validation.md). Label retained real-host
+acceptance separately from fresh tests; a fixture is not a live host or physical
+phone. Keep screenshot captions aligned with the implementation they actually show.
+
 ## Commit messages
 
 Follow the repo's existing style: short imperative summary lines in Chinese
@@ -72,4 +88,7 @@ or English describing the change, e.g. `修复 …` / `Add …`.
 ## Release notes
 
 Unreleased changes go under an Unreleased heading of `CHANGELOG.md`
-until the next version is cut. The current release is `0.4.1`.
+until the next version is cut. The current release is `0.5.0`, targeting Harness `0.2.1-rc.2`.
+GitHub release tarballs are the recommended install path; an npm workflow run is
+not proof of registry publication. Verify the exact registry version before
+recommending an npm install.

@@ -1,6 +1,8 @@
 # dsh-full-remote · 0.2.0 落地复盘与下一步
 
-内部工作文档，不随 npm tarball 分发。对照 `docs/roadmap.zh.md`（下文称「原计划」）验收，不改代码。
+历史内部工作文档，不随 npm tarball 分发。对照 `docs/roadmap.zh.md`（下文称「原计划」）验收，保留当时事实而不作为现行产品说明。
+
+> **当前 0.5.0（2026-10-22）** 的功能、安全边界和实测收益请看 [README](../README.zh.md)、[发布说明](./releases/v0.5.0.md) 与 [benchmark](./performance-benchmark.zh.md)。以下 npm/GitHub/上游 API 与社区状态均为 0.2.0 时点快照，不代表当前发布状态。
 
 > **0.2.1 已覆盖本文「客户端半边」结论。** 2026-08-15 夜间：index tap 包装 `__ModuleLoader__`，让 `connection.isLoopback` 在官方 bind 之前为 true（设置落盘）；bundle patch 禁用 `directory-picker-auto` 并钉 browse 对（手机加工作区）；控制面迁到 `settings.section`。下文 §0.4、§1.4「拒绝猴子补丁」、§2 客户端半边、验收清单里「设置不落盘」均为 0.2.0 当晚快照，不要当现行产品文档。社区队列（#76 / awesome / deprecate）仍有效。
 

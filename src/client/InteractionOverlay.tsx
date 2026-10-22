@@ -7,6 +7,9 @@
  * pending host interactions.
  */
 import { useEffect, useState, type ChangeEvent, type KeyboardEvent } from 'react'
+import { RemoteCockpit } from './RemoteCockpit.tsx'
+import type { CockpitConnection } from './cockpit-connection.ts'
+import { useInteractionSubmission } from './use-interaction-submission.ts'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { useLanguage, type LanguageController } from './language.ts'
 import type { ReverseProxyTranslate } from './i18n.ts'
@@ -33,6 +36,8 @@ export type InteractionOverlayInjected = {
   t: ReverseProxyTranslate
   /** Test seam; omit in production so the overlay follows hostname/viewport. */
   enabled?: boolean
+  connection?: CockpitConnection
+  canOpenSession?: boolean
   openSession: (sessionId: string) => void
   answerApproval: (key: string, outcome: 'allowed-once' | 'rejected') => Promise<void>
   answerQuestion: (key: string, answer: QuestionAnswer) => Promise<void>
@@ -73,6 +78,8 @@ export function InteractionOverlay({
   language,
   enabled,
   openSession,
+  canOpenSession,
+  connection,
   answerApproval,
   answerQuestion,
   cancelQuestion,
@@ -91,39 +98,22 @@ export function InteractionOverlay({
     return () => { window.removeEventListener('resize', sync) }
   }, [enabled])
 
-  const items = useRemotePending(state => state.items)
-  const show = enabled ?? autoEnabled
-  const item = items[0]
-  if (!show || item === undefined) return null
-
-  const remaining = items.length
-  return (
-    <div className={css.layer} data-remote-interact={item.presentation}>
-      <div className={css.backdrop} />
-      <div
-        className={css.sheet}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="dsh-remote-interact-title"
-      >
-        <div className={css.handle} aria-hidden="true" />
-        {remaining > 1 && (
-          <p className={css.queue}>{t('interact.queue', { count: remaining })}</p>
-        )}
-        <InteractBody
-          item={item}
-          t={t}
-          openSession={openSession}
-          answerApproval={answerApproval}
-          answerQuestion={answerQuestion}
-          cancelQuestion={cancelQuestion}
-        />
-      </div>
-    </div>
-  )
+  const state = useRemotePending(snapshot => snapshot)
+  if (!(enabled ?? autoEnabled)) return null
+  const guard = async (operation: () => Promise<void>) => {
+    if (connection?.getSnapshot().state !== 'connected') throw new Error(t('cockpit.offlineHint'))
+    await operation()
+  }
+  return <RemoteCockpit state={state} connection={connection} t={t}
+    canOpenSession={canOpenSession} openSession={openSession}
+    renderItem={item => <InteractBody item={item} t={t} openSession={openSession} canOpenSession={canOpenSession}
+      answerApproval={(key, outcome) => guard(() => answerApproval(key, outcome))}
+      answerQuestion={(key, answer) => guard(() => answerQuestion(key, answer))}
+      cancelQuestion={key => guard(() => cancelQuestion(key))} />} />
 }
 
 function InteractBody(props: {
+  canOpenSession?: boolean
   item: RemotePendingItem
   t: ReverseProxyTranslate
   openSession: (sessionId: string) => void
@@ -137,7 +127,7 @@ function InteractBody(props: {
       <section className={css.card}>
         <header className={css.header}>
           <span className={css.badge}>{t(item.kind === 'approval' ? 'interact.kind.approval' : 'interact.kind.question')}</span>
-          <h2 className={css.title} id="dsh-remote-interact-title">{t('interact.open.title')}</h2>
+          <h2 className={css.title}>{t('interact.open.title')}</h2>
         </header>
         <p className={css.session}>{item.sessionTitle}</p>
         <p className={css.lede}>{t('interact.open.hint')}</p>
@@ -145,6 +135,7 @@ function InteractBody(props: {
           <button
             className={css.primary}
             type="button"
+            disabled={props.canOpenSession === false}
             onClick={() => { props.openSession(item.sessionId) }}
           >
             {t('interact.open.action')}
@@ -202,34 +193,29 @@ function ApprovalFlow(props: {
   t: ReverseProxyTranslate
   onAnswer: (key: string, outcome: 'allowed-once' | 'rejected') => Promise<void>
 }) {
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string>()
+  const { busy, error, notice, run } = useInteractionSubmission(props.t)
   const answer = (outcome: 'allowed-once' | 'rejected') => {
-    setBusy(true)
-    setError(undefined)
-    void props.onAnswer(props.itemKey, outcome).catch((cause: unknown) => {
-      setBusy(false)
-      setError(cause instanceof Error ? cause.message : String(cause))
-    })
+    run('answer', () => props.onAnswer(props.itemKey, outcome))
   }
   return (
     <section className={css.card}>
       <header className={css.header}>
         <span className={css.badge}>{props.t('interact.kind.approval')}</span>
-        <h2 className={css.title} id="dsh-remote-interact-title">{props.t('interact.approval.title')}</h2>
+        <h2 className={css.title}>{props.t('interact.approval.title')}</h2>
       </header>
       <p className={css.session}>{props.sessionTitle}</p>
       <div className={css.body}>
         <p className={css.lede}>{props.reason ?? props.t('interact.approval.fallback', { tool: props.toolName })}</p>
         <p className={css.meta}>{props.t('interact.approval.tool', { tool: props.toolName })}</p>
       </div>
+      {notice !== undefined && <p className={css.meta} role="status">{notice}</p>}
       {error !== undefined && <p className={css.error} role="alert">{error}</p>}
       <div className={css.actions}>
-        <button className={css.danger} type="button" disabled={busy} onClick={() => { answer('rejected') }}>
+        <button className={css.danger} type="button" disabled={busy !== undefined} onClick={() => { answer('rejected') }}>
           {props.t('interact.approval.reject')}
         </button>
-        <button className={css.primary} type="button" disabled={busy} onClick={() => { answer('allowed-once') }}>
-          {busy ? props.t('interact.busy') : props.t('interact.approval.allow')}
+        <button className={css.primary} type="button" disabled={busy !== undefined} onClick={() => { answer('allowed-once') }}>
+          {busy !== undefined ? props.t('interact.busy') : props.t('interact.approval.allow')}
         </button>
       </div>
     </section>
@@ -244,31 +230,18 @@ function PlanReviewFlow(props: {
   onAnswer: (key: string, answer: QuestionAnswer) => Promise<void>
   onCancel: (key: string) => Promise<void>
 }) {
-  const [busy, setBusy] = useState<'answer' | 'cancel'>()
-  const [error, setError] = useState<string>()
+  const { busy, error, notice, run } = useInteractionSubmission(props.t)
   const send = (label: string) => {
-    setBusy('answer')
-    setError(undefined)
-    void props.onAnswer(props.itemKey, {
+    run('answer', () => props.onAnswer(props.itemKey, {
       answers: [{ id: props.review.id, selected: [label] }],
-    }).catch((cause: unknown) => {
-      setBusy(undefined)
-      setError(cause instanceof Error ? cause.message : String(cause))
-    })
+    }))
   }
-  const cancel = () => {
-    setBusy('cancel')
-    setError(undefined)
-    void props.onCancel(props.itemKey).catch((cause: unknown) => {
-      setBusy(undefined)
-      setError(cause instanceof Error ? cause.message : String(cause))
-    })
-  }
+  const cancel = () => { run('cancel', () => props.onCancel(props.itemKey)) }
   return (
     <section className={css.card}>
       <header className={css.header}>
         <span className={css.badge}>{props.t('interact.kind.plan')}</span>
-        <h2 className={css.title} id="dsh-remote-interact-title">{props.review.question}</h2>
+        <h2 className={css.title}>{props.review.question}</h2>
         <button
           className={css.icon}
           type="button"
@@ -281,6 +254,7 @@ function PlanReviewFlow(props: {
       <div className={css.body}>
         <pre className={css.plan}>{props.review.plan}</pre>
       </div>
+      {notice !== undefined && <p className={css.meta} role="status">{notice}</p>}
       {error !== undefined && <p className={css.error} role="alert">{error}</p>}
       <div className={css.actions}>
         {props.review.decline !== undefined && (
@@ -320,7 +294,7 @@ function QuestionFlow(props: {
   const questions = props.questions
   const [index, setIndex] = useState(0)
   const [drafts, setDrafts] = useState(() => emptyDrafts(questions))
-  const [busy, setBusy] = useState<'answer' | 'cancel'>()
+  const { busy, error: submitError, notice, run } = useInteractionSubmission(props.t)
   const [error, setError] = useState<string>()
   const question = questions[index] ?? questions[0]
   const draft = drafts[index] ?? drafts[0]
@@ -369,12 +343,8 @@ function QuestionFlow(props: {
         }
       }),
     }
-    setBusy('answer')
     setError(undefined)
-    void props.onAnswer(props.itemKey, answer).catch((cause: unknown) => {
-      setBusy(undefined)
-      setError(cause instanceof Error ? cause.message : String(cause))
-    })
+    run('answer', () => props.onAnswer(props.itemKey, answer))
   }
 
   const continueFlow = () => {
@@ -420,12 +390,8 @@ function QuestionFlow(props: {
   }
 
   const cancel = () => {
-    setBusy('cancel')
     setError(undefined)
-    void props.onCancel(props.itemKey).catch((cause: unknown) => {
-      setBusy(undefined)
-      setError(cause instanceof Error ? cause.message : String(cause))
-    })
+    run('cancel', () => props.onCancel(props.itemKey))
   }
 
   return (
@@ -434,7 +400,7 @@ function QuestionFlow(props: {
         <span className={css.badge}>{props.t('interact.kind.question')}</span>
         <div className={css.heading}>
           {question.header !== undefined && <p className={css.eyebrow}>{question.header}</p>}
-          <h2 className={css.title} id="dsh-remote-interact-title">{question.question}</h2>
+          <h2 className={css.title}>{question.question}</h2>
         </div>
         <button
           className={css.icon}
@@ -487,6 +453,7 @@ function QuestionFlow(props: {
                 value={draft.custom}
                 disabled={busy !== undefined}
                 rows={2}
+                aria-label={props.t('interact.question.custom')}
                 placeholder={props.t('interact.question.custom')}
                 onChange={draftCustom}
                 onKeyDown={continueFromCustom}
@@ -498,6 +465,7 @@ function QuestionFlow(props: {
               value={draft.custom}
               disabled={busy !== undefined}
               rows={3}
+              aria-label={props.t('interact.question.custom')}
               placeholder={props.t('interact.question.custom')}
               onChange={draftCustom}
               onKeyDown={continueFromCustom}
@@ -505,7 +473,9 @@ function QuestionFlow(props: {
           )}
         </div>
       </div>
+      {notice !== undefined && <p className={css.meta} role="status">{notice}</p>}
       {error !== undefined && <p className={css.error} role="alert">{error}</p>}
+      {submitError !== undefined && <p className={css.error} role="alert">{submitError}</p>}
       <div className={css.footer}>
         <div className={css.pager}>
           <button

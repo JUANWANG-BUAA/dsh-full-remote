@@ -9,16 +9,21 @@
  * All user-facing copy is delegated to pages.ts; session state lives in the
  * caller-supplied session store (defaults to an in-memory one).
  */
-import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse, type ClientRequest } from 'node:http'
+import { Agent, createServer, request as httpRequest, type IncomingMessage, type ServerResponse, type ClientRequest } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
 import type { Duplex } from 'node:stream'
-import { createGzip } from 'node:zlib'
+import { constants as zlibConstants, createBrotliCompress, createGzip } from 'node:zlib'
+import { createHash } from 'node:crypto'
+import { createStaticResponseCache, staticCacheRequestKey, isCacheableStaticResponse, staticResponseTtlMs } from './static-cache.ts'
 import { parseCookies, safeEqual } from './security.ts'
 import { createSessionStore, encodeSessionCookie, sessionCookie, SessionCapacityError } from './sessions.ts'
 import { readBody, sendHtml, pathnameOf, rewriteLoopbackAuthority } from './http-util.ts'
 import {
-  applyGzipResponseHeaders,
-  gzipDecisionFromUpstream,
+  applyContentEncodingResponseHeaders,
+  mergeAcceptEncodingVary,
+  selectContentEncoding,
+  shouldCompressResponse,
+  type ContentEncoding,
   maybeSetHashedAssetCacheControl,
 } from './proxy-compress.ts'
 import {
@@ -122,9 +127,9 @@ export interface ProxySpec {
   /** Display-only: shown on the device home page as part of the security posture. */
   approvalMode?: boolean
   log?: (entry: { method: string | undefined, path: string, status: number, remote: string }) => void
-  /** Gzip compressible HTTP responses when the client advertises gzip. Default true. */
+  /** Negotiate Brotli/gzip for eligible HTTP responses. Default true; SSE is never buffered. */
   compressResponses?: boolean
-  /** Add immutable Cache-Control on hashed /assets/* 200s with no upstream cache header. Default true. */
+  /** Private browser caching and bounded per-device static variants. Default true. */
   cacheHashedAssets?: boolean
   /** Browser-session cookie for Harness 0.1.2+; omitted on older Harness builds. */
   upstreamCookie?: string
@@ -139,11 +144,14 @@ type RuntimeSpec = Omit<ProxySpec, 'trustForwardedProto' | 'trustForwardedFor' |
   trustCloudflareConnectingIp: () => boolean
   rewriteAuthority: string
   trackUpstream: (up: ClientRequest | Duplex) => void
+  upstreamAgent: Agent
+  staticCache: ReturnType<typeof createStaticResponseCache>
+  reserveCacheCapture: () => (() => void) | undefined
   loginTracker: LoginTracker
   sessionStore: ReturnType<typeof createSessionStore>
   /** Resolved (never undefined) so the login cookie always gets a numeric Max-Age. */
   sessionMaxAgeSeconds: number
-  trackSession: (sessionId: string, close: () => void) => () => void
+  trackSession: (sessionId: string, close: () => void, valid?: () => boolean) => () => void
   closeSessionConnections: (sessionId: string) => void
   compressResponses: boolean
   cacheHashedAssets: boolean
@@ -387,15 +395,21 @@ function armUpstreamFirstByteTimeout(
   return clear
 }
 
-function pipeUpstreamBody(incoming: IncomingMessage, res: ServerResponse, gzip: boolean) {
-  if (!gzip) {
+function pipeUpstreamBody(incoming: IncomingMessage, res: ServerResponse, encoding: ContentEncoding | undefined,
+  observe?: (stream: IncomingMessage | ReturnType<typeof createGzip>) => void) {
+  if (encoding === undefined) {
+    observe?.(incoming)
     incoming.on('error', () => {
       if (!res.destroyed) res.destroy()
     })
     incoming.pipe(res)
     return
   }
-  const gzipStream = createGzip({ level: 6 })
+  const gzipStream = encoding === 'br'
+    ? createBrotliCompress({ params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 } })
+    : createGzip({ level: 6 })
+  observe?.(gzipStream)
+  res.once('close', () => { gzipStream.destroy(); incoming.destroy() })
   incoming.on('error', () => {
     gzipStream.destroy()
     if (!res.destroyed) res.destroy()
@@ -460,7 +474,41 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
     sendText(res, 413, 'request too large\n', { connection: 'close' })
     return
   }
+  const cacheKey = spec.cacheHashedAssets ? staticCacheRequestKey(req, sessionId) : undefined
+  const cached = cacheKey === undefined ? undefined : spec.staticCache.get(cacheKey)
+  if (cached !== undefined) {
+    const etag = cached.headers.etag
+    const noneMatch = req.headers['if-none-match']
+    const matches = typeof etag === 'string' && typeof noneMatch === 'string'
+      && (noneMatch.trim() === '*' || (noneMatch.match(/(?:W\/)?"[^"]*"/g) ?? [])
+        .some(tag => tag.replace(/^W\//, '') === etag.replace(/^W\//, '')))
+    const since = req.headers['if-modified-since']
+    const modified = cached.headers['last-modified']
+    const unmodified = noneMatch === undefined && typeof since === 'string' && typeof modified === 'string'
+      && Number.isFinite(Date.parse(modified)) && Date.parse(modified) <= Date.parse(since)
+    drainRequest(req)
+    const receivedAt = cached.receivedAt ?? Date.now()
+    const originDate = Date.parse(String(cached.headers.date ?? ''))
+    const initialAge = Math.max(Number(cached.headers.age ?? 0), Number.isFinite(originDate) ? (receivedAt - originDate) / 1000 : 0, 0)
+    const age = String(Math.max(0, Math.ceil(initialAge + (Date.now() - receivedAt) / 1000)))
+    if (matches || unmodified) {
+      const validators: ProxyHeaders = {}
+      for (const name of ['etag', 'last-modified', 'cache-control', 'vary', 'expires', 'date']) {
+        if (cached.headers[name] !== undefined) validators[name] = cached.headers[name]
+      }
+      validators.age = age
+      res.writeHead(304, validators)
+      res.end()
+    } else {
+      res.writeHead(200, { ...cached.headers, age, 'content-length': cached.body.length })
+      res.end(cached.body)
+    }
+    return
+  }
+  const cookie = parseCookies(req.headers.cookie)[spec.cookieName]
+  const activity = spec.sessionStore.trackActivity(cookie)
   const up = httpRequest({
+    agent: spec.upstreamAgent,
     hostname: spec.backendHost,
     port: spec.backendPort,
     path: req.url,
@@ -474,25 +522,68 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
   }, (incoming) => {
     clearConnectTimeout()
     const status = incoming.statusCode ?? 502
+    const responseReceivedAt = Date.now()
+    const freshnessAtHeaders = staticResponseTtlMs(incoming.headers, responseReceivedAt)
     const responseHeaders = sanitizeResponseHeaders(incoming.headers)
-    maybeSetHashedAssetCacheControl(
-      responseHeaders,
-      pathnameOf(req.url),
-      status,
-      spec.cacheHashedAssets,
-    )
-    const gzip = gzipDecisionFromUpstream(req, { statusCode: status, headers: responseHeaders }, spec.compressResponses)
-    if (gzip) applyGzipResponseHeaders(responseHeaders)
+    const safeStatic = cacheKey !== undefined && isCacheableStaticResponse(incoming.headers, status)
+    if (safeStatic && incoming.headers.expires === undefined && staticResponseTtlMs(incoming.headers) > 0) {
+      maybeSetHashedAssetCacheControl(responseHeaders, pathnameOf(req.url), status, spec.cacheHashedAssets)
+    }
+    // Only admitted static representations get a generated cache policy. Never
+    // make HTML or a Set-Cookie/no-store response public based on its filename.
+    if (safeStatic && responseHeaders['cache-control'] === 'public, max-age=31536000, immutable') {
+      responseHeaders['cache-control'] = 'private, max-age=31536000, immutable'
+    }
+    const negotiable = req.headers.range === undefined && responseHeaders['content-range'] === undefined && shouldCompressResponse({
+      compressEnabled: spec.compressResponses, method: req.method, status,
+      contentType: responseHeaders['content-type'], contentEncoding: responseHeaders['content-encoding'],
+      contentLength: responseHeaders['content-length'], requestCacheControl: req.headers['cache-control'],
+      responseCacheControl: responseHeaders['cache-control'], upgrade: req.headers.upgrade,
+    })
+    // Vary must describe identity responses too, otherwise a cache can poison variants.
+    if (negotiable) mergeAcceptEncodingVary(responseHeaders)
+    const encoding = negotiable ? selectContentEncoding(req.headers['accept-encoding']) : undefined
+    if (encoding !== undefined) applyContentEncodingResponseHeaders(responseHeaders, encoding)
+    const releaseCapture = safeStatic ? spec.reserveCacheCapture() : undefined
+    incoming.on('data', () => { if (!activity()) { incoming.destroy(); up.destroy(); res.destroy() } })
     res.writeHead(status, responseHeaders)
-    pipeUpstreamBody(incoming, res, gzip)
+    pipeUpstreamBody(incoming, res, encoding, releaseCapture === undefined ? undefined : stream => {
+      // Capture only bounded eligible static output, without buffering delivery/backpressure.
+      let chunks: Buffer[] = []
+      let size = 0
+      let ended = false
+      let retained = true
+      const release = () => { if (!retained) return; retained = false; chunks = []; releaseCapture() }
+      stream.on('data', (chunk: Buffer) => {
+        if (!retained) return
+        size += chunk.length
+        if (size > 1024 * 1024) { release(); return }
+        chunks.push(Buffer.from(chunk))
+      })
+      stream.once('end', () => { ended = true })
+      stream.once('error', release)
+      res.once('close', release)
+      res.once('finish', () => {
+        if (retained && ended && incoming.complete && !incoming.aborted && spec.sessionStore.isActive(cookie)) {
+          const body = Buffer.concat(chunks)
+          const stored = { ...responseHeaders }
+          if (stored.etag === undefined) stored.etag = 'W/"' + createHash('sha256').update(body).digest('hex') + '"'
+          stored['content-length'] = body.length
+          stored.date ??= new Date(responseReceivedAt).toUTCString()
+          const ttl = Math.max(0, freshnessAtHeaders - (Date.now() - responseReceivedAt))
+          spec.staticCache.put(cacheKey!, { status: 200, headers: stored, body, receivedAt: responseReceivedAt }, sessionId, ttl)
+        }
+        release()
+      })
+    })
   })
   spec.trackUpstream?.(up)
   const releaseSession = spec.trackSession(sessionId, () => {
     up.destroy()
     if (!res.destroyed) res.destroy()
-  })
+  }, () => spec.sessionStore.isActive(cookie))
   res.once('close', releaseSession)
-  up.once('close', releaseSession)
+  res.once('finish', releaseSession)
   const clearConnectTimeout = armUpstreamConnectTimeout(up, spec.upstreamTimeoutMs)
   up.on('error', () => {
     clearConnectTimeout()
@@ -508,6 +599,7 @@ function proxyRequest(req: IncomingMessage, res: ServerResponse, spec: RuntimeSp
   let overflow = false
   req.on('data', (chunk) => {
     if (overflow) return
+    if (!activity()) { req.unpipe(up); up.destroy(); res.destroy(); return }
     received += chunk.length
     if (received > spec.maxRequestBytes) {
       overflow = true
@@ -781,21 +873,35 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
   // close() fully tears down WebSocket sessions.
   const upgradedSockets = new Set()
   const upstreamSockets = new Set()
+  // Own the upstream pool so stop/rotate tears down idle sockets too.
+  const upstreamAgent = new Agent({ keepAlive: true, maxSockets: 64, maxTotalSockets: 128, maxFreeSockets: 8, scheduling: 'lifo' })
+  const staticCache = createStaticResponseCache()
+  let cacheCaptures = 0
+  const reserveCacheCapture = () => {
+    if (cacheCaptures >= 8) return undefined
+    cacheCaptures++
+    let released = false
+    return () => { if (!released) { released = true; cacheCaptures-- } }
+  }
   const sessionConnections = new Map<string, Set<() => void>>()
-  const trackSession = (sessionId: string, close: () => void) => {
+  const connectionLeases = new Map<() => void, () => boolean>()
+  const trackSession = (sessionId: string, close: () => void, valid?: () => boolean) => {
+    if (valid !== undefined) connectionLeases.set(close, valid)
     const connections = sessionConnections.get(sessionId) ?? new Set<() => void>()
     connections.add(close)
     sessionConnections.set(sessionId, connections)
     return () => {
       connections.delete(close)
+      connectionLeases.delete(close)
       if (connections.size === 0) sessionConnections.delete(sessionId)
     }
   }
   const closeSessionConnections = (sessionId: string) => {
+    staticCache.deleteSession(sessionId)
     const connections = sessionConnections.get(sessionId)
     if (connections === undefined) return
     sessionConnections.delete(sessionId)
-    for (const close of connections) close()
+    for (const close of connections) { connectionLeases.delete(close); close() }
   }
   const trackUpstream = (up: ClientRequest | Duplex) => {
     upstreamSockets.add(up)
@@ -814,6 +920,9 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
       ? spec.trustCloudflareConnectingIp
       : () => spec.trustCloudflareConnectingIp === true,
     rewriteAuthority,
+    upstreamAgent,
+    staticCache,
+    reserveCacheCapture,
     trackUpstream,
     loginTracker: createLoginTracker(spec),
     sessionStore: spec.sessionStore ?? createSessionStore({ maxAgeSeconds: spec.sessionMaxAgeSeconds }),
@@ -823,6 +932,14 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
     compressResponses: spec.compressResponses !== false,
     cacheHashedAssets: spec.cacheHashedAssets !== false,
   }
+  // Recheck leases without renewing them; a quiet socket is not proof of user activity.
+  const sessionExpiryTimer = setInterval(() => {
+    if (sessionConnections.size === 0) return
+    for (const [close, valid] of connectionLeases) if (!valid()) { connectionLeases.delete(close); close() }
+    const active = new Set(runtimeSpec.sessionStore.list().filter(session => session.status === 'active').map(session => session.id))
+    for (const id of sessionConnections.keys()) if (!active.has(id)) closeSessionConnections(id)
+  }, 1000)
+  sessionExpiryTimer.unref()
   const upgradeTracker = createLoginTracker({
     loginMaxAttempts: spec.upgradeMaxAttempts ?? 10,
     loginLockoutMs: spec.upgradeLockoutMs ?? 300_000,
@@ -932,18 +1049,24 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
       headers,
     })
     trackUpstream(up)
-    const releaseSession = session === undefined
-      ? undefined
-      : runtimeSpec.trackSession(session.id, () => {
-          socket.destroy()
-          up.destroy()
-        })
+    const activity = runtimeSpec.sessionStore.trackActivity(cookie)
+    let detachedUpstream: Duplex | undefined
+    const destroyPair = () => { socket.destroy(); detachedUpstream?.destroy(); up.destroy() }
+    const releaseSession = runtimeSpec.trackSession(session.id, destroyPair, () => runtimeSpec.sessionStore.isActive(cookie))
     if (releaseSession !== undefined) socket.once('close', releaseSession)
     up.setTimeout(spec.upstreamTimeoutMs, () => { up.destroy() })
     up.on('upgrade', (upRes, upSocket, upHead) => {
       // After a successful upgrade Node detaches the socket from the request,
       // so req.destroy() would leave it open — track the socket itself too.
+      detachedUpstream = upSocket
       trackUpstream(upSocket)
+      if (!activity()) { destroyPair(); return }
+      const onActivity = () => { if (!activity()) destroyPair() }
+      upSocket.on('data', onActivity)
+      socket.on('data', onActivity)
+      upSocket.once('close', destroyPair)
+      upSocket.once('error', destroyPair)
+      socket.once('close', destroyPair)
       upgradeTracker.success(upgradeRemote)
       spec.audit?.('ws.open', { remote: upgradeRemote, path: pathnameOf(req.url), status: upRes.statusCode ?? 101 })
       spec.log?.({ method: req.method, path: pathnameOf(req.url), status: upRes.statusCode ?? 101, remote: upgradeRemote })
@@ -976,7 +1099,7 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
   })
 
   return new Promise((resolve, reject) => {
-    server.once('error', reject)
+    server.once('error', error => { clearInterval(sessionExpiryTimer); upstreamAgent.destroy(); reject(error) })
     server.listen(spec.listenPort, spec.listenHost, () => {
       server.off('error', reject)
       const address = server.address()
@@ -993,7 +1116,11 @@ export function listenProxy(spec: ProxySpec): Promise<ProxyServer> {
             return
           }
           closed = true
+          clearInterval(sessionExpiryTimer)
+          staticCache.clear()
+          upstreamAgent.destroy()
           sessionConnections.clear()
+          connectionLeases.clear()
           // Tear down live sockets first so server.close() is not waiting on
           // SSE / keep-alive / leftover upgrades. If close still hangs (a
           // half-open peer that ignore FIN), the grace timer unblocks rotate
