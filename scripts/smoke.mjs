@@ -78,8 +78,10 @@ async function waitForBoot(exited = () => null) {
   while (Date.now() < deadline) {
     if (exited() !== null) return
     try {
-      const response = await fetch(BASE, { redirect: 'manual' })
-      if (response.status < 500) return
+      // The web server answers `/` before every bundle has applied, so wait
+      // for this plugin's own control route instead of the index page.
+      const response = await fetch(`${BASE}/dsh-reverse-proxy/status`, { headers: CONTROL })
+      if (response.status !== 404 && response.status < 500) return
     } catch {
       // not up yet
     }
@@ -270,12 +272,6 @@ async function main() {
   } finally {
     kill()
   }
-
-  if (failures.length > 0) {
-    console.error(`[smoke] ${failures.length} failure(s).`)
-    process.exit(1)
-  }
-  console.log('[smoke] PASS: control surface, login gate, rate limit, polyfill, device sessions all verified.')
 }
 
 const home = await mkdtemp(join(tmpdir(), 'dsh-smoke-'))
@@ -285,6 +281,12 @@ const home = await mkdtemp(join(tmpdir(), 'dsh-smoke-'))
 process.env.DSH_HOME = home
 try {
   await main()
+  // Checked here, not at the end of main(): a failed step returns early.
+  if (failures.length > 0) {
+    console.error(`[smoke] ${failures.length} failure(s).`)
+    process.exit(1)
+  }
+  console.log('[smoke] PASS: control surface, login gate, rate limit, polyfill, device sessions all verified.')
 } catch (error) {
   console.error(`[smoke] ERROR [${phase}] ${error instanceof Error ? error.message : String(error)} cause=${error instanceof Error ? String(error.cause) : ''}`)
   console.error(`[smoke] server exited: ${exited}, boot log:\n${bootLog.join('')}`)
