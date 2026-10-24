@@ -255,7 +255,7 @@ and repeatable checks.
 ## Requirements
 
 - Node.js `^22.19.0 || >=24`
-- A DeepSeek Harness **web** profile running **0.2** (`0.2.1-rc.2`, the npm
+- A DeepSeek Harness **web** profile running **0.2** (`0.2.1-rc.3`, the npm
   `next` dist-tag and the version shipped by DeepSeek Harness Desktop 0.2.1).
   The plugin depends on the `webServer` and Host `connection` services plus the
   0.2 client services (`uiSession`, `uiWorkspace`, `ui-approval`,

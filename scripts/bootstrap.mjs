@@ -13,10 +13,10 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HARNESS_REPO = 'https://github.com/deepseek-ai/deepseek-harness.git'
-// Verified against DeepSeek Harness 0.2.1-rc.2
-// (`packages/client/*` 0.2.1-rc.2, browser-session auth + queue ModuleLoader,
+// Verified against DeepSeek Harness 0.2.1-rc.3
+// (`packages/client/*` 0.2.1-rc.3, browser-session auth + queue ModuleLoader,
 // uiSession pending-interaction registry, Remote access snapshots).
-const HARNESS_COMMIT = '687f282e8625c6b8d11ff58211a90524be2e4317'
+const HARNESS_COMMIT = '1f81c047fc48fa190a683e469daa699857e9afe8'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const sibling = join(dirname(root), 'deepseek-harness')
