@@ -23,11 +23,11 @@
   fails, the verified GitHub tarball remains the supported install path; do not
   move tags or silently claim npm success. Credential repair requires the owner.
 
-## Registry reality (checked before 0.5.0 release, 2026-10-22)
+## Registry reality (checked 2026-10-24)
 
-- `@deepseek-ai/dsh` publishes `0.2.1-rc.2` on dist-tag `next` and
-  `0.2.0-rc.2` on `latest`; DeepSeek Harness Desktop 0.2.1 bundles the
-  `next` build. This plugin is verified against `0.2.1-rc.2`.
+- `@deepseek-ai/dsh` publishes `0.2.1-rc.3` on dist-tag `next` and
+  `0.2.1-rc.2` on `latest`; DeepSeek Harness Desktop 0.2.1 bundles the
+  `next` build. This plugin is verified against `0.2.1-rc.3`.
 - npm `latest` for `dsh-full-remote` is still `0.3.7`. Every publish since
   `v0.3.8` failed at the final `npm publish` step with
   `404 Not Found - PUT https://registry.npmjs.org/dsh-full-remote` — npm's

@@ -3,6 +3,36 @@
 All notable changes to dsh-full-remote (formerly dsh-reverse-proxy) are
 documented in this file.
 
+## Unreleased
+
+### Changed
+
+- **DeepSeek Harness 0.2.1-rc.3 alignment.** `@deepseek-ai/dsh-*` dev
+  dependencies move to `0.2.1-rc.3`; the CI harness checkout and
+  `scripts/bootstrap.mjs` pin `dsh-v0.2.1-rc.3`
+  (`1f81c047fc48fa190a683e469daa699857e9afe8`). `cordis` 4.0.5 and
+  `schemastery` 3.18.5 are unchanged upstream, so the peer range stays.
+- No source-level port was required: rc.3 touches only client packages and the
+  web-app layer (a new `entry-customization` row). The client `connection`
+  handle, `sessions` / `uiSession`, `settings.section`, `shell.overlay` and the
+  Host `webServer` / `connection` seams are unchanged.
+
+### Fixed
+
+- `scripts/smoke.mjs` waited for `/` before probing the control surface, but the
+  web server answers `/` before every bundle has applied, so the first control
+  calls intermittently got 404 (on both rc.2 and rc.3). It now waits for
+  `/dsh-reverse-proxy/status` itself.
+- A failed proxy start or session listing made `smoke.mjs` return before its
+  failure check and exit 0, so CI could report a broken boot as green. The
+  failure count is now checked after `main()` returns.
+
+### Verification
+
+- `pnpm run check` passes against the 0.2.1-rc.3 dev dependencies; the
+  real-boot `scripts/smoke.mjs` (packed tarball) and `pnpm run test:composition`
+  pass against a built `dsh-v0.2.1-rc.3` checkout.
+
 ## 0.5.0 (2026-10-22)
 
 ### Transport performance

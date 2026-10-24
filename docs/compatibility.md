@@ -6,7 +6,7 @@ packages it declares in `dsh.client.inject` (`dsh-api-session-controller`,
 `dsh-client-ui-session`, `dsh-client-ui-workspace`, `dsh-client-ui-approval`,
 `dsh-client-ui-user-questions`, `dsh-client-ui-settings`). Its only peer
 dependency is `@deepseek-ai/cordis ~4.0.5` — the official 0.2 convention for
-client plugins. It is verified against DeepSeek Harness **0.2.1-rc.2** (npm
+client plugins. It is verified against DeepSeek Harness **0.2.1-rc.3** (npm
 `next`, the version shipped by DeepSeek Harness Desktop 0.2.1); 0.1.x is no
 longer supported (0.2 removed `@deepseek-ai/dsh-client-runtime` and moved
 pending interactions into the `uiSession` registry). It is not intended for a
@@ -54,6 +54,15 @@ consequences for this plugin:
    own toast (`PanelToast`) and registers no workspace row, so it is unaffected
    — but a plugin that extended the shipped toast must port to the keyed
    dispatcher.
+
+0.2.1-rc.3 only changes client packages: the web-app layer gains an
+`entry-customization` row (the More menus that pin plugin launchers in the
+sidebars and conversation view), and `uiWorkspace.startSession` now reuses
+the Workspace blank and its unsent draft. The client `connection` handle the
+cockpit reads, the `sessions` / `uiSession` registries, `settings.section`,
+`shell.overlay` and `uiWorkspace.openSession` are unchanged, and this plugin
+registers no launcher, so the new row neither collides with nor needs
+anything from it.
 
 ## Installation order
 

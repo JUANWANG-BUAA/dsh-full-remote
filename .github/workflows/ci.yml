@@ -76,12 +76,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Pin the latest DeepSeek Harness release candidate for the real-boot smoke.
-      # dsh-v0.2.1-rc.2 — the release DeepSeek Harness Desktop 0.2.1-rc.2 ships.
+      # dsh-v0.2.1-rc.3 — the release DeepSeek Harness Desktop 0.2.1-rc.3 ships.
       - name: Fetch DeepSeek Harness checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: deepseek-ai/deepseek-harness
-          ref: 687f282e8625c6b8d11ff58211a90524be2e4317
+          ref: 1f81c047fc48fa190a683e469daa699857e9afe8
           path: .harness
           filter: blob:none
 

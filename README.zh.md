@@ -165,7 +165,7 @@ flowchart LR
 ## 环境要求
 
 - Node.js `^22.19.0 || >=24`
-- DeepSeek Harness 的 **web** profile（**0.2**，即 npm dist-tag `next` 的 `0.2.1-rc.2`，与 DeepSeek Harness 桌面 App 0.2.1 同版）。插件依赖 `webServer`、Host Connection 服务，以及 0.2 的客户端服务（`uiSession`、`uiWorkspace`、`ui-approval`、`ui-user-questions`），不适用于 headless profile。不再支持 0.1.x：0.2 客户端移除了 `@deepseek-ai/dsh-client-runtime`，待处理交互改由 `uiSession` 注册表发布。0.2.1 新增了 Remote 访问快照（`dsh-api-remote-access`），它不会收紧本代理服务的浏览器身份，见[兼容性](./docs/compatibility.md#deepseek-harness-021)。
+- DeepSeek Harness 的 **web** profile（**0.2**，即 npm dist-tag `next` 的 `0.2.1-rc.3`，与 DeepSeek Harness 桌面 App 0.2.1 同版）。插件依赖 `webServer`、Host Connection 服务，以及 0.2 的客户端服务（`uiSession`、`uiWorkspace`、`ui-approval`、`ui-user-questions`），不适用于 headless profile。不再支持 0.1.x：0.2 客户端移除了 `@deepseek-ai/dsh-client-runtime`，待处理交互改由 `uiSession` 注册表发布。0.2.1 新增了 Remote 访问快照（`dsh-api-remote-access`），它不会收紧本代理服务的浏览器身份，见[兼容性](./docs/compatibility.md#deepseek-harness-021)。
 
 ## 安装
 
